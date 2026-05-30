@@ -23,6 +23,7 @@ export interface TTSConfig {
 export interface MemoryVaultConfig {
   enabled: boolean;
   baseUrl: string;
+  adminToken: string;
   topK: number;
   tokenBudget: number;
   maxToolCalls: number;
@@ -79,6 +80,7 @@ export const useSettingsStore = create<SettingsState>()(
       memoryVaultConfig: {
         enabled: false,
         baseUrl: '',
+        adminToken: '',
         topK: 5,
         tokenBudget: 2000,
         maxToolCalls: 3,

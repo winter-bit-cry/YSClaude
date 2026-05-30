@@ -13,7 +13,8 @@ import { playTTS, stopTTS } from '../src/services/tts';
 import { streamChat } from '../src/services/api';
 import { Diary } from '../src/types';
 import { getFavoriteDiaries } from '../src/db/operations';
-import { formatFullTime } from '../src/utils/time';
+import { uploadDiary } from '../src/services/tools';
+import { formatFullTime, formatDateOnly } from '../src/utils/time';
 
 const TABS = ['API 配置', '对话设置', 'TTS 配置', 'Tool 设置', '日记'] as const;
 
@@ -590,6 +591,7 @@ function ToolConfigTab() {
   const [mvTopK, setMvTopK] = useState(String(memoryVaultConfig.topK));
   const [mvTokenBudget, setMvTokenBudget] = useState(String(memoryVaultConfig.tokenBudget));
   const [mvMaxCalls, setMvMaxCalls] = useState(String(memoryVaultConfig.maxToolCalls));
+  const [mvAdminToken, setMvAdminToken] = useState(memoryVaultConfig.adminToken);
   const [mvTesting, setMvTesting] = useState(false);
 
   // 联网搜索本地 state
@@ -608,6 +610,7 @@ function ToolConfigTab() {
     setMemoryVaultConfig({
       enabled: mvEnabled,
       baseUrl: mvBaseUrl.trim(),
+      adminToken: mvAdminToken.trim(),
       topK: isNaN(topK) || topK <= 0 ? 5 : topK,
       tokenBudget: isNaN(tokenBudget) || tokenBudget <= 0 ? 2000 : tokenBudget,
       maxToolCalls: isNaN(maxToolCalls) || maxToolCalls <= 0 ? 3 : maxToolCalls,
@@ -667,6 +670,13 @@ function ToolConfigTab() {
         <TextInput style={styles.input} value={mvBaseUrl} onChangeText={setMvBaseUrl}
           placeholder="https://your-memory-vault.com" placeholderTextColor={colors.textTertiary}
           autoCapitalize="none" />
+      </View>
+
+      <View style={styles.field}>
+        <Text style={styles.label}>管理员 Token（上传日记用）</Text>
+        <TextInput style={styles.input} value={mvAdminToken} onChangeText={setMvAdminToken}
+          placeholder="ADMIN_TOKEN" placeholderTextColor={colors.textTertiary}
+          secureTextEntry autoCapitalize="none" />
       </View>
 
       <View style={styles.field}>
@@ -737,7 +747,7 @@ function DiaryTab() {
   const { diaries, loadDiaries, addDiary, editDiary, toggleFavorite, removeDiary } = useDiaryStore();
   // 隐藏楼层随对话独立，与待总结的消息同源，统一从 chat store 取
   const { messages, hiddenRanges } = useChatStore();
-  const { apiConfigs, activeConfigIndex, systemPrompt, maxOutputTokens } = useSettingsStore();
+  const { apiConfigs, activeConfigIndex, systemPrompt, maxOutputTokens, memoryVaultConfig } = useSettingsStore();
 
   // AI 总结相关 state
   const [fromStr, setFromStr] = useState('');
@@ -756,6 +766,11 @@ function DiaryTab() {
   const [creating, setCreating] = useState(false);
   const [createTitle, setCreateTitle] = useState('');
   const [createContent, setCreateContent] = useState('');
+
+  // 上传到云端记忆库 Modal state
+  const [uploadTarget, setUploadTarget] = useState<Diary | null>(null);
+  const [uploadDate, setUploadDate] = useState('');
+  const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
     loadDiaries();
@@ -888,6 +903,38 @@ function DiaryTab() {
     setCreateContent('');
   }
 
+  function handleOpenUpload(d: Diary) {
+    setUploadTarget(d);
+    setUploadDate(formatDateOnly(d.createdAt));
+  }
+
+  async function handleConfirmUpload() {
+    if (!uploadTarget) return;
+    const date = uploadDate.trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      Alert.alert('提示', '请输入正确的日期格式：YYYY-MM-DD');
+      return;
+    }
+    // 标题并入正文：标题\n正文
+    const title = uploadTarget.title.trim();
+    const body = uploadTarget.content.trim();
+    const content = title ? `${title}\n${body}` : body;
+    if (!content) {
+      Alert.alert('提示', '该日记内容为空，无法上传');
+      return;
+    }
+    setUploading(true);
+    try {
+      await uploadDiary(date, content, memoryVaultConfig);
+      setUploadTarget(null);
+      Alert.alert('上传成功', `日记已上传到云端记忆库（${date}）`);
+    } catch (e: any) {
+      Alert.alert('上传失败', e.message || '请求失败');
+    } finally {
+      setUploading(false);
+    }
+  }
+
   function handleOpenEdit(d: Diary) {
     setEditing(d);
     setEditTitle(d.title);
@@ -986,6 +1033,9 @@ function DiaryTab() {
               <Text style={styles.diaryPreview} numberOfLines={1}>{d.content}</Text>
               <Text style={styles.diaryDate}>{formatFullTime(d.createdAt)}</Text>
             </View>
+            <Pressable style={styles.diaryUpload} onPress={() => handleOpenUpload(d)} hitSlop={8}>
+              <Text style={styles.diaryUploadText}>上传</Text>
+            </Pressable>
           </Pressable>
         ))
       )}
@@ -1050,6 +1100,36 @@ function DiaryTab() {
               </Pressable>
               <Pressable style={styles.modalConfirm} onPress={handleSaveCreate}>
                 <Text style={styles.modalConfirmText}>保存</Text>
+              </Pressable>
+            </View>
+          </View>
+        </Pressable>
+      </Modal>
+
+      {/* 上传日记到云端 Modal */}
+      <Modal visible={!!uploadTarget} transparent animationType="fade">
+        <Pressable style={styles.overlay} onPress={() => !uploading && setUploadTarget(null)}>
+          <View style={styles.modal} onStartShouldSetResponder={() => true}>
+            <Text style={styles.modalTitle}>上传到云端记忆库</Text>
+            <Text style={styles.hint}>标题将并入正文上传。请确认日期（一个日期对应一篇云端日记，重复日期可能覆盖）</Text>
+            <TextInput
+              style={styles.summaryTitleInput}
+              value={uploadDate}
+              onChangeText={setUploadDate}
+              placeholder="日期 YYYY-MM-DD"
+              placeholderTextColor={colors.textTertiary}
+              autoCapitalize="none"
+            />
+            <View style={styles.modalButtons}>
+              <Pressable style={styles.modalCancel} onPress={() => !uploading && setUploadTarget(null)}>
+                <Text style={styles.modalCancelText}>取消</Text>
+              </Pressable>
+              <Pressable style={styles.modalConfirm} onPress={handleConfirmUpload} disabled={uploading}>
+                {uploading ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.modalConfirmText}>上传</Text>
+                )}
               </Pressable>
             </View>
           </View>
@@ -1201,6 +1281,12 @@ const styles = StyleSheet.create({
   diaryTitle: { fontSize: 15, fontWeight: '600', color: colors.text },
   diaryPreview: { fontSize: 13, color: colors.textSecondary },
   diaryDate: { fontSize: 11, color: colors.textTertiary, marginTop: 2 },
+  diaryUpload: {
+    alignSelf: 'center', marginLeft: 10, paddingHorizontal: 10, paddingVertical: 6,
+    borderRadius: 8, backgroundColor: colors.primaryLight,
+    borderWidth: 0.5, borderColor: colors.border,
+  },
+  diaryUploadText: { fontSize: 12, color: colors.primary, fontWeight: '500' },
   modalButtons: { flexDirection: 'row', justifyContent: 'flex-end', gap: 12, marginTop: 4 },
   modalCancel: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 8 },
   modalCancelText: { fontSize: 15, color: colors.textSecondary },

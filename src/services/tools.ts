@@ -186,6 +186,44 @@ async function executeDiaryQuery(
   return `【${date} 的日记】\n${content}`;
 }
 
+/* ------ 记忆库：上传日记（管理接口，需 adminToken） ------ */
+
+/**
+ * 上传一篇日记到云端记忆库。
+ * 调用管理接口 POST /api/diary，需 Authorization: Bearer <adminToken>。
+ * 仅保存原文，不自动 LLM 拆分。
+ */
+export async function uploadDiary(
+  date: string,
+  content: string,
+  config: MemoryVaultConfig
+): Promise<void> {
+  const baseUrl = config.baseUrl.replace(/\/$/, '');
+  if (!baseUrl) {
+    throw new Error('未配置记忆库地址');
+  }
+  if (!config.adminToken) {
+    throw new Error('未配置管理员 Token，请在「Tool 设置」中填写');
+  }
+
+  const resp = await fetch(`${baseUrl}/api/diary`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${config.adminToken}`,
+    },
+    body: JSON.stringify({ date, content }),
+  });
+
+  if (!resp.ok) {
+    if (resp.status === 401 || resp.status === 403) {
+      throw new Error('认证失败：管理员 Token 不正确');
+    }
+    const text = await resp.text().catch(() => '');
+    throw new Error(`上传失败: HTTP ${resp.status}${text ? ` - ${text.slice(0, 200)}` : ''}`);
+  }
+}
+
 /* ------ 联网搜索：Tavily ------ */
 
 async function executeWebSearch(

@@ -13,6 +13,12 @@ export function formatCurrentTime(): string {
   return formatFullTime(Date.now());
 }
 
+/** 仅日期：YYYY-MM-DD（用作上传日记的 date 默认值）。 */
+export function formatDateOnly(ts: number): string {
+  const d = new Date(ts);
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
 /**
  * 智能格式（聊天页分隔 + 发给 AI 的标记共用）：
  * - 今天 → HH:mm
