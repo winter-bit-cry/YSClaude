@@ -27,8 +27,12 @@ export interface WebViewTapResult {
   selector?: string;
 }
 
+export interface WebViewOpenOptions {
+  userAgent?: 'desktop';
+}
+
 export interface WebViewHostActions {
-  open: (url: string) => Promise<WebViewObservation>;
+  open: (url: string, options?: WebViewOpenOptions) => Promise<WebViewObservation>;
   observe: () => Promise<WebViewObservation>;
   tap: (x: number, y: number) => Promise<WebViewTapResult>;
   clickElement: (index: number) => Promise<WebViewTapResult>;
@@ -54,8 +58,11 @@ function getHostActions(): WebViewHostActions {
   return hostActions;
 }
 
-export async function openWebView(url: string): Promise<WebViewObservation> {
-  return getHostActions().open(url);
+export async function openWebView(
+  url: string,
+  options?: WebViewOpenOptions
+): Promise<WebViewObservation> {
+  return getHostActions().open(url, options);
 }
 
 export async function observeWebView(): Promise<WebViewObservation> {

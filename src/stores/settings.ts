@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { sqliteStorage } from '../db/kv-storage';
 import { APIConfig } from '../types';
+import { DEFAULT_HOTBOARD_PLATFORM_TYPES } from '../utils/hotboardPlatforms';
 
 export interface NamedAPIConfig extends APIConfig {
   name: string;
@@ -45,6 +46,12 @@ export interface WebInteractionConfig {
   maxToolCalls: number;
 }
 
+export interface HotboardConfig {
+  enabled: boolean;
+  apiKey: string;
+  platforms: string;
+}
+
 export interface NativeToolConfig {
   deviceInfoEnabled: boolean;
   batteryStatusEnabled: boolean;
@@ -65,6 +72,7 @@ interface SettingsState {
   webSearchConfig: WebSearchConfig;
   webPageReaderConfig: WebPageReaderConfig;
   webInteractionConfig: WebInteractionConfig;
+  hotboardConfig: HotboardConfig;
   nativeToolConfig: NativeToolConfig;
 
   setActiveConfig: (index: number) => void;
@@ -79,6 +87,7 @@ interface SettingsState {
   setWebSearchConfig: (config: Partial<WebSearchConfig>) => void;
   setWebPageReaderConfig: (config: Partial<WebPageReaderConfig>) => void;
   setWebInteractionConfig: (config: Partial<WebInteractionConfig>) => void;
+  setHotboardConfig: (config: Partial<HotboardConfig>) => void;
   setNativeToolConfig: (config: Partial<NativeToolConfig>) => void;
 }
 
@@ -124,6 +133,11 @@ export const useSettingsStore = create<SettingsState>()(
         enabled: false,
         maxToolCalls: 8,
       },
+      hotboardConfig: {
+        enabled: false,
+        apiKey: '',
+        platforms: DEFAULT_HOTBOARD_PLATFORM_TYPES.join(','),
+      },
       nativeToolConfig: {
         deviceInfoEnabled: false,
         batteryStatusEnabled: false,
@@ -168,6 +182,8 @@ export const useSettingsStore = create<SettingsState>()(
         set((state) => ({ webPageReaderConfig: { ...state.webPageReaderConfig, ...config } })),
       setWebInteractionConfig: (config) =>
         set((state) => ({ webInteractionConfig: { ...state.webInteractionConfig, ...config } })),
+      setHotboardConfig: (config) =>
+        set((state) => ({ hotboardConfig: { ...state.hotboardConfig, ...config } })),
       setNativeToolConfig: (config) =>
         set((state) => ({ nativeToolConfig: { ...state.nativeToolConfig, ...config } })),
     }),
@@ -186,6 +202,7 @@ export const useSettingsStore = create<SettingsState>()(
         webSearchConfig: state.webSearchConfig,
         webPageReaderConfig: state.webPageReaderConfig,
         webInteractionConfig: state.webInteractionConfig,
+        hotboardConfig: state.hotboardConfig,
         nativeToolConfig: state.nativeToolConfig,
       }),
       onRehydrateStorage: () => () => {

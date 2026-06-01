@@ -14,6 +14,7 @@ import { colors } from '../theme/colors';
 import {
   registerWebViewHost,
   WebViewObservation,
+  WebViewOpenOptions,
   WebViewTapResult,
 } from '../services/webviewController';
 
@@ -32,6 +33,9 @@ const DEFAULT_PANEL_HEIGHT = 420;
 const DEFAULT_PANEL_WIDTH = Dimensions.get('window').width - PANEL_MARGIN * 2;
 const MIN_PANEL_WIDTH = 260;
 const MIN_PANEL_HEIGHT = 280;
+const DESKTOP_WEBVIEW_MIN_WIDTH = 1280;
+const DESKTOP_WEBVIEW_USER_AGENT =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36';
 
 function buildClickScript(target: { index?: number; selector?: string }): string {
   const targetJson = JSON.stringify(target);
@@ -162,17 +166,181 @@ function buildClickScript(target: { index?: number; selector?: string }): string
   `;
 }
 
+const LOGIN_OVERLAY_CLEANUP_SCRIPT = `
+  (function () {
+    try {
+      if (!window.__ysClaudeCleanupLoginOverlays) {
+        window.__ysClaudeCleanupLoginOverlays = function () {
+          var loginPattern = /(\\u767b\\u5f55|\\u767b\\u9646|\\u6ce8\\u518c|\\u7acb\\u5373\\u767b\\u5f55|\\u624b\\u673a\\u53f7|\\u77ed\\u4fe1\\u9a8c\\u8bc1|\\u6253\\u5f00\\s*(app|APP)|\\u4e0b\\u8f7d\\s*(app|APP|\\u5ba2\\u6237\\u7aef)|sign\\s*in|log\\s*in|login|register|open\\s*app|download\\s*app)/i;
+          var closePattern = /^(\\u00d7|x|X|\\u5173\\u95ed|\\u5173\\u6389|\\u53d6\\u6d88|\\u7a0d\\u540e|\\u6682\\u4e0d|\\u4ee5\\u540e\\u518d\\u8bf4|close|dismiss|not now|later|skip)$/i;
+          var overlayClassPattern = /(modal|popup|pop|dialog|mask|overlay|backdrop|login|signin|sign-in|register|passport|app-download|download-app)/i;
+          var sensitivePattern = /(payment|checkout|order|captcha|cookie|privacy|consent|adult|\\u652f\\u4ed8|\\u4ed8\\u6b3e|\\u8ba2\\u5355|\\u8d2d\\u4e70|\\u9690\\u79c1|\\u540c\\u610f|\\u6210\\u4eba)/i;
+          var viewportArea = Math.max(1, (window.innerWidth || 0) * (window.innerHeight || 0));
+          var pageText = ((document.body && document.body.innerText) || '').slice(0, 3000);
+          var pageHasLoginPrompt = loginPattern.test(pageText);
+
+          function textOf(el) {
+            return ((el.innerText || el.textContent || el.getAttribute('aria-label') || el.getAttribute('title') || el.getAttribute('class') || el.id || '') + '')
+              .replace(/\\s+/g, ' ')
+              .trim();
+          }
+          function isVisible(el) {
+            var rect = el.getBoundingClientRect();
+            var style = window.getComputedStyle(el);
+            return rect.width > 0 && rect.height > 0 && style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity || 1) > 0.05;
+          }
+          function looksLikeOverlay(el) {
+            if (!isVisible(el)) return false;
+            var rect = el.getBoundingClientRect();
+            var style = window.getComputedStyle(el);
+            var classBits = ((el.className || '') + ' ' + (el.id || '') + ' ' + (el.getAttribute('role') || '') + ' ' + (el.getAttribute('aria-modal') || '')).toString();
+            var text = textOf(el);
+            var areaRatio = (rect.width * rect.height) / viewportArea;
+            var fixedLike = style.position === 'fixed' || style.position === 'sticky';
+            var dialogLike = el.getAttribute('role') === 'dialog' || el.getAttribute('aria-modal') === 'true' || overlayClassPattern.test(classBits);
+            var bottomSheetLike = fixedLike && rect.width >= (window.innerWidth || 0) * 0.75 && rect.height >= 80;
+            var loginLike = loginPattern.test(text + ' ' + classBits);
+            var maskLike = pageHasLoginPrompt && overlayClassPattern.test(classBits) && areaRatio > 0.35;
+            if (sensitivePattern.test(text + ' ' + classBits)) return false;
+            return (loginLike && (dialogLike || fixedLike || areaRatio > 0.18 || bottomSheetLike)) || maskLike;
+          }
+          function clickCloseButton(root) {
+            var buttons = Array.prototype.slice.call(root.querySelectorAll('button,a,[role="button"],[aria-label],[title],[class*="close"],[class*="Close"],[class*="cancel"],[class*="dismiss"]'), 0, 24);
+            for (var i = 0; i < buttons.length; i += 1) {
+              var button = buttons[i];
+              if (!isVisible(button)) continue;
+              var text = textOf(button);
+              var classBits = ((button.className || '') + ' ' + (button.id || '')).toString();
+              if (closePattern.test(text) || /close|dismiss|cancel/i.test(classBits)) {
+                try { button.click(); return true; } catch (e) {}
+              }
+            }
+            return false;
+          }
+
+          var candidates = Array.prototype.slice.call(document.querySelectorAll('[role="dialog"],[aria-modal="true"],.modal,.popup,.dialog,.mask,.overlay,.backdrop,.login,.signin,.sign-in,.register,.passport,.app-download,[class*="modal"],[class*="popup"],[class*="dialog"],[class*="mask"],[class*="overlay"],[class*="backdrop"],[class*="login"],[class*="signin"],[class*="passport"],[class*="download"]'));
+          Array.prototype.slice.call(document.body ? document.body.children : [], 0).forEach(function (child) {
+            try {
+              var style = window.getComputedStyle(child);
+              var zIndex = parseInt(style.zIndex || '0', 10);
+              if ((style.position === 'fixed' || style.position === 'sticky') && zIndex >= 10) candidates.push(child);
+            } catch (e) {}
+          });
+
+          var cleaned = false;
+          candidates.forEach(function (el) {
+            if (!el || el === document.body || el === document.documentElement || el.getAttribute('data-ysclaude-hidden') === '1') return;
+            if (!looksLikeOverlay(el)) return;
+            if (clickCloseButton(el)) {
+              cleaned = true;
+              return;
+            }
+            try {
+              el.setAttribute('data-ysclaude-hidden', '1');
+              el.style.setProperty('display', 'none', 'important');
+              el.style.setProperty('visibility', 'hidden', 'important');
+              cleaned = true;
+            } catch (e) {}
+          });
+
+          if (cleaned) {
+            try {
+              document.documentElement.style.setProperty('overflow', 'auto', 'important');
+              document.body.style.setProperty('overflow', 'auto', 'important');
+              if (window.getComputedStyle(document.body).position === 'fixed') {
+                document.body.style.setProperty('position', 'static', 'important');
+              }
+            } catch (e) {}
+          }
+        };
+      }
+
+      window.__ysClaudeCleanupLoginOverlays();
+
+      if (!window.__ysClaudeCleanupLoginOverlayObserver && window.MutationObserver) {
+        window.__ysClaudeCleanupLoginOverlayObserver = true;
+        var cleanupUntil = Date.now() + 10000;
+        var cleanupTimer = null;
+        var observer = new MutationObserver(function () {
+          if (Date.now() > cleanupUntil) {
+            try { observer.disconnect(); } catch (e) {}
+            return;
+          }
+          clearTimeout(cleanupTimer);
+          cleanupTimer = setTimeout(function () {
+            try { window.__ysClaudeCleanupLoginOverlays(); } catch (e) {}
+          }, 120);
+        });
+        try {
+          observer.observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'style'] });
+          setTimeout(function () { try { observer.disconnect(); } catch (e) {} }, 11000);
+        } catch (e) {}
+      }
+    } catch (e) {}
+  })();
+  true;
+`;
+
+const DESKTOP_LAYOUT_SCROLL_SCRIPT = `
+  (function () {
+    try {
+      var minWidth = ${DESKTOP_WEBVIEW_MIN_WIDTH};
+      var viewport = document.querySelector('meta[name="viewport"]');
+      if (!viewport) {
+        viewport = document.createElement('meta');
+        viewport.setAttribute('name', 'viewport');
+        (document.head || document.documentElement).appendChild(viewport);
+      }
+      viewport.setAttribute('content', 'width=' + minWidth + ', initial-scale=1');
+
+      var style = document.getElementById('ysclaude-desktop-scroll-style');
+      if (!style) {
+        style = document.createElement('style');
+        style.id = 'ysclaude-desktop-scroll-style';
+        (document.head || document.documentElement).appendChild(style);
+      }
+      style.textContent = [
+        'html, body {',
+        '  min-width: ' + minWidth + 'px !important;',
+        '  overflow-x: auto !important;',
+        '  overflow-y: auto !important;',
+        '}',
+        'body {',
+        '  width: auto !important;',
+        '  -webkit-overflow-scrolling: touch;',
+        '  touch-action: pan-x pan-y;',
+        '}',
+        '::-webkit-scrollbar {',
+        '  width: 10px !important;',
+        '  height: 10px !important;',
+        '}',
+        '::-webkit-scrollbar-thumb {',
+        '  background: rgba(0,0,0,0.35) !important;',
+        '  border-radius: 8px !important;',
+        '}',
+        '::-webkit-scrollbar-track {',
+        '  background: rgba(0,0,0,0.08) !important;',
+        '}'
+      ].join('\\n');
+    } catch (e) {}
+  })();
+  true;
+`;
+
 export function WebViewPanel() {
   const webViewRef = useRef<WebView>(null);
   const pendingRequests = useRef<Record<string, PendingRequest>>({});
   const pendingOpen = useRef<PendingRequest | null>(null);
   const urlRef = useRef('');
   const titleRef = useRef('');
+  const userAgentRef = useRef<string | undefined>(undefined);
   const [visible, setVisible] = useState(false);
   const [url, setUrl] = useState('');
   const [title, setTitle] = useState('');
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState('');
+  const [webViewUserAgent, setWebViewUserAgent] = useState<string | undefined>(undefined);
+  const [webViewReloadKey, setWebViewReloadKey] = useState(0);
   const [panelSize, setPanelSize] = useState({
     width: DEFAULT_PANEL_WIDTH,
     height: DEFAULT_PANEL_HEIGHT,
@@ -282,9 +450,17 @@ export function WebViewPanel() {
     [rejectPendingRequest, visible]
   );
 
+  const injectPageAdjustments = useCallback(() => {
+    webViewRef.current?.injectJavaScript(
+      `${webViewUserAgent ? DESKTOP_LAYOUT_SCROLL_SCRIPT : ''}\n${LOGIN_OVERLAY_CLEANUP_SCRIPT}`
+    );
+  }, [webViewUserAgent]);
+
   const observe = useCallback(async (): Promise<WebViewObservation> => {
     setStatus('观察网页');
     return await runScriptRequest<WebViewObservation>(`
+      ${webViewUserAgent ? DESKTOP_LAYOUT_SCROLL_SCRIPT : ''}
+      ${LOGIN_OVERLAY_CLEANUP_SCRIPT}
       (function () {
         var id = __REQUEST_ID__;
         function textOf(el) {
@@ -354,7 +530,7 @@ export function WebViewPanel() {
       })();
       true;
     `);
-  }, [runScriptRequest]);
+  }, [runScriptRequest, webViewUserAgent]);
 
   const tap = useCallback(
     async (x: number, y: number): Promise<WebViewTapResult> => {
@@ -443,8 +619,15 @@ export function WebViewPanel() {
     [observe]
   );
 
-  const open = useCallback(async (nextUrl: string): Promise<WebViewObservation> => {
-    if (visible && urlRef.current === nextUrl) {
+  const open = useCallback(async (
+    nextUrl: string,
+    options?: WebViewOpenOptions
+  ): Promise<WebViewObservation> => {
+    const nextUserAgent = options?.userAgent === 'desktop'
+      ? DESKTOP_WEBVIEW_USER_AGENT
+      : undefined;
+
+    if (visible && urlRef.current === nextUrl && userAgentRef.current === nextUserAgent) {
       setStatus('网页已打开，继续观察');
       return await observe();
     }
@@ -454,6 +637,9 @@ export function WebViewPanel() {
     setStatus('打开网页');
     setTitle('');
     titleRef.current = '';
+    userAgentRef.current = nextUserAgent;
+    setWebViewUserAgent(nextUserAgent);
+    setWebViewReloadKey((key) => key + 1);
     urlRef.current = nextUrl;
     setUrl(nextUrl);
 
@@ -485,11 +671,13 @@ export function WebViewPanel() {
   const handleLoadEnd = async () => {
     setLoading(false);
     setStatus('网页已打开');
+    injectPageAdjustments();
     if (pendingOpen.current) {
       const pending = pendingOpen.current;
       pendingOpen.current = null;
       clearTimeout(pending.timeout);
       try {
+        await new Promise((resolve) => setTimeout(resolve, 120));
         const observation = await observe();
         pending.resolve(observation);
       } catch (err) {
@@ -555,14 +743,20 @@ export function WebViewPanel() {
         </Pressable>
       </View>
       <WebView
+        key={webViewReloadKey}
         ref={webViewRef}
         source={{ uri: url }}
         style={styles.webview}
         javaScriptEnabled
         domStorageEnabled
+        userAgent={webViewUserAgent}
+        scrollEnabled
+        showsHorizontalScrollIndicator
+        showsVerticalScrollIndicator
         onLoadEnd={handleLoadEnd}
         onMessage={handleMessage}
         onNavigationStateChange={handleNavigationStateChange}
+        injectedJavaScript={`${webViewUserAgent ? DESKTOP_LAYOUT_SCROLL_SCRIPT : ''}\n${LOGIN_OVERLAY_CLEANUP_SCRIPT}`}
         setSupportMultipleWindows={false}
       />
       <View style={styles.footer}>

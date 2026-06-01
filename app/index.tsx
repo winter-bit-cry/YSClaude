@@ -28,6 +28,7 @@ import { TimeDivider } from '../src/components/TimeDivider';
 import { Message } from '../src/types';
 import { TIME_GAP_THRESHOLD_MS } from '../src/utils/time';
 import { pickGreeting } from '../src/utils/greetings';
+import { getPendingWebCruiseNotice } from '../src/utils/webCruise';
 
 const INPUT_BAR_FALLBACK_HEIGHT = 128;
 const MESSAGE_BOTTOM_GAP = 16;
@@ -42,6 +43,7 @@ export default function ChatScreen() {
     isStreaming,
     error,
     addUserMessage,
+    enableWebCruise,
     triggerResponse,
     stopStreaming,
   } = useChatStore();
@@ -206,6 +208,11 @@ export default function ChatScreen() {
     return set;
   }, [hiddenRanges]);
 
+  const webCruisePending = useMemo(
+    () => !!getPendingWebCruiseNotice(messages),
+    [messages]
+  );
+
   const animatedContainerStyle = useAnimatedStyle(() => {
     const kbHeight = keyboard.height.value;
     const lift = kbHeight > 0 ? Math.max(kbHeight - insets.bottom, 0) : 0;
@@ -298,8 +305,10 @@ export default function ChatScreen() {
         <ChatInput
           onSend={addUserMessage}
           onTriggerResponse={triggerResponse}
+          onEnableWebCruise={enableWebCruise}
           disabled={isStreaming}
           isStreaming={isStreaming}
+          webCruisePending={webCruisePending}
           onStop={stopStreaming}
           onModelPress={() => setShowModelSelector(true)}
         />

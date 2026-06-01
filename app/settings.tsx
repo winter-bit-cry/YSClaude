@@ -15,6 +15,11 @@ import { Diary } from '../src/types';
 import { getFavoriteDiaries } from '../src/db/operations';
 import { uploadDiary } from '../src/services/tools';
 import { formatFullTime, formatDateOnly } from '../src/utils/time';
+import {
+  DEFAULT_HOTBOARD_PLATFORM_TYPES,
+  HOTBOARD_PLATFORMS,
+  normalizeHotboardPlatformTypes,
+} from '../src/utils/hotboardPlatforms';
 
 const TABS = ['API 配置', '对话设置', 'TTS 配置', 'Tool 设置', '日记'] as const;
 
@@ -600,11 +605,13 @@ function ToolConfigTab() {
     webSearchConfig,
     webPageReaderConfig,
     webInteractionConfig,
+    hotboardConfig,
     nativeToolConfig,
     setMemoryVaultConfig,
     setWebSearchConfig,
     setWebPageReaderConfig,
     setWebInteractionConfig,
+    setHotboardConfig,
     setNativeToolConfig,
   } = useSettingsStore();
 
@@ -629,6 +636,13 @@ function ToolConfigTab() {
   // 网页交互本地 state
   const [wiEnabled, setWiEnabled] = useState(!!webInteractionConfig?.enabled);
   const [wiMaxCalls, setWiMaxCalls] = useState(String(webInteractionConfig?.maxToolCalls || 8));
+
+  const [hbEnabled, setHbEnabled] = useState(!!hotboardConfig?.enabled);
+  const [hbApiKey, setHbApiKey] = useState(hotboardConfig?.apiKey || '');
+  const [hbPlatformTypes, setHbPlatformTypes] = useState<string[]>(
+    normalizeHotboardPlatformTypes(hotboardConfig?.platforms || DEFAULT_HOTBOARD_PLATFORM_TYPES.join(','))
+  );
+  const [hbPlatformsExpanded, setHbPlatformsExpanded] = useState(false);
 
   // 设备原生工具本地 state
   const [deviceInfoEnabled, setDeviceInfoEnabled] = useState(!!nativeToolConfig?.deviceInfoEnabled);
@@ -707,6 +721,43 @@ function ToolConfigTab() {
       maxToolCalls: isNaN(maxToolCalls) || maxToolCalls <= 0 ? 8 : maxToolCalls,
     });
     Alert.alert('已保存', wiEnabled ? '网页交互配置已保存' : '网页交互已关闭');
+  }
+
+  function handleSaveHotboard() {
+    if (hbEnabled && !hbApiKey.trim()) {
+      Alert.alert('提示', '启用 AI 网页巡游热榜时请填写 UAPI API Key');
+      return;
+    }
+    if (hbEnabled && hbPlatformTypes.length === 0) {
+      Alert.alert('提示', '请至少填写一个可查询平台 type');
+      return;
+    }
+    setHotboardConfig({
+      enabled: hbEnabled,
+      apiKey: hbApiKey.trim(),
+      platforms: hbPlatformTypes.join(','),
+    });
+    Alert.alert('已保存', hbEnabled ? 'AI 网页巡游热榜配置已保存' : 'AI 网页巡游热榜已关闭');
+  }
+
+  function toggleHotboardPlatform(type: string) {
+    setHbPlatformTypes((current) =>
+      current.includes(type)
+        ? current.filter((item) => item !== type)
+        : [...current, type]
+    );
+  }
+
+  function selectDefaultHotboardPlatforms() {
+    setHbPlatformTypes(DEFAULT_HOTBOARD_PLATFORM_TYPES);
+  }
+
+  function selectAllHotboardPlatforms() {
+    setHbPlatformTypes(HOTBOARD_PLATFORMS.map((platform) => platform.type));
+  }
+
+  function clearHotboardPlatforms() {
+    setHbPlatformTypes([]);
   }
 
   function handleSaveNativeTools() {
@@ -856,6 +907,76 @@ function ToolConfigTab() {
 
       <View style={styles.actions}>
         <Pressable style={styles.saveButton} onPress={handleSaveWebPageReader}>
+          <Text style={styles.saveButtonText}>保存配置</Text>
+        </Pressable>
+      </View>
+
+      {/* ===== AI 网页巡游 Hotboard ===== */}
+      <Text style={styles.sectionTitle}>AI 网页巡游 Hotboard</Text>
+      <Text style={styles.hint}>调用 UAPI 查询热榜：type 为必填参数，API Key 使用 Authorization: Bearer 你的密钥。平台 type 只会从下面列表中选择。</Text>
+
+      <View style={styles.switchRow}>
+        <Text style={styles.label}>启用 AI 网页巡游热榜</Text>
+        <Switch
+          value={hbEnabled}
+          onValueChange={setHbEnabled}
+          trackColor={{ true: colors.primary }}
+        />
+      </View>
+
+      <View style={styles.field}>
+        <Text style={styles.label}>UAPI API Key</Text>
+        <TextInput style={styles.input} value={hbApiKey} onChangeText={setHbApiKey}
+          placeholder="Bearer token" placeholderTextColor={colors.textTertiary}
+          secureTextEntry autoCapitalize="none" />
+      </View>
+
+      <View style={styles.field}>
+        <Pressable
+          style={styles.platformToggle}
+          onPress={() => setHbPlatformsExpanded((value) => !value)}
+        >
+          <View>
+            <Text style={styles.label}>可查询平台</Text>
+            <Text style={styles.hint}>{hbPlatformTypes.length} / {HOTBOARD_PLATFORMS.length} 已勾选</Text>
+          </View>
+          <Text style={styles.platformToggleIcon}>{hbPlatformsExpanded ? '⌃' : '⌄'}</Text>
+        </Pressable>
+        {hbPlatformsExpanded && (
+          <>
+            <View style={styles.platformActions}>
+              <Pressable style={styles.platformActionButton} onPress={selectDefaultHotboardPlatforms}>
+                <Text style={styles.platformActionText}>默认</Text>
+              </Pressable>
+              <Pressable style={styles.platformActionButton} onPress={selectAllHotboardPlatforms}>
+                <Text style={styles.platformActionText}>全选</Text>
+              </Pressable>
+              <Pressable style={styles.platformActionButton} onPress={clearHotboardPlatforms}>
+                <Text style={styles.platformActionText}>清空</Text>
+              </Pressable>
+            </View>
+            <View style={styles.platformGrid}>
+              {HOTBOARD_PLATFORMS.map((platform) => {
+                const selected = hbPlatformTypes.includes(platform.type);
+                return (
+                  <Pressable
+                    key={platform.type}
+                    style={[styles.platformChip, selected && styles.platformChipSelected]}
+                    onPress={() => toggleHotboardPlatform(platform.type)}
+                  >
+                    <Text style={[styles.platformChipLabel, selected && styles.platformChipLabelSelected]}>{platform.label}</Text>
+                    <Text style={[styles.platformChipType, selected && styles.platformChipTypeSelected]}>{platform.type}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </>
+        )}
+        <Text style={styles.hint}>AI 只能从已勾选的平台 type 中调用 hotboard，用户指定未勾选平台时会自动跳过。</Text>
+      </View>
+
+      <View style={styles.actions}>
+        <Pressable style={styles.saveButton} onPress={handleSaveHotboard}>
           <Text style={styles.saveButtonText}>保存配置</Text>
         </Pressable>
       </View>
@@ -1368,6 +1489,77 @@ const styles = StyleSheet.create({
   input: {
     backgroundColor: colors.inputBackground, borderWidth: 1, borderColor: colors.inputBorder,
     borderRadius: 12, padding: 14, fontSize: 14, color: colors.text,
+  },
+  multilineInput: {
+    minHeight: 84,
+    textAlignVertical: 'top',
+  },
+  platformToggle: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: 10,
+  },
+  platformToggleIcon: {
+    fontSize: 18,
+    color: colors.textSecondary,
+    marginLeft: 12,
+  },
+  platformActions: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 10,
+  },
+  platformActionButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 10,
+    backgroundColor: colors.surface,
+  },
+  platformActionText: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    fontWeight: '500',
+  },
+  platformGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 8,
+  },
+  platformChip: {
+    width: '48%',
+    minHeight: 54,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.inputBorder,
+    backgroundColor: colors.inputBackground,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  platformChipSelected: {
+    borderColor: colors.primary,
+    backgroundColor: colors.surface,
+  },
+  platformChipLabel: {
+    fontSize: 14,
+    color: colors.text,
+    fontWeight: '600',
+  },
+  platformChipLabelSelected: {
+    color: colors.primary,
+  },
+  platformChipType: {
+    marginTop: 3,
+    fontSize: 11,
+    color: colors.textTertiary,
+  },
+  platformChipTypeSelected: {
+    color: colors.textSecondary,
   },
   modelRow: { flexDirection: 'row', gap: 8 },
   fetchButton: {

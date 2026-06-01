@@ -10,6 +10,11 @@ import { formatCurrentTime, formatTimeMarker, TIME_GAP_THRESHOLD_MS } from '../u
 import { mergeRanges } from '../utils/ranges';
 import { buildStickerSystemInstruction } from '../utils/stickers';
 import {
+  WEB_CRUISE_NOTICE_TEXT,
+  WEB_CRUISE_SYSTEM_PROMPT,
+  getPendingWebCruiseNotice,
+} from '../utils/webCruise';
+import {
   createConversation,
   updateConversation,
   insertMessage,
@@ -32,6 +37,7 @@ interface ChatState {
 
   sendMessage: (content: string, imageUri?: string) => Promise<void>;
   addUserMessage: (content: string, imageUri?: string) => Promise<void>;
+  enableWebCruise: () => Promise<void>;
   triggerResponse: () => Promise<void>;
   stopStreaming: () => void;
   newConversation: () => void;
@@ -120,21 +126,25 @@ async function runToolLoop(
   onToken: (token: string) => void,
   // 每发生一次工具调用就回调一次，用于实时把记录推到 UI
   onToolInvocation?: (inv: ToolInvocation) => void,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  options?: { webCruiseEnabled?: boolean }
 ): Promise<boolean> {
   const settings = useSettingsStore.getState();
+  const webCruiseEnabled = !!options?.webCruiseEnabled;
   const memoryEnabled = settings.memoryVaultConfig.enabled && !!settings.memoryVaultConfig.baseUrl;
   const webEnabled = settings.webSearchConfig.enabled && !!settings.webSearchConfig.tavilyApiKey;
   const webPageReaderEnabled =
     !!settings.webPageReaderConfig?.enabled && messagesContainHttpUrl(apiMessages);
   const webInteractionEnabled =
-    !!settings.webInteractionConfig?.enabled && messagesContainHttpUrl(apiMessages);
+    webCruiseEnabled ||
+    (!!settings.webInteractionConfig?.enabled && messagesContainHttpUrl(apiMessages));
 
   const tools = getToolDefinitions({
     memoryVault: memoryEnabled,
     webSearch: webEnabled,
     webPageReader: webPageReaderEnabled,
     webInteraction: webInteractionEnabled,
+    hotboard: webCruiseEnabled,
     nativeTools: settings.nativeToolConfig,
   });
   if (tools.length === 0) {
@@ -145,7 +155,8 @@ async function runToolLoop(
   const maxToolCalls = Math.max(
     1,
     settings.memoryVaultConfig.maxToolCalls || 3,
-    webInteractionEnabled ? settings.webInteractionConfig?.maxToolCalls || 8 : 0
+    webInteractionEnabled ? settings.webInteractionConfig?.maxToolCalls || 8 : 0,
+    webCruiseEnabled ? 10 : 0
   );
 
   // 构建对话消息（单个 system 消息 + 对话历史）
@@ -200,8 +211,13 @@ async function runToolLoop(
         memoryVaultConfig: settings.memoryVaultConfig,
         webSearchConfig: settings.webSearchConfig,
         webPageReaderConfig: settings.webPageReaderConfig,
-        webInteractionConfig: settings.webInteractionConfig,
+        webInteractionConfig: {
+          ...settings.webInteractionConfig,
+          enabled: webInteractionEnabled,
+        },
+        hotboardConfig: settings.hotboardConfig,
         nativeToolConfig: settings.nativeToolConfig,
+        webCruiseEnabled,
       });
       onToolInvocation?.({
         callId: tc.id,
@@ -252,13 +268,14 @@ async function streamAssistantResponse(
   await insertMessage(conversationId, assistantMessage);
 
   const allMessages = get().messages;
+  const historyMessages = allMessages.slice(0, -1);
+  const pendingWebCruise = getPendingWebCruiseNotice(historyMessages);
   // 隐藏楼层现在按对话独立存储，从 chat store 自身读取。
   const hiddenRanges = get().hiddenRanges;
   // 先按 role 过滤并去掉刚创建的空 assistant 占位，再按隐藏区间过滤，
   // 全程保留 createdAt 以便推导相邻消息的时间间隔。
-  const filtered = allMessages
+  const filtered = historyMessages
     .filter((m) => m.role === 'user' || m.role === 'assistant')
-    .slice(0, -1)
     .filter((_, index) => {
       const msgNum = index + 1;
       return !hiddenRanges.some(
@@ -293,6 +310,10 @@ async function streamAssistantResponse(
   // 构建完整的 system prompt：时间 + 用户设置的提示词 + 收藏日记
   // 全部合并为单个 system 消息，避免部分 API 中转不支持多个 system 消息的问题。
   let fullSystemPrompt = `当前时间：${formatCurrentTime()}\n\n${settings.systemPrompt}\n\n${buildStickerSystemInstruction()}`;
+
+  if (pendingWebCruise) {
+    fullSystemPrompt += `\n\n---\n\n${WEB_CRUISE_SYSTEM_PROMPT}`;
+  }
 
   try {
     const favoriteDiaries = await getFavoriteDiaries();
@@ -369,7 +390,8 @@ async function streamAssistantResponse(
       settings.maxOutputTokens || undefined,
       onToken,
       appendToolInvocation,
-      abortController.signal
+      abortController.signal,
+      { webCruiseEnabled: !!pendingWebCruise }
     );
 
     if (!handledByToolLoop) {
@@ -492,6 +514,51 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }));
 
     await insertMessage(conversationId, userMessage);
+    await updateConversation(conversationId, { updatedAt: Date.now() });
+  },
+
+  // 插入一条可见系统消息，等待用户下一次点击发送时触发巡游。
+  enableWebCruise: async () => {
+    const { isStreaming, messages } = get();
+    if (isStreaming) return;
+
+    if (getPendingWebCruiseNotice(messages)) {
+      return;
+    }
+
+    let { conversationId } = get();
+    const settings = useSettingsStore.getState();
+    if (!settings._hydrated) return;
+    const config = settings.apiConfigs[settings.activeConfigIndex];
+
+    if (!conversationId) {
+      conversationId = randomUUID();
+      const now = Date.now();
+      const conv: Conversation = {
+        id: conversationId,
+        title: 'AI网页巡游',
+        systemPrompt: settings.systemPrompt,
+        model: config?.model || '',
+        createdAt: now,
+        updatedAt: now,
+      };
+      await createConversation(conv);
+      set({ conversationId });
+    }
+
+    const systemMessage: Message = {
+      id: randomUUID(),
+      role: 'system',
+      content: WEB_CRUISE_NOTICE_TEXT,
+      createdAt: Date.now(),
+    };
+
+    set((state) => ({
+      messages: [...state.messages, systemMessage],
+      error: null,
+    }));
+
+    await insertMessage(conversationId, systemMessage);
     await updateConversation(conversationId, { updatedAt: Date.now() });
   },
 

@@ -11,22 +11,35 @@ const STICKER_PANEL_HEIGHT = Math.min(420, Dimensions.get('window').height * 0.4
 interface Props {
   onSend: (text: string, imageUri?: string) => void | Promise<void>;
   onTriggerResponse: () => void | Promise<void>;
+  onEnableWebCruise?: () => void | Promise<void>;
   disabled?: boolean;
   isStreaming?: boolean;
+  webCruisePending?: boolean;
   onStop?: () => void;
   onModelPress?: () => void;
 }
 
-export function ChatInput({ onSend, onTriggerResponse, disabled, isStreaming, onStop, onModelPress }: Props) {
+export function ChatInput({
+  onSend,
+  onTriggerResponse,
+  onEnableWebCruise,
+  disabled,
+  isStreaming,
+  webCruisePending,
+  onStop,
+  onModelPress,
+}: Props) {
   const [text, setText] = useState('');
   const [pendingImage, setPendingImage] = useState<string | null>(null);
   const [stickerPickerVisible, setStickerPickerVisible] = useState(false);
+  const [optionsMenuVisible, setOptionsMenuVisible] = useState(false);
   const insets = useSafeAreaInsets();
   const { apiConfigs, activeConfigIndex } = useSettingsStore();
   const current = apiConfigs[activeConfigIndex];
   const currentModel = current?.name || current?.model || '未配置';
 
   const pickImage = async () => {
+    setOptionsMenuVisible(false);
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
       quality: 0.7,
@@ -35,6 +48,12 @@ export function ChatInput({ onSend, onTriggerResponse, disabled, isStreaming, on
     if (!result.canceled && result.assets[0]) {
       setPendingImage(result.assets[0].uri);
     }
+  };
+
+  const handleEnableWebCruise = async () => {
+    if (disabled || isStreaming) return;
+    setOptionsMenuVisible(false);
+    await onEnableWebCruise?.();
   };
 
   const handleSend = async (value: string) => {
@@ -84,7 +103,7 @@ export function ChatInput({ onSend, onTriggerResponse, disabled, isStreaming, on
 
   const getSendIcon = () => {
     if (isStreaming) return require('../../assets/stopsend.png');
-    if (text.trim() || pendingImage) return require('../../assets/send2.png');
+    if (text.trim() || pendingImage || webCruisePending) return require('../../assets/send2.png');
     return require('../../assets/send1.png');
   };
 
@@ -112,7 +131,7 @@ export function ChatInput({ onSend, onTriggerResponse, disabled, isStreaming, on
           editable={!disabled}
         />
         <View style={styles.toolbar}>
-          <Pressable style={styles.optionsButton} onPress={pickImage}>
+          <Pressable style={styles.optionsButton} onPress={() => setOptionsMenuVisible(true)}>
             <Image source={require('../../assets/optionsbutton.png')} style={styles.optionsImage} resizeMode="contain" />
           </Pressable>
 
@@ -152,6 +171,20 @@ export function ChatInput({ onSend, onTriggerResponse, disabled, isStreaming, on
                 </Pressable>
               ))}
             </ScrollView>
+          </View>
+        </Pressable>
+      </Modal>
+
+      <Modal transparent visible={optionsMenuVisible} animationType="fade" onRequestClose={() => setOptionsMenuVisible(false)}>
+        <Pressable style={styles.optionsOverlay} onPress={() => setOptionsMenuVisible(false)}>
+          <View style={styles.optionsPanel} onStartShouldSetResponder={() => true}>
+            <Pressable style={styles.optionItem} onPress={() => void handleEnableWebCruise()}>
+              <Text style={styles.optionText}>AI网页巡游</Text>
+            </Pressable>
+            <View style={styles.optionDivider} />
+            <Pressable style={styles.optionItem} onPress={() => void pickImage()}>
+              <Text style={styles.optionText}>图片</Text>
+            </Pressable>
           </View>
         </Pressable>
       </Modal>
@@ -308,5 +341,38 @@ const styles = StyleSheet.create({
     marginTop: 4,
     fontSize: 12,
     color: colors.textSecondary,
+  },
+  optionsOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    alignItems: 'flex-start',
+    backgroundColor: 'rgba(0,0,0,0.08)',
+  },
+  optionsPanel: {
+    marginLeft: 18,
+    marginBottom: 96,
+    minWidth: 148,
+    backgroundColor: colors.inputBackground,
+    borderRadius: 14,
+    paddingVertical: 6,
+    shadowColor: '#000',
+    shadowOpacity: 0.16,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 8,
+  },
+  optionItem: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  optionText: {
+    fontSize: 15,
+    color: colors.text,
+    fontWeight: '500',
+  },
+  optionDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: colors.inputBorder,
+    marginHorizontal: 10,
   },
 });

@@ -50,6 +50,7 @@ const TOOL_LABELS: Record<string, string> = {
   query_diary: '查询日记',
   web_search: '联网搜索',
   read_web_page: '读取网页',
+  get_hotboard: '查询热榜',
   webview_open: '打开网页',
   webview_observe: '观察网页',
   webview_tap: '点击网页',
@@ -73,7 +74,7 @@ function formatToolInvocation(name: string, rawArgs: string): string {
   let detail = '';
   try {
     const args = JSON.parse(rawArgs || '{}');
-    detail = args.query ?? args.date ?? args.url ?? args.title ?? args.start_date ?? args.package_name ?? args.id ?? args.ms ?? args.index ?? args.selector ?? '';
+    detail = args.query ?? args.types ?? args.date ?? args.url ?? args.title ?? args.start_date ?? args.package_name ?? args.id ?? args.ms ?? args.index ?? args.selector ?? '';
     if (!detail && args.x != null && args.y != null) {
       detail = `${args.x}, ${args.y}`;
     }
@@ -165,6 +166,22 @@ export const ChatBubble = React.memo(function ChatBubble({
   const [menuAnchor, setMenuAnchor] = useState({ x: 0, y: 0, width: 0 });
   const [expandedTools, setExpandedTools] = useState<Record<number, boolean>>({});
   const bubbleRef = useRef<View>(null);
+
+  if (message.role === 'system') {
+    return (
+      <Pressable
+        style={styles.systemRow}
+        onLongPress={() => {
+          Alert.alert('删除', '确定删除这条系统消息？', [
+            { text: '取消', style: 'cancel' },
+            { text: '删除', style: 'destructive', onPress: () => removeMessage(message.id) },
+          ]);
+        }}
+      >
+        <Text style={styles.systemText}>{message.content}</Text>
+      </Pressable>
+    );
+  }
 
   function handleUserLongPress() {
     // 测量气泡在屏幕中的位置，再据此定位菜单
@@ -502,6 +519,17 @@ const styles = StyleSheet.create({
     color: colors.text,
     lineHeight: 22,
     fontFamily: fonts.serifBold,
+  },
+  systemRow: {
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    marginVertical: 8,
+  },
+  systemText: {
+    fontSize: 12,
+    lineHeight: 17,
+    color: colors.textTertiary,
+    textAlign: 'center',
   },
   assistantRow: {
     paddingHorizontal: 16,
