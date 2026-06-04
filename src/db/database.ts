@@ -100,6 +100,39 @@ async function initTables(database: SQLite.SQLiteDatabase) {
     );
 
     CREATE INDEX IF NOT EXISTS idx_reading_messages_book ON reading_messages(book_id, created_at ASC);
+
+    CREATE TABLE IF NOT EXISTS focus_tasks (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL DEFAULT '',
+      timer_mode TEXT NOT NULL DEFAULT 'countdown',
+      duration_ms INTEGER NOT NULL DEFAULT 1500000,
+      target_count INTEGER NOT NULL DEFAULT 1,
+      completed_count INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_focus_tasks_created ON focus_tasks(created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS focus_sessions (
+      id TEXT PRIMARY KEY,
+      task_id TEXT NOT NULL,
+      task_title TEXT NOT NULL DEFAULT '',
+      timer_mode TEXT NOT NULL DEFAULT 'countdown',
+      planned_duration_ms INTEGER NOT NULL DEFAULT 1500000,
+      started_at INTEGER NOT NULL,
+      ended_at INTEGER,
+      paused_duration_ms INTEGER NOT NULL DEFAULT 0,
+      pause_started_at INTEGER,
+      status TEXT NOT NULL DEFAULT 'running',
+      end_reason TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      FOREIGN KEY (task_id) REFERENCES focus_tasks(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_focus_sessions_started ON focus_sessions(started_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_focus_sessions_task ON focus_sessions(task_id);
   `);
 
   await runMigrations(database);
@@ -150,6 +183,45 @@ async function runMigrations(database: SQLite.SQLiteDatabase) {
 
   if (version < 4) {
     await database.execAsync('PRAGMA user_version = 4;');
+  }
+
+  if (version < 5) {
+    await database.execAsync(`
+      CREATE TABLE IF NOT EXISTS focus_tasks (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL DEFAULT '',
+        timer_mode TEXT NOT NULL DEFAULT 'countdown',
+        duration_ms INTEGER NOT NULL DEFAULT 1500000,
+        target_count INTEGER NOT NULL DEFAULT 1,
+        completed_count INTEGER NOT NULL DEFAULT 0,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_focus_tasks_created ON focus_tasks(created_at DESC);
+
+      CREATE TABLE IF NOT EXISTS focus_sessions (
+        id TEXT PRIMARY KEY,
+        task_id TEXT NOT NULL,
+        task_title TEXT NOT NULL DEFAULT '',
+        timer_mode TEXT NOT NULL DEFAULT 'countdown',
+        planned_duration_ms INTEGER NOT NULL DEFAULT 1500000,
+        started_at INTEGER NOT NULL,
+        ended_at INTEGER,
+        paused_duration_ms INTEGER NOT NULL DEFAULT 0,
+        pause_started_at INTEGER,
+        status TEXT NOT NULL DEFAULT 'running',
+        end_reason TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        FOREIGN KEY (task_id) REFERENCES focus_tasks(id) ON DELETE CASCADE
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_focus_sessions_started ON focus_sessions(started_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_focus_sessions_task ON focus_sessions(task_id);
+
+      PRAGMA user_version = 5;
+    `);
   }
 }
 

@@ -17,6 +17,7 @@ import {
   WEB_CRUISE_SYSTEM_PROMPT,
   getPendingWebCruiseNotice,
 } from '../utils/webCruise';
+import { buildFocusEventSystemPrompt } from '../utils/focusEvents';
 import {
   createConversation,
   updateConversation,
@@ -468,6 +469,11 @@ async function streamAssistantResponse(
 
   if (pendingWebCruise) {
     fullSystemPrompt += `\n\n---\n\n${WEB_CRUISE_SYSTEM_PROMPT}`;
+  }
+
+  const focusEventContext = buildFocusEventSystemPrompt(historyMessages);
+  if (focusEventContext) {
+    fullSystemPrompt += `\n\n---\n\n${focusEventContext}`;
   }
 
   const listeningContext = useMusicStore.getState().getListeningContextPrompt();

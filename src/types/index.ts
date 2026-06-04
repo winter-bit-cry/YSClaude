@@ -89,6 +89,37 @@ export interface ReadingMessage {
   createdAt: number;
 }
 
+export type FocusTimerMode = 'countdown' | 'countup';
+
+export interface FocusTask {
+  id: string;
+  title: string;
+  timerMode: FocusTimerMode;
+  durationMs: number;
+  targetCount: number;
+  completedCount: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export type FocusSessionStatus = 'running' | 'paused' | 'completed' | 'abandoned';
+
+export interface FocusSession {
+  id: string;
+  taskId: string;
+  taskTitle: string;
+  timerMode: FocusTimerMode;
+  plannedDurationMs: number;
+  startedAt: number;
+  endedAt?: number;
+  pausedDurationMs: number;
+  pauseStartedAt?: number;
+  status: FocusSessionStatus;
+  endReason?: 'completed' | 'abandoned';
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface ModelOption {
   id: string;
   name: string;

@@ -8,6 +8,10 @@ import {
   ReadingBook,
   ReadingChapter,
   ReadingMessage,
+  FocusTask,
+  FocusSession,
+  FocusTimerMode,
+  FocusSessionStatus,
 } from '../types';
 
 interface MessageRow {
@@ -705,4 +709,276 @@ export async function getReadingMessages(bookId: string): Promise<ReadingMessage
     created_at: number;
   }>('SELECT * FROM reading_messages WHERE book_id = ? ORDER BY created_at ASC', [bookId]);
   return rows.map(mapReadingMessageRow);
+}
+
+/* ==================== Focus CRUD ==================== */
+
+interface FocusTaskRow {
+  id: string;
+  title: string;
+  timer_mode: string;
+  duration_ms: number;
+  target_count: number;
+  completed_count: number;
+  created_at: number;
+  updated_at: number;
+}
+
+interface FocusSessionRow {
+  id: string;
+  task_id: string;
+  task_title: string;
+  timer_mode: string;
+  planned_duration_ms: number;
+  started_at: number;
+  ended_at: number | null;
+  paused_duration_ms: number;
+  pause_started_at: number | null;
+  status: string;
+  end_reason: string | null;
+  created_at: number;
+  updated_at: number;
+}
+
+function normalizeFocusTimerMode(value: string): FocusTimerMode {
+  return value === 'countup' ? 'countup' : 'countdown';
+}
+
+function normalizeFocusSessionStatus(value: string): FocusSessionStatus {
+  if (value === 'paused' || value === 'completed' || value === 'abandoned') return value;
+  return 'running';
+}
+
+function mapFocusTaskRow(row: FocusTaskRow): FocusTask {
+  return {
+    id: row.id,
+    title: row.title,
+    timerMode: normalizeFocusTimerMode(row.timer_mode),
+    durationMs: row.duration_ms,
+    targetCount: Math.max(1, row.target_count),
+    completedCount: Math.max(0, row.completed_count),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function mapFocusSessionRow(row: FocusSessionRow): FocusSession {
+  const endReason =
+    row.end_reason === 'completed' || row.end_reason === 'abandoned'
+      ? row.end_reason
+      : undefined;
+  return {
+    id: row.id,
+    taskId: row.task_id,
+    taskTitle: row.task_title,
+    timerMode: normalizeFocusTimerMode(row.timer_mode),
+    plannedDurationMs: row.planned_duration_ms,
+    startedAt: row.started_at,
+    endedAt: row.ended_at || undefined,
+    pausedDurationMs: Math.max(0, row.paused_duration_ms),
+    pauseStartedAt: row.pause_started_at || undefined,
+    status: normalizeFocusSessionStatus(row.status),
+    endReason,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function dateRangeForLocalKey(key: string): { startAt: number; endAt: number } {
+  const [year, month, day] = key.split('-').map((part) => parseInt(part, 10));
+  const start = new Date(year, month - 1, day);
+  const end = new Date(year, month - 1, day + 1);
+  return { startAt: start.getTime(), endAt: end.getTime() };
+}
+
+export async function createFocusTask(task: FocusTask): Promise<void> {
+  const db = await getDatabase();
+  await db.runAsync(
+    `INSERT INTO focus_tasks
+      (id, title, timer_mode, duration_ms, target_count, completed_count, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      task.id,
+      task.title,
+      task.timerMode,
+      task.durationMs,
+      Math.max(1, task.targetCount),
+      Math.max(0, task.completedCount),
+      task.createdAt,
+      task.updatedAt,
+    ]
+  );
+}
+
+export async function updateFocusTask(
+  id: string,
+  updates: Partial<Pick<FocusTask, 'title' | 'timerMode' | 'durationMs' | 'targetCount' | 'completedCount' | 'updatedAt'>>
+): Promise<void> {
+  const db = await getDatabase();
+  const sets: string[] = [];
+  const values: any[] = [];
+
+  if (updates.title !== undefined) {
+    sets.push('title = ?');
+    values.push(updates.title);
+  }
+  if (updates.timerMode !== undefined) {
+    sets.push('timer_mode = ?');
+    values.push(updates.timerMode);
+  }
+  if (updates.durationMs !== undefined) {
+    sets.push('duration_ms = ?');
+    values.push(updates.durationMs);
+  }
+  if (updates.targetCount !== undefined) {
+    sets.push('target_count = ?');
+    values.push(Math.max(1, updates.targetCount));
+  }
+  if (updates.completedCount !== undefined) {
+    sets.push('completed_count = ?');
+    values.push(Math.max(0, updates.completedCount));
+  }
+  if (updates.updatedAt !== undefined) {
+    sets.push('updated_at = ?');
+    values.push(updates.updatedAt);
+  }
+
+  if (sets.length === 0) return;
+  values.push(id);
+  await db.runAsync(`UPDATE focus_tasks SET ${sets.join(', ')} WHERE id = ?`, values);
+}
+
+export async function deleteFocusTask(id: string): Promise<void> {
+  const db = await getDatabase();
+  await db.runAsync('DELETE FROM focus_sessions WHERE task_id = ?', [id]);
+  await db.runAsync('DELETE FROM focus_tasks WHERE id = ?', [id]);
+}
+
+export async function getFocusTask(id: string): Promise<FocusTask | null> {
+  const db = await getDatabase();
+  const row = await db.getFirstAsync<FocusTaskRow>(
+    'SELECT * FROM focus_tasks WHERE id = ?',
+    [id]
+  );
+  return row ? mapFocusTaskRow(row) : null;
+}
+
+export async function getFocusTasksByDate(dateKey: string): Promise<FocusTask[]> {
+  const db = await getDatabase();
+  const { startAt, endAt } = dateRangeForLocalKey(dateKey);
+  const rows = await db.getAllAsync<FocusTaskRow>(
+    `SELECT *
+       FROM focus_tasks
+      WHERE created_at >= ? AND created_at < ?
+      ORDER BY
+        CASE
+          WHEN timer_mode = 'countup' AND completed_count >= 1 THEN 1
+          WHEN completed_count >= target_count THEN 1
+          ELSE 0
+        END ASC,
+        created_at ASC`,
+    [startAt, endAt]
+  );
+  return rows.map(mapFocusTaskRow);
+}
+
+export async function insertFocusSession(session: FocusSession): Promise<void> {
+  const db = await getDatabase();
+  await db.runAsync(
+    `INSERT INTO focus_sessions
+      (id, task_id, task_title, timer_mode, planned_duration_ms, started_at, ended_at,
+       paused_duration_ms, pause_started_at, status, end_reason, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      session.id,
+      session.taskId,
+      session.taskTitle,
+      session.timerMode,
+      session.plannedDurationMs,
+      session.startedAt,
+      session.endedAt || null,
+      session.pausedDurationMs,
+      session.pauseStartedAt || null,
+      session.status,
+      session.endReason || null,
+      session.createdAt,
+      session.updatedAt,
+    ]
+  );
+}
+
+export async function updateFocusSession(
+  id: string,
+  updates: Partial<Pick<FocusSession, 'endedAt' | 'pausedDurationMs' | 'status' | 'endReason' | 'updatedAt'>> & {
+    pauseStartedAt?: number | null;
+  }
+): Promise<void> {
+  const db = await getDatabase();
+  const sets: string[] = [];
+  const values: any[] = [];
+
+  if (updates.endedAt !== undefined) {
+    sets.push('ended_at = ?');
+    values.push(updates.endedAt || null);
+  }
+  if (updates.pausedDurationMs !== undefined) {
+    sets.push('paused_duration_ms = ?');
+    values.push(Math.max(0, updates.pausedDurationMs));
+  }
+  if (updates.pauseStartedAt !== undefined) {
+    sets.push('pause_started_at = ?');
+    values.push(updates.pauseStartedAt || null);
+  }
+  if (updates.status !== undefined) {
+    sets.push('status = ?');
+    values.push(updates.status);
+  }
+  if (updates.endReason !== undefined) {
+    sets.push('end_reason = ?');
+    values.push(updates.endReason || null);
+  }
+  if (updates.updatedAt !== undefined) {
+    sets.push('updated_at = ?');
+    values.push(updates.updatedAt);
+  }
+
+  if (sets.length === 0) return;
+  values.push(id);
+  await db.runAsync(`UPDATE focus_sessions SET ${sets.join(', ')} WHERE id = ?`, values);
+}
+
+export async function getActiveFocusSession(): Promise<FocusSession | null> {
+  const db = await getDatabase();
+  const row = await db.getFirstAsync<FocusSessionRow>(
+    `SELECT *
+       FROM focus_sessions
+      WHERE status IN ('running', 'paused')
+      ORDER BY started_at DESC
+      LIMIT 1`
+  );
+  return row ? mapFocusSessionRow(row) : null;
+}
+
+export async function getFocusSessionsByDate(dateKey: string): Promise<FocusSession[]> {
+  const db = await getDatabase();
+  const { startAt, endAt } = dateRangeForLocalKey(dateKey);
+  const rows = await db.getAllAsync<FocusSessionRow>(
+    `SELECT *
+       FROM focus_sessions
+      WHERE started_at >= ? AND started_at < ?
+      ORDER BY started_at ASC`,
+    [startAt, endAt]
+  );
+  return rows.map(mapFocusSessionRow);
+}
+
+export async function incrementFocusTaskCompletedCount(taskId: string, updatedAt: number): Promise<void> {
+  const db = await getDatabase();
+  await db.runAsync(
+    `UPDATE focus_tasks
+        SET completed_count = completed_count + 1,
+            updated_at = ?
+      WHERE id = ?`,
+    [updatedAt, taskId]
+  );
 }

@@ -20,6 +20,7 @@ import {
 } from '../src/services/floatingBall';
 import { handleFloatingBallToolAction } from '../src/services/floatingToolActions';
 import { startDesktopLyricSync, stopDesktopLyricSync } from '../src/services/desktopLyrics';
+import { startFocusAppStateListener } from '../src/services/focusAppState';
 
 
 let colors = lightColors;
@@ -78,6 +79,11 @@ export default function RootLayout() {
     return unsub;
   }, []);
 
+  useEffect(() => {
+    const unsub = startFocusAppStateListener();
+    return unsub;
+  }, []);
+
   if (!fontsLoaded) {
     return (
       <View style={styles.loading}>
@@ -105,6 +111,10 @@ export default function RootLayout() {
         />
         <Stack.Screen
           name="music-playlists"
+          options={{ animation: 'slide_from_right', presentation: 'modal' }}
+        />
+        <Stack.Screen
+          name="focus"
           options={{ animation: 'slide_from_right', presentation: 'modal' }}
         />
         <Stack.Screen

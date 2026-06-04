@@ -537,6 +537,9 @@ export default function ChatScreen() {
           </Pressable>
         </View>
         <View style={styles.headerRightGroup}>
+          <Pressable style={styles.headerButton} onPress={() => router.push('/focus')}>
+            <Image source={require('../assets/todo.png')} style={[styles.todoIcon, headerImageTintStyle]} resizeMode="contain" />
+          </Pressable>
           <Pressable style={styles.headerButton} onPress={openCalendar} disabled={!conversationId}>
             <Image source={require('../assets/calendar.png')} style={[styles.calendarIcon, headerImageTintStyle]} resizeMode="contain" />
           </Pressable>
@@ -758,6 +761,10 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     height: 22,
   },
   calendarIcon: {
+    width: 23,
+    height: 23,
+  },
+  todoIcon: {
     width: 23,
     height: 23,
   },
