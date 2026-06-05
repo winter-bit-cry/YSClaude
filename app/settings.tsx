@@ -2201,7 +2201,7 @@ function ToolConfigTab({ showToast, keyboardBottomInset }: SettingsTabProps) {
       }
       setShizukuRoots((current) => [...current, root]);
       setShizukuPathInput('');
-      showToast('已添加 Shizuku 只读路径，记得保存配置');
+      showToast('已添加 Shizuku 读写路径，记得保存配置');
     } catch (e: any) {
       Alert.alert('路径无效', e?.message || '请填写有效的绝对路径');
     }
@@ -2538,13 +2538,13 @@ function ToolConfigTab({ showToast, keyboardBottomInset }: SettingsTabProps) {
       </View>
 
       {/* ===== Shizuku 文件访问 ===== */}
-      <Text style={styles.sectionTitle}>Shizuku 文件访问（只读）</Text>
-      <Text style={styles.hint}>个人高级模式：通过 Shizuku 以 shell 身份只读访问你手动添加的绝对路径。AI 仍只能访问这些路径根内的相对路径。</Text>
+      <Text style={styles.sectionTitle}>Shizuku 文件访问（读写）</Text>
+      <Text style={styles.hint}>个人高级模式：通过 Shizuku 以 shell 身份读写你手动添加的绝对路径。AI 仍只能访问这些路径根内的相对路径。</Text>
 
       <View style={styles.switchRow}>
         <View style={styles.switchText}>
           <Text style={styles.label}>启用 Shizuku 文件访问</Text>
-          <Text style={styles.hint}>适合尝试读取 Android/data 下普通权限无法访问的目录</Text>
+          <Text style={styles.hint}>适合访问 Android/data 下普通权限无法访问的目录；写入和修改只会在你添加的路径根内执行</Text>
         </View>
         <Switch
           value={shizukuEnabled}
