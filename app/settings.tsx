@@ -39,6 +39,7 @@ import {
   openFloatingBallPermissionSettings,
   showFloatingBall,
 } from '../src/services/floatingBall';
+import { createAndShareBackup, pickBackupFile, restoreBackup, type PickedBackup } from '../src/services/backup';
 import { useKeyboardHeight } from '../src/hooks/useKeyboardHeight';
 import { buildStickerDefinitions, normalizeStickerName } from '../src/utils/stickers';
 
@@ -1573,6 +1574,8 @@ function APIConfigTab({ showToast, keyboardBottomInset }: SettingsTabProps) {
   const [showModels, setShowModels] = useState(false);
   const [testing, setTesting] = useState(false);
   const [fetching, setFetching] = useState(false);
+  const [creatingBackup, setCreatingBackup] = useState(false);
+  const [restoringBackup, setRestoringBackup] = useState(false);
 
   useEffect(() => {
     if (_hydrated && apiConfigs.length > 0) {
@@ -1688,6 +1691,83 @@ function APIConfigTab({ showToast, keyboardBottomInset }: SettingsTabProps) {
     ]);
   }
 
+  async function handleCreateBackup() {
+    if (creatingBackup || restoringBackup) return;
+    setCreatingBackup(true);
+    try {
+      const result = await createAndShareBackup();
+      showToast(result.shared ? '备份包已创建，请选择 Google Drive 保存' : '备份包已创建');
+      if (!result.shared) {
+        Alert.alert('备份已创建', `文件已保存到本机：\n${result.uri}`);
+      }
+    } catch (error: any) {
+      Alert.alert('创建备份失败', error?.message || '无法创建备份包');
+    } finally {
+      setCreatingBackup(false);
+    }
+  }
+
+  async function handlePickRestoreBackup() {
+    if (creatingBackup || restoringBackup) return;
+    setRestoringBackup(true);
+    try {
+      const backup = await pickBackupFile();
+      if (!backup) {
+        setRestoringBackup(false);
+        return;
+      }
+      Alert.alert(
+        '覆盖恢复备份',
+        [
+          `文件：${backup.fileName}`,
+          `创建时间：${formatBackupTime(backup.manifest.createdAt)}`,
+          `App 版本：${backup.manifest.appVersion}`,
+          '',
+          '恢复会覆盖当前本地数据。继续前会自动保存一份恢复前快照。',
+        ].join('\n'),
+        [
+          {
+            text: '取消',
+            style: 'cancel',
+            onPress: () => setRestoringBackup(false),
+          },
+          {
+            text: '覆盖恢复',
+            style: 'destructive',
+            onPress: () => confirmRestoreBackup(backup),
+          },
+        ]
+      );
+    } catch (error: any) {
+      setRestoringBackup(false);
+      Alert.alert('读取备份失败', error?.message || '无法读取备份包');
+    }
+  }
+
+  async function confirmRestoreBackup(backup: PickedBackup) {
+    try {
+      const result = await restoreBackup(backup);
+      Alert.alert(
+        '恢复完成',
+        [
+          `已恢复 ${formatBackupTime(result.manifest.createdAt)} 创建的备份。`,
+          `恢复前快照已保存在：\n${result.localSnapshotUri}`,
+          '',
+          '请完全关闭并重新打开 App，让设置和数据库重新加载。',
+        ].join('\n')
+      );
+    } catch (error: any) {
+      Alert.alert('恢复失败', error?.message || '无法覆盖恢复备份');
+    } finally {
+      setRestoringBackup(false);
+    }
+  }
+
+  function formatBackupTime(value: string): string {
+    const timestamp = Date.parse(value);
+    return Number.isFinite(timestamp) ? formatFullTime(timestamp) : value;
+  }
+
   if (!_hydrated) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
@@ -1759,6 +1839,37 @@ function APIConfigTab({ showToast, keyboardBottomInset }: SettingsTabProps) {
         <Pressable style={styles.saveButton} onPress={handleSave}>
           <Text style={styles.saveButtonText}>保存配置</Text>
         </Pressable>
+      </View>
+
+      <Text style={styles.sectionTitle}>数据备份</Text>
+      <View style={styles.backupPanel}>
+        <Text style={styles.hint}>
+          创建完整备份包后可分享到 Google Drive；恢复时从 Google Drive 选择备份 zip，并覆盖当前本地数据。
+        </Text>
+        <View style={styles.backupActions}>
+          <Pressable
+            style={[styles.backupPrimaryButton, (creatingBackup || restoringBackup) && styles.importButtonDisabled]}
+            onPress={handleCreateBackup}
+            disabled={creatingBackup || restoringBackup}
+          >
+            {creatingBackup ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <Text style={styles.saveButtonText}>创建备份并分享</Text>
+            )}
+          </Pressable>
+          <Pressable
+            style={[styles.backupDangerButton, (creatingBackup || restoringBackup) && styles.importButtonDisabled]}
+            onPress={handlePickRestoreBackup}
+            disabled={creatingBackup || restoringBackup}
+          >
+            {restoringBackup ? (
+              <ActivityIndicator size="small" color={colors.danger} />
+            ) : (
+              <Text style={styles.backupDangerText}>从备份恢复</Text>
+            )}
+          </Pressable>
+        </View>
       </View>
 
       {/* Model picker modal */}
@@ -3386,6 +3497,36 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   },
   fetchButtonText: { color: '#FFFFFF', fontSize: 14, fontWeight: '500' },
   actions: { flexDirection: 'row', gap: 12, marginTop: 8, marginBottom: 32 },
+  backupPanel: {
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 28,
+  },
+  backupActions: {
+    gap: 10,
+  },
+  backupPrimaryButton: {
+    minHeight: 46,
+    borderRadius: 12,
+    backgroundColor: colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  backupDangerButton: {
+    minHeight: 46,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.danger,
+    backgroundColor: colors.background,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  backupDangerText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.danger,
+  },
   testButton: {
     flex: 1, paddingVertical: 14, borderRadius: 12,
     borderWidth: 1.5, borderColor: colors.primary,

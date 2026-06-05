@@ -36,6 +36,17 @@ export async function getDatabase(): Promise<SQLite.SQLiteDatabase> {
   }
 }
 
+export async function closeDatabaseConnection(): Promise<string | null> {
+  const opened = db || (initPromise ? await initPromise.catch(() => null) : null);
+  const databasePath = opened?.databasePath ?? null;
+  if (opened) {
+    await opened.closeAsync();
+  }
+  db = null;
+  initPromise = null;
+  return databasePath;
+}
+
 async function initTables(database: SQLite.SQLiteDatabase) {
   await database.execAsync(`
     CREATE TABLE IF NOT EXISTS conversations (
