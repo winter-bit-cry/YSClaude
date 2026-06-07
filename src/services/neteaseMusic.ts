@@ -70,6 +70,19 @@ function withQuery(baseUrl: string, path: string, params: Record<string, string 
   return url.toString();
 }
 
+export function normalizeNeteaseMediaUrl(rawUrl?: string | null): string | undefined {
+  if (!rawUrl) return undefined;
+  try {
+    const url = new URL(rawUrl);
+    if (url.protocol === 'http:' && url.hostname.endsWith('.music.126.net')) {
+      url.protocol = 'https:';
+    }
+    return url.toString();
+  } catch {
+    return rawUrl;
+  }
+}
+
 async function fetchJson<T>(baseUrl: string, path: string, params: Record<string, string | number | undefined> = {}): Promise<T> {
   if (!normalizeBaseUrl(baseUrl)) {
     throw new Error('请先填写网易云 API 地址');
@@ -186,7 +199,7 @@ export async function importNeteasePlaylist(
       artist: song.ar?.map((artist) => artist.name).filter(Boolean).join(' / ') || '未知歌手',
       album: song.al?.name,
       artworkUrl: song.al?.picUrl,
-      sourceUrl: source?.url ?? undefined,
+      sourceUrl: normalizeNeteaseMediaUrl(source?.url),
       durationMs: source?.time ?? song.dt,
       lyrics: lyricsBySongId.get(song.id) ?? [],
       source: 'netease',
@@ -242,7 +255,7 @@ export async function searchNeteaseTrack(
     artist: getSearchSongArtists(song),
     album: album?.name,
     artworkUrl: album?.picUrl,
-    sourceUrl: urlData?.url ?? undefined,
+    sourceUrl: normalizeNeteaseMediaUrl(urlData?.url),
     durationMs: urlData?.time ?? song.duration,
     lyrics: await getLyrics(baseUrl, cookie, song.id),
     source: 'radio',
@@ -308,7 +321,11 @@ function parseYrc(yrc: string): LyricLine[] {
 
 export async function checkUrlValid(url: string): Promise<boolean> {
   try {
-    const response = await fetch(url, { method: 'HEAD' });
+    const preferredUrl = normalizeNeteaseMediaUrl(url) ?? url;
+    let response = await fetch(preferredUrl, { method: 'HEAD' });
+    if (!response.ok && preferredUrl !== url) {
+      response = await fetch(url, { method: 'HEAD' });
+    }
     return response.ok;
   } catch {
     return false;
@@ -343,7 +360,7 @@ export async function refreshNeteaseTracks(
     if (urlData?.url && !urlData.freeTrialInfo) {
       updatedTracks[index] = {
         ...track,
-        sourceUrl: urlData.url,
+        sourceUrl: normalizeNeteaseMediaUrl(urlData.url),
         durationMs: urlData.time ?? track.durationMs,
         availability: 'playable',
       };

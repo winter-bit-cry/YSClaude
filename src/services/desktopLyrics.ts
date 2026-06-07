@@ -1,4 +1,4 @@
-import { Platform } from 'react-native';
+import { AppState, Platform } from 'react-native';
 import {
   addDesktopLyricActionListener,
   hideDesktopLyric,
@@ -11,13 +11,20 @@ import { useRadioStore } from '../stores/radio';
 let storeUnsubscribe: (() => void) | null = null;
 let radioUnsubscribe: (() => void) | null = null;
 let actionSubscription: { remove: () => void } | null = null;
+let appStateSubscription: { remove: () => void } | null = null;
 let lastSignature = '';
+let pendingSignature = '';
 let panelMode: 'lyrics' | 'radio' = 'lyrics';
 
 export function startDesktopLyricSync(): () => void {
   if (storeUnsubscribe) return stopDesktopLyricSync;
 
   actionSubscription = addDesktopLyricActionListener(handleDesktopLyricAction);
+  appStateSubscription = AppState.addEventListener('change', (state) => {
+    if (state === 'active') {
+      refreshDesktopLyric();
+    }
+  });
   storeUnsubscribe = useMusicStore.subscribe(syncDesktopLyric);
   radioUnsubscribe = useRadioStore.subscribe(syncDesktopLyric);
   syncDesktopLyric();
@@ -29,15 +36,19 @@ export function stopDesktopLyricSync(): void {
   storeUnsubscribe?.();
   radioUnsubscribe?.();
   actionSubscription?.remove();
+  appStateSubscription?.remove();
   storeUnsubscribe = null;
   radioUnsubscribe = null;
   actionSubscription = null;
+  appStateSubscription = null;
   lastSignature = '';
+  pendingSignature = '';
   hideDesktopLyric().catch(() => undefined);
 }
 
 export function refreshDesktopLyric(): void {
   lastSignature = '';
+  pendingSignature = '';
   syncDesktopLyric();
 }
 
@@ -48,6 +59,7 @@ function syncDesktopLyric(): void {
   if (!state.desktopLyricsEnabled || (!state.isOpen && !radio.active)) {
     if (lastSignature) {
       lastSignature = '';
+      pendingSignature = '';
       hideDesktopLyric().catch(() => undefined);
     }
     return;
@@ -70,8 +82,8 @@ function syncDesktopLyric(): void {
     nextState.radioActionLabel,
     nextState.radioActionEnabled ? '1' : '0',
   ].join('|');
-  if (signature === lastSignature) return;
-  lastSignature = signature;
+  if (signature === lastSignature || signature === pendingSignature) return;
+  pendingSignature = signature;
 
   showDesktopLyric(
     nextState.text,
@@ -88,7 +100,15 @@ function syncDesktopLyric(): void {
     nextState.radioTrack,
     nextState.radioActionLabel,
     nextState.radioActionEnabled
-  ).catch((error) => {
+  ).then(() => {
+    if (pendingSignature === signature) {
+      lastSignature = signature;
+      pendingSignature = '';
+    }
+  }).catch((error) => {
+    if (pendingSignature === signature) {
+      pendingSignature = '';
+    }
     console.warn('[DesktopLyric] showDesktopLyric failed', error);
   });
 }

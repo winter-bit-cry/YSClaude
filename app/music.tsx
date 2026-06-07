@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Image,
   LayoutChangeEvent,
@@ -19,6 +20,11 @@ import { lightColors, useThemeColors, type ThemeColors } from '../src/theme/colo
 import { fonts } from '../src/theme/fonts';
 import { LyricLine, MusicTrack, PlayOrder, useMusicStore } from '../src/stores/music';
 import { useRadioStore } from '../src/stores/radio';
+import {
+  canDrawFloatingBall,
+  openFloatingBallPermissionSettings,
+} from '../src/services/floatingBall';
+import { refreshDesktopLyric } from '../src/services/desktopLyrics';
 
 let colors = lightColors;
 
@@ -148,6 +154,28 @@ export default function MusicScreen() {
     setDesktopLyricBackgroundUri('');
   }, [setDesktopLyricBackgroundUri]);
 
+  const handleDesktopLyricToggle = useCallback(async () => {
+    const nextEnabled = !desktopLyricsEnabled;
+    setDesktopLyricsEnabled(nextEnabled);
+    if (!nextEnabled) return;
+
+    try {
+      const canDraw = await canDrawFloatingBall();
+      if (!canDraw) {
+        Alert.alert(
+          '需要悬浮窗权限',
+          '请允许 YSClaude 显示在其他应用上层，返回后会自动重试显示桌面歌词。'
+        );
+        await openFloatingBallPermissionSettings();
+        return;
+      }
+      refreshDesktopLyric();
+    } catch (error) {
+      console.warn('[Music] desktop lyric permission check failed', error);
+      refreshDesktopLyric();
+    }
+  }, [desktopLyricsEnabled, setDesktopLyricsEnabled]);
+
   const renderLyric: ListRenderItem<LyricLine> = useCallback(({ item, index }) => {
     const active = index === currentLyricIndex;
     return (
@@ -212,7 +240,7 @@ export default function MusicScreen() {
 
       <Pressable
         style={[styles.desktopLyricToggle, desktopLyricsEnabled && styles.desktopLyricToggleActive]}
-        onPress={() => setDesktopLyricsEnabled(!desktopLyricsEnabled)}
+        onPress={() => handleDesktopLyricToggle().catch(() => undefined)}
       >
         <Text style={[styles.desktopLyricToggleText, desktopLyricsEnabled && styles.desktopLyricToggleTextActive]}>
           桌面歌词

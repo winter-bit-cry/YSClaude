@@ -9,7 +9,11 @@ import {
 } from 'expo-audio';
 import { Platform } from 'react-native';
 import { sqliteStorage } from '../db/kv-storage';
-import { checkUrlValid, refreshNeteaseTracks } from '../services/neteaseMusic';
+import {
+  checkUrlValid,
+  normalizeNeteaseMediaUrl,
+  refreshNeteaseTracks,
+} from '../services/neteaseMusic';
 
 export type PlayOrder = 'list' | 'repeat-one' | 'shuffle';
 
@@ -174,7 +178,8 @@ function releasePlayer(): void {
 async function loadTrack(index: number, shouldPlay: boolean): Promise<void> {
   const state = useMusicStore.getState();
   const track = state.tracks[index];
-  if (!track?.sourceUrl) {
+  const sourceUrl = normalizeNeteaseMediaUrl(track?.sourceUrl) ?? track?.sourceUrl;
+  if (!sourceUrl) {
     useMusicStore.setState({
       error: '当前歌曲没有可播放资源',
       isPlaying: false,
@@ -185,7 +190,7 @@ async function loadTrack(index: number, shouldPlay: boolean): Promise<void> {
 
   await ensureAudioMode();
   releasePlayer();
-  player = createAudioPlayer(track.sourceUrl, {
+  player = createAudioPlayer(sourceUrl, {
     updateInterval: 100,
     preferredForwardBufferDuration: 20,
   });
