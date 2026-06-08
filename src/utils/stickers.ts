@@ -10,67 +10,6 @@ export interface StickerDefinition {
   image: ImageSourcePropType;
 }
 
-const DEFAULT_STICKER_IMAGES: Record<string, ImageSourcePropType> = {
-  'assistant:。。。': require('../../assets/stickers-ai/sticker-00.jpg'),
-  'assistant:吃我一拳': require('../../assets/stickers-ai/sticker-01.jpg'),
-  'assistant:呆滞': require('../../assets/stickers-ai/sticker-02.jpg'),
-  'assistant:哭哭': require('../../assets/stickers-ai/sticker-03.jpg'),
-  'assistant:好喜欢': require('../../assets/stickers-ai/sticker-04.jpg'),
-  'assistant:委屈': require('../../assets/stickers-ai/sticker-05.jpg'),
-  'assistant:害羞': require('../../assets/stickers-ai/sticker-06.jpg'),
-  'assistant:幽怨': require('../../assets/stickers-ai/sticker-07.jpg'),
-  'assistant:得逞': require('../../assets/stickers-ai/sticker-08.jpg'),
-  'assistant:微妙': require('../../assets/stickers-ai/sticker-09.jpg'),
-  'assistant:心虚': require('../../assets/stickers-ai/sticker-10.jpg'),
-  'assistant:拍拍你的脑袋': require('../../assets/stickers-ai/sticker-11.jpg'),
-  'assistant:揉你的脸': require('../../assets/stickers-ai/sticker-12.jpg'),
-  'assistant:摇尾巴': require('../../assets/stickers-ai/sticker-13.jpg'),
-  'assistant:摇摇': require('../../assets/stickers-ai/sticker-14.jpg'),
-  'assistant:无能狂怒': require('../../assets/stickers-ai/sticker-15.jpg'),
-  'assistant:星星眼': require('../../assets/stickers-ai/sticker-16.jpg'),
-  'assistant:杀心': require('../../assets/stickers-ai/sticker-17.jpg'),
-  'assistant:理直气壮地卖萌': require('../../assets/stickers-ai/sticker-18.jpg'),
-  'assistant:痛哭流涕': require('../../assets/stickers-ai/sticker-19.jpg'),
-  'assistant:睡了': require('../../assets/stickers-ai/sticker-20.jpg'),
-  'assistant:给你花花（耍帅）': require('../../assets/stickers-ai/sticker-21.jpg'),
-  'assistant:被打呜呜': require('../../assets/stickers-ai/sticker-22.jpg'),
-  'assistant:请给我': require('../../assets/stickers-ai/sticker-23.jpg'),
-  'assistant:赞！': require('../../assets/stickers-ai/sticker-24.jpg'),
-  'assistant:超震惊': require('../../assets/stickers-ai/sticker-25.jpg'),
-  'assistant:趴在桌沿看你': require('../../assets/stickers-ai/sticker-26.jpg'),
-  'assistant:蹭蹭': require('../../assets/stickers-ai/sticker-27.jpg'),
-  'assistant:鄙视你': require('../../assets/stickers-ai/sticker-28.jpg'),
-  'user:。。。': require('../../assets/stickers-user/sticker-00.jpg'),
-  'user:吃我一拳': require('../../assets/stickers-user/sticker-01.jpg'),
-  'user:呆滞': require('../../assets/stickers-user/sticker-02.jpg'),
-  'user:哭哭': require('../../assets/stickers-user/sticker-03.jpg'),
-  'user:好喜欢': require('../../assets/stickers-user/sticker-04.jpg'),
-  'user:委屈': require('../../assets/stickers-user/sticker-05.jpg'),
-  'user:害羞': require('../../assets/stickers-user/sticker-06.jpg'),
-  'user:幽怨': require('../../assets/stickers-user/sticker-07.jpg'),
-  'user:得逞': require('../../assets/stickers-user/sticker-08.jpg'),
-  'user:微妙': require('../../assets/stickers-user/sticker-09.jpg'),
-  'user:心虚': require('../../assets/stickers-user/sticker-10.jpg'),
-  'user:拍拍你的脑袋': require('../../assets/stickers-user/sticker-11.jpg'),
-  'user:揉你的脸': require('../../assets/stickers-user/sticker-12.jpg'),
-  'user:摇尾巴': require('../../assets/stickers-user/sticker-13.jpg'),
-  'user:摇摇': require('../../assets/stickers-user/sticker-14.jpg'),
-  'user:无能狂怒': require('../../assets/stickers-user/sticker-15.jpg'),
-  'user:星星眼': require('../../assets/stickers-user/sticker-16.jpg'),
-  'user:杀心': require('../../assets/stickers-user/sticker-17.jpg'),
-  'user:理直气壮地卖萌': require('../../assets/stickers-user/sticker-18.jpg'),
-  'user:痛哭流涕': require('../../assets/stickers-user/sticker-19.jpg'),
-  'user:睡了': require('../../assets/stickers-user/sticker-20.jpg'),
-  'user:给你花花（耍帅）': require('../../assets/stickers-user/sticker-21.jpg'),
-  'user:被打呜呜': require('../../assets/stickers-user/sticker-22.jpg'),
-  'user:请给我': require('../../assets/stickers-user/sticker-23.jpg'),
-  'user:赞！': require('../../assets/stickers-user/sticker-24.jpg'),
-  'user:超震惊': require('../../assets/stickers-user/sticker-25.jpg'),
-  'user:趴在桌沿看你': require('../../assets/stickers-user/sticker-26.jpg'),
-  'user:蹭蹭': require('../../assets/stickers-user/sticker-27.jpg'),
-  'user:鄙视你': require('../../assets/stickers-user/sticker-28.jpg'),
-};
-
 const STICKER_PATTERN = /\[Sticker:([^\]\r\n]+)\]/g;
 
 export type StickerContentChunk =
@@ -87,9 +26,6 @@ export function createStickerToken(name: string): string {
 
 export function getStickerImageSource(sticker: CustomSticker): ImageSourcePropType | null {
   if (sticker.uri) return { uri: sticker.uri };
-  if (sticker.assetKey && DEFAULT_STICKER_IMAGES[sticker.assetKey]) {
-    return DEFAULT_STICKER_IMAGES[sticker.assetKey];
-  }
   return null;
 }
 

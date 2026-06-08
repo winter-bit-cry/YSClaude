@@ -187,84 +187,38 @@ export interface AppearanceConfig extends AppearanceThemeSnapshot {
   activeAppearanceThemeId?: string;
 }
 
-const DEFAULT_STICKER_NAMES = [
-  '。。。',
-  '吃我一拳',
-  '呆滞',
-  '哭哭',
-  '好喜欢',
-  '委屈',
-  '害羞',
-  '幽怨',
-  '得逞',
-  '微妙',
-  '心虚',
-  '拍拍你的脑袋',
-  '揉你的脸',
-  '摇尾巴',
-  '摇摇',
-  '无能狂怒',
-  '星星眼',
-  '杀心',
-  '理直气壮地卖萌',
-  '痛哭流涕',
-  '睡了',
-  '给你花花（耍帅）',
-  '被打呜呜',
-  '请给我',
-  '赞！',
-  '超震惊',
-  '趴在桌沿看你',
-  '蹭蹭',
-  '鄙视你',
-];
-
-function createDefaultStickerList(owner: StickerOwner): CustomSticker[] {
-  return DEFAULT_STICKER_NAMES.map((name, index) => ({
-    id: `default-${owner}-${index}`,
-    name,
-    assetKey: `${owner}:${name}`,
-    createdAt: 0,
-  }));
-}
-
 function createDefaultStickerConfig(): StickerConfig {
   return {
     initialized: true,
     stickerSuggestionsEnabled: true,
-    userStickers: createDefaultStickerList('user'),
-    assistantStickers: createDefaultStickerList('assistant'),
+    userStickers: [],
+    assistantStickers: [],
   };
 }
 
-function mergeStickerDefaults(defaults: CustomSticker[], current?: CustomSticker[]): CustomSticker[] {
-  const seenIds = new Set<string>();
-  const merged: CustomSticker[] = [];
+function isLegacyDefaultSticker(sticker: CustomSticker): boolean {
+  return sticker.id.startsWith('default-') || !!sticker.assetKey;
+}
 
-  [...defaults, ...(current || [])].forEach((sticker) => {
-    if (seenIds.has(sticker.id)) return;
-    seenIds.add(sticker.id);
-    merged.push(sticker);
-  });
-  return merged;
+function filterCustomStickers(stickers?: CustomSticker[]): CustomSticker[] {
+  return (stickers || []).filter((sticker) => !isLegacyDefaultSticker(sticker));
 }
 
 function normalizeStickerConfig(config?: StickerConfig): StickerConfig {
-  const defaults = createDefaultStickerConfig();
   if (!config?.initialized) {
     return {
       initialized: true,
       stickerSuggestionsEnabled: config?.stickerSuggestionsEnabled ?? true,
-      userStickers: mergeStickerDefaults(defaults.userStickers, config?.userStickers),
-      assistantStickers: mergeStickerDefaults(defaults.assistantStickers, config?.assistantStickers),
+      userStickers: filterCustomStickers(config?.userStickers),
+      assistantStickers: filterCustomStickers(config?.assistantStickers),
     };
   }
 
   return {
     initialized: true,
     stickerSuggestionsEnabled: config.stickerSuggestionsEnabled ?? true,
-    userStickers: config.userStickers || [],
-    assistantStickers: config.assistantStickers || [],
+    userStickers: filterCustomStickers(config.userStickers),
+    assistantStickers: filterCustomStickers(config.assistantStickers),
   };
 }
 

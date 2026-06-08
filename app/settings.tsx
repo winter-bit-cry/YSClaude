@@ -535,7 +535,7 @@ function StickerTab({ showToast, keyboardBottomInset }: SettingsTabProps) {
     >
       <Text style={styles.sectionTitle}>表情包管理</Text>
       <Text style={styles.hint}>
-        assets 里的用户/AI 表情包会作为默认配置显示，也可以改名、换图或删除。
+        表情包全部由用户自定义添加；上传图片或批量导入链接后才会显示。
       </Text>
       <View style={styles.switchRow}>
         <View style={styles.switchText}>

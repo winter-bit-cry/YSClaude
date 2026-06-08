@@ -136,7 +136,7 @@ android {
         aidl true
     }
     sourceSets {
-        main.assets.srcDirs += ['../../assets/clawd', '../../assets']
+        main.assets.srcDirs += ['../../assets']
     }
 }
 

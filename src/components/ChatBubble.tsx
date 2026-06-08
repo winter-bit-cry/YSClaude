@@ -220,6 +220,9 @@ export const ChatBubble = React.memo(function ChatBubble({
   const editMessage = useChatStore((state) => state.editMessage);
   const removeMessage = useChatStore((state) => state.removeMessage);
   const removeToolInvocation = useChatStore((state) => state.removeToolInvocation);
+  const addHiddenRange = useChatStore((state) => state.addHiddenRange);
+  const restoreHiddenRange = useChatStore((state) => state.restoreHiddenRange);
+  const setMessageHidden = useChatStore((state) => state.setMessageHidden);
   const regenerate = useChatStore((state) => state.regenerate);
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [editText, setEditText] = useState('');
@@ -233,6 +236,8 @@ export const ChatBubble = React.memo(function ChatBubble({
   const [expandedTools, setExpandedTools] = useState<Record<number, boolean>>({});
   const bubbleRef = useRef<View>(null);
   const floorText = floorNumber !== undefined ? `#${floorNumber}` : null;
+  const canToggleFloorHidden = floorNumber !== undefined;
+  const hiddenToggleText = isHidden ? '恢复' : '隐藏';
   const avatarMetaText = [floorText, formatSmartTime(message.createdAt)].filter(Boolean).join(' · ');
   const floorLabel = !messageAvatarsVisible && showFloorNumber && floorText ? floorText : null;
   const avatarNode = messageAvatarsVisible ? (
@@ -309,6 +314,22 @@ export const ChatBubble = React.memo(function ChatBubble({
     removeMessage(message.id);
   }
 
+  function toggleCurrentFloorHidden(closeMenu: () => void) {
+    closeMenu();
+    if (!canToggleFloorHidden || floorNumber === undefined) return;
+
+    const operation = isHidden
+      ? Promise.all([
+          restoreHiddenRange({ from: floorNumber, to: floorNumber }),
+          setMessageHidden(message.id, false),
+        ])
+      : addHiddenRange({ from: floorNumber, to: floorNumber });
+
+    operation.catch((error) => {
+      Alert.alert(isHidden ? '恢复失败' : '隐藏失败', error?.message || '操作失败');
+    });
+  }
+
   // 编辑弹窗（两个分支共用）
   const editModal = (
     <Modal visible={editModalVisible} transparent animationType="fade">
@@ -339,7 +360,7 @@ export const ChatBubble = React.memo(function ChatBubble({
 
   if (isUser) {
     // 菜单宽度估算，用于让菜单右对齐气泡右缘
-    const MENU_WIDTH = 140;
+    const MENU_WIDTH = 216;
     const MENU_HEIGHT = 44;
     const menuLeft = Math.max(8, menuAnchor.x + menuAnchor.width - MENU_WIDTH);
     const menuTop = Math.max(8, menuAnchor.y - MENU_HEIGHT - 8);
@@ -432,6 +453,16 @@ export const ChatBubble = React.memo(function ChatBubble({
             <View style={[styles.bubbleMenu, { left: menuLeft, top: menuTop }]}>
               <Pressable style={styles.bubbleMenuItem} onPress={openUserEdit}>
                 <Text style={styles.bubbleMenuText}>编辑</Text>
+              </Pressable>
+              <View style={styles.bubbleMenuDivider} />
+              <Pressable
+                style={[styles.bubbleMenuItem, !canToggleFloorHidden && styles.bubbleMenuItemDisabled]}
+                onPress={() => toggleCurrentFloorHidden(() => setMenuVisible(false))}
+                disabled={!canToggleFloorHidden}
+              >
+                <Text style={[styles.bubbleMenuText, !canToggleFloorHidden && styles.bubbleMenuTextDisabled]}>
+                  {hiddenToggleText}
+                </Text>
               </Pressable>
               <View style={styles.bubbleMenuDivider} />
               <Pressable style={styles.bubbleMenuItem} onPress={deleteUserMessage}>
@@ -534,7 +565,7 @@ export const ChatBubble = React.memo(function ChatBubble({
         messageIsStickerOnly && styles.userStickerOnlyBubble,
       ]
     : styles.assistantContent;
-  const ASSISTANT_MENU_WIDTH = 292;
+  const ASSISTANT_MENU_WIDTH = Math.min(340, SCREEN_WIDTH - 16);
   const assistantMenuLeft = Math.min(
     Math.max(8, menuAnchor.x),
     SCREEN_WIDTH - ASSISTANT_MENU_WIDTH - 8
@@ -616,9 +647,23 @@ export const ChatBubble = React.memo(function ChatBubble({
         onRequestClose={() => setAssistantMenuVisible(false)}
       >
         <Pressable style={styles.menuDismissOverlay} onPress={() => setAssistantMenuVisible(false)}>
-          <View style={[styles.bubbleMenu, styles.assistantActionMenu, { left: assistantMenuLeft, top: assistantMenuTop }]}>
+          <View style={[styles.bubbleMenu, styles.assistantActionMenu, { left: assistantMenuLeft, top: assistantMenuTop, width: ASSISTANT_MENU_WIDTH }]}>
             <Pressable style={[styles.bubbleMenuItem, styles.assistantActionMenuItem]} onPress={() => handleAssistantMenuAction(0)}>
               <Text style={styles.bubbleMenuText}>编辑</Text>
+            </Pressable>
+            <View style={styles.bubbleMenuDivider} />
+            <Pressable
+              style={[
+                styles.bubbleMenuItem,
+                styles.assistantActionMenuItem,
+                !canToggleFloorHidden && styles.bubbleMenuItemDisabled,
+              ]}
+              onPress={() => toggleCurrentFloorHidden(() => setAssistantMenuVisible(false))}
+              disabled={!canToggleFloorHidden}
+            >
+              <Text style={[styles.bubbleMenuText, !canToggleFloorHidden && styles.bubbleMenuTextDisabled]}>
+                {hiddenToggleText}
+              </Text>
             </Pressable>
             <View style={styles.bubbleMenuDivider} />
             <Pressable style={[styles.bubbleMenuItem, styles.assistantActionMenuItem]} onPress={() => handleAssistantMenuAction(1)}>

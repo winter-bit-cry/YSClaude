@@ -74,7 +74,7 @@
       "expo-sharing"
     ],
     "extra": {
-      "licenseServiceUrl": "https://solitary-cherry-3571.wenzhao0720.workers.dev",
+      "licenseServiceUrl": "https://ysclaude-license-server.zeabur.app",
       "router": {},
       "eas": {
         "projectId": "3660e22f-35ac-4218-bf72-6a6489d0faee"
