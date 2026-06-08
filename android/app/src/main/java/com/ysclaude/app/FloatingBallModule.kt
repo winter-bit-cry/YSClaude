@@ -95,6 +95,8 @@ class FloatingBallModule(
   private var layoutParams: WindowManager.LayoutParams? = null
   private var ballWidth = defaultBallSize.width
   private var ballHeight = defaultBallSize.height
+  private var normalBallSize = defaultBallSize
+  private var edgeBallSize = defaultBallSize
   private var customNormalImageUris: List<String> = emptyList()
   private var customEdgeImageUris: List<String> = emptyList()
   private var currentNormalImageUri = ""
@@ -202,6 +204,8 @@ class FloatingBallModule(
     edgeUris: ReadableArray?,
     autoSwitchEnabled: Boolean,
     autoSwitchIntervalSeconds: Double,
+    normalSizeDp: Double,
+    edgeSizeDp: Double,
     promise: Promise
   ) {
     mainHandler.post {
@@ -210,10 +214,14 @@ class FloatingBallModule(
         customEdgeImageUris = readableArrayToStringList(edgeUris)
         assetAutoSwitchEnabled = autoSwitchEnabled
         assetAutoSwitchIntervalMs = (autoSwitchIntervalSeconds.coerceIn(1.0, 3600.0) * 1000).toLong()
+        normalBallSize = ballSizeFromDp(normalSizeDp)
+        edgeBallSize = ballSizeFromDp(edgeSizeDp)
         currentNormalImageUri = if (currentNormalImageUri in customNormalImageUris) currentNormalImageUri else ""
         currentEdgeImageUri = if (currentEdgeImageUri in customEdgeImageUris) currentEdgeImageUri else ""
         if (rootView != null) {
           loadState(if (isEdgeHanging) EDGE_IDLE else NORMAL_IDLE)
+        } else {
+          applyBallImageSize(normalBallSize)
         }
         scheduleAssetAutoSwitch()
         promise.resolve(true)
@@ -1178,7 +1186,7 @@ class FloatingBallModule(
       }
       else -> currentUri
     }
-    applyBallImageSize(defaultBallSize)
+    applyBallImageSize(if (isEdgeState) edgeBallSize else normalBallSize)
     image.scaleX = if (isEdgeHanging && edgeSide == EdgeSide.LEFT) -1f else 1f
     if (customUri.isBlank()) {
       Glide.with(reactContext).clear(image)
@@ -1212,6 +1220,11 @@ class FloatingBallModule(
       values.add(value)
     }
     return values
+  }
+
+  private fun ballSizeFromDp(sizeDp: Double): ImageSize {
+    val px = dp(sizeDp.coerceIn(MIN_BALL_SIZE_DP, MAX_BALL_SIZE_DP).toInt())
+    return ImageSize(px, px)
   }
 
   private fun applyBallImageSize(nextSize: ImageSize) {
@@ -1321,6 +1334,8 @@ class FloatingBallModule(
     private const val ACTION_GET_REPLY = "get_reply"
     private const val ACTION_TOGGLE_MUSIC = "toggle_music"
     private const val ACTION_OPEN_APP = "open_app"
+    private const val MIN_BALL_SIZE_DP = 32.0
+    private const val MAX_BALL_SIZE_DP = 160.0
 
     private const val NORMAL_IDLE = "normal-idle"
     private const val EDGE_IDLE = "edge-idle"

@@ -47,7 +47,7 @@ import { mergeRanges } from '../src/utils/ranges';
 
 
 let colors = lightColors;
-const TABS = ['API 配置', '对话设置', 'TTS 配置', 'Tool 设置', '日记', '悬浮球', '表情包', '美化'] as const;
+const TABS = ['API 配置', '对话设置', 'TTS 配置', 'Tool 设置', '日记', '悬浮球', '表情包', '欢迎语', '美化'] as const;
 type ToastFn = (message: string) => void;
 type SettingsTabProps = { showToast: ToastFn; keyboardBottomInset: number };
 const CUSTOM_TOP_BAR_ICON_MAX_BYTES = 2 * 1024 * 1024;
@@ -62,7 +62,10 @@ const CUSTOM_STICKER_MAX_SIDE = 4096;
 const CUSTOM_FLOATING_BALL_MAX_BYTES = 8 * 1024 * 1024;
 const CUSTOM_FLOATING_BALL_MIN_SIDE = 24;
 const CUSTOM_FLOATING_BALL_MAX_SIDE = 2048;
-const CUSTOM_FLOATING_BALL_SELECTION_LIMIT = 12;
+const CUSTOM_FLOATING_BALL_SELECTION_LIMIT = 50;
+const FLOATING_BALL_SIZE_DEFAULT = 64;
+const FLOATING_BALL_SIZE_MIN = 32;
+const FLOATING_BALL_SIZE_MAX = 160;
 const CHAT_INPUT_ICON_ITEMS: Array<{ key: ChatInputIconKey; label: string }> = [
   { key: 'options', label: '左侧菜单' },
   { key: 'sticker', label: '贴纸' },
@@ -133,7 +136,8 @@ export default function SettingsScreen() {
       {activeTab === 4 && <DiaryTab showToast={showToast} keyboardBottomInset={keyboardHeight} />}
       {activeTab === 5 && <FloatingBallTab showToast={showToast} keyboardBottomInset={keyboardHeight} />}
       {activeTab === 6 && <StickerTab showToast={showToast} keyboardBottomInset={keyboardHeight} />}
-      {activeTab === 7 && <AppearanceTab showToast={showToast} keyboardBottomInset={keyboardHeight} />}
+      {activeTab === 7 && <GreetingTab showToast={showToast} keyboardBottomInset={keyboardHeight} />}
+      {activeTab === 8 && <AppearanceTab showToast={showToast} keyboardBottomInset={keyboardHeight} />}
 
       {toastMessage && (
         <View pointerEvents="none" style={styles.toast}>
@@ -141,6 +145,70 @@ export default function SettingsScreen() {
         </View>
       )}
     </View>
+  );
+}
+
+/* ==================== 欢迎语 Tab ==================== */
+
+function GreetingTab({ showToast, keyboardBottomInset }: SettingsTabProps) {
+  const { appearanceConfig, setAppearanceConfig } = useSettingsStore();
+  const customGreetings = appearanceConfig?.customGreetings || '';
+  const useDefaultGreetings = !!appearanceConfig?.useDefaultGreetings;
+  const defaultGreetingName = appearanceConfig?.defaultGreetingName || '';
+
+  function handleDefaultGreetingToggle(value: boolean) {
+    if (value && !defaultGreetingName.trim()) {
+      Alert.alert('需要填写名字', '请先填写你的名字，用于替换内置欢迎语里的 user。');
+      return;
+    }
+    setAppearanceConfig({ useDefaultGreetings: value });
+    showToast(value ? '系统默认欢迎语已开启' : '系统默认欢迎语已关闭');
+  }
+
+  return (
+    <ScrollView
+      style={styles.content}
+      contentContainerStyle={{ paddingBottom: keyboardBottomInset + 20 }}
+      keyboardShouldPersistTaps="handled"
+    >
+      <View style={styles.switchRow}>
+        <View style={styles.switchText}>
+          <Text style={styles.label}>系统默认欢迎语</Text>
+          <Text style={styles.hint}>开启后，内置欢迎语会和用户自定义欢迎语一起随机抽取。</Text>
+        </View>
+        <Switch
+          value={useDefaultGreetings}
+          onValueChange={handleDefaultGreetingToggle}
+          trackColor={{ false: colors.border, true: colors.primary }}
+          thumbColor="#FFFFFF"
+        />
+      </View>
+
+      <View style={styles.field}>
+        <Text style={styles.label}>你的名字</Text>
+        <TextInput
+          style={styles.input}
+          value={defaultGreetingName}
+          onChangeText={(value) => setAppearanceConfig({ defaultGreetingName: value })}
+          placeholder="user"
+          placeholderTextColor={colors.textTertiary}
+          returnKeyType="done"
+        />
+        <Text style={styles.hint}>用于替换内置欢迎语里的 user，例如 Welcome,user。</Text>
+      </View>
+
+      <Text style={styles.sectionTitle}>欢迎语池</Text>
+      <Text style={styles.hint}>每行一条，聊天页空状态刷新时会随机抽取一条。留空时显示 What shall we think through?</Text>
+      <TextInput
+        style={[styles.input, styles.multilineInput, styles.greetingInput]}
+        value={customGreetings}
+        onChangeText={(value) => setAppearanceConfig({ customGreetings: value })}
+        multiline
+        placeholder={'What shall we think through?\n今天想拆哪件事？'}
+        placeholderTextColor={colors.textTertiary}
+        textAlignVertical="top"
+      />
+    </ScrollView>
   );
 }
 
@@ -215,8 +283,9 @@ async function copyFloatingBallImage(asset: ImagePicker.ImagePickerAsset, prefix
   return copyAppearanceImage(asset, 'floating-ball-assets', prefix);
 }
 
-function mergeUniqueUris(existing: string[], next: string[]): string[] {
-  return Array.from(new Set([...existing, ...next].map((uri) => uri.trim()).filter(Boolean)));
+function mergeUniqueUris(existing: string[], next: string[], limit?: number): string[] {
+  const merged = Array.from(new Set([...existing, ...next].map((uri) => uri.trim()).filter(Boolean)));
+  return typeof limit === 'number' ? merged.slice(0, limit) : merged;
 }
 
 function validateTopBarIconAsset(asset: ImagePicker.ImagePickerAsset): string | null {
@@ -645,8 +714,6 @@ function AppearanceTab({ showToast, keyboardBottomInset }: SettingsTabProps) {
   const userFontSize = appearanceConfig?.userFontSize ?? 16;
   const assistantFontSize = appearanceConfig?.assistantFontSize ?? 16;
   const assistantTextStrokeWidth = appearanceConfig?.assistantTextStrokeWidth ?? 0;
-  const customGreetings = appearanceConfig?.customGreetings || '';
-
   useEffect(() => {
     setUserBubbleColorInput(appearanceConfig?.userBubbleColor || colors.userBubble);
     setAssistantBubbleColorInput(appearanceConfig?.assistantBubbleColor || colors.userBubble);
@@ -908,18 +975,6 @@ function AppearanceTab({ showToast, keyboardBottomInset }: SettingsTabProps) {
       <Pressable style={styles.appearanceClearButton} onPress={handleResetAppearanceConfig}>
         <Text style={styles.appearanceClearText}>一键清空，恢复原始默认</Text>
       </Pressable>
-
-      <Text style={styles.sectionTitle}>欢迎语</Text>
-      <Text style={styles.hint}>每行一条，聊天页空状态刷新时会随机抽取一条。留空时显示 What shall we think through?</Text>
-      <TextInput
-        style={[styles.input, styles.multilineInput, styles.greetingInput]}
-        value={customGreetings}
-        onChangeText={(value) => setAppearanceConfig({ customGreetings: value })}
-        multiline
-        placeholder={'What shall we think through?\n今天想拆哪件事？'}
-        placeholderTextColor={colors.textTertiary}
-        textAlignVertical="top"
-      />
 
       <Pressable
         style={styles.appearanceThemeToggle}
@@ -1687,15 +1742,23 @@ function FloatingBallTab({ showToast, keyboardBottomInset }: SettingsTabProps) {
   );
   const assetAutoSwitchEnabled = !!floatingBallConfig.assetAutoSwitchEnabled;
   const assetAutoSwitchIntervalSeconds = floatingBallConfig.assetAutoSwitchIntervalSeconds || 8;
+  const normalSizeDp = floatingBallConfig.normalSizeDp ?? FLOATING_BALL_SIZE_DEFAULT;
+  const edgeSizeDp = floatingBallConfig.edgeSizeDp ?? FLOATING_BALL_SIZE_DEFAULT;
 
   async function handlePickFloatingBallImage(kind: 'normal' | 'edge') {
     if (pickingBallImage) return;
+    const existingUris = kind === 'normal' ? normalImageUris : edgeImageUris;
+    const remainingSlots = CUSTOM_FLOATING_BALL_SELECTION_LIMIT - existingUris.length;
+    if (remainingSlots <= 0) {
+      Alert.alert('悬浮球素材已满', `每种状态最多保存 ${CUSTOM_FLOATING_BALL_SELECTION_LIMIT} 个素材。`);
+      return;
+    }
     setPickingBallImage(kind);
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
         allowsMultipleSelection: true,
-        selectionLimit: CUSTOM_FLOATING_BALL_SELECTION_LIMIT,
+        selectionLimit: remainingSlots,
         allowsEditing: false,
         quality: 1,
       });
@@ -1712,7 +1775,7 @@ function FloatingBallTab({ showToast, keyboardBottomInset }: SettingsTabProps) {
       const copiedUris = await Promise.all(
         result.assets.map((asset) => copyFloatingBallImage(asset, kind === 'normal' ? 'normal' : 'edge'))
       );
-      const nextUris = mergeUniqueUris(kind === 'normal' ? normalImageUris : edgeImageUris, copiedUris);
+      const nextUris = mergeUniqueUris(existingUris, copiedUris, CUSTOM_FLOATING_BALL_SELECTION_LIMIT);
       setFloatingBallConfig(
         kind === 'normal'
           ? { normalImageUris: nextUris, normalImageUri: nextUris[0] }
@@ -1739,6 +1802,19 @@ function FloatingBallTab({ showToast, keyboardBottomInset }: SettingsTabProps) {
       syncFloatingBallAssets().catch(() => undefined);
     }
     showToast(kind === 'normal' ? '正常态已恢复默认球形' : '贴边态已恢复默认球形');
+  }
+
+  function handleSizeChange(kind: 'normal' | 'edge', value: string) {
+    const nextSize = parseAppearanceNumber(
+      value,
+      FLOATING_BALL_SIZE_DEFAULT,
+      FLOATING_BALL_SIZE_MIN,
+      FLOATING_BALL_SIZE_MAX
+    );
+    setFloatingBallConfig(kind === 'normal' ? { normalSizeDp: nextSize } : { edgeSizeDp: nextSize });
+    if (floatingBallConfig.enabled) {
+      syncFloatingBallAssets().catch(() => undefined);
+    }
   }
 
   async function handleToggle(value: boolean) {
@@ -1805,8 +1881,8 @@ function FloatingBallTab({ showToast, keyboardBottomInset }: SettingsTabProps) {
       </View>
 
       <Text style={styles.sectionTitle}>悬浮球素材</Text>
-      <Text style={styles.hint}>支持 PNG、JPG、GIF。正常态用于平时显示，贴边态用于吸附屏幕边缘；未上传时显示默认球形。</Text>
-      <Text style={styles.hint}>正常态 {normalImageUris.length} 个，贴边态 {edgeImageUris.length} 个</Text>
+      <Text style={styles.hint}>支持 PNG、JPG、GIF。正常态用于平时显示，贴边态用于吸附屏幕边缘；每种状态最多 {CUSTOM_FLOATING_BALL_SELECTION_LIMIT} 个素材。</Text>
+      <Text style={styles.hint}>正常态 {normalImageUris.length} / {CUSTOM_FLOATING_BALL_SELECTION_LIMIT} 个，贴边态 {edgeImageUris.length} / {CUSTOM_FLOATING_BALL_SELECTION_LIMIT} 个</Text>
       {([
         { kind: 'normal' as const, label: '正常态', uri: floatingBallConfig.normalImageUri },
         { kind: 'edge' as const, label: '贴边态', uri: floatingBallConfig.edgeImageUri },
@@ -1844,6 +1920,33 @@ function FloatingBallTab({ showToast, keyboardBottomInset }: SettingsTabProps) {
           </View>
         );
       })}
+
+      <Text style={styles.sectionTitle}>悬浮球大小</Text>
+      <Text style={styles.hint}>单位为 dp，正常态和贴边态可分别调整，范围 {FLOATING_BALL_SIZE_MIN}-{FLOATING_BALL_SIZE_MAX}。</Text>
+      <View style={styles.floatingBallSizeRow}>
+        <View style={styles.floatingBallSizeField}>
+          <Text style={styles.label}>正常态大小</Text>
+          <TextInput
+            style={styles.input}
+            value={String(normalSizeDp)}
+            onChangeText={(value) => handleSizeChange('normal', value)}
+            keyboardType="number-pad"
+            placeholder={String(FLOATING_BALL_SIZE_DEFAULT)}
+            placeholderTextColor={colors.textTertiary}
+          />
+        </View>
+        <View style={styles.floatingBallSizeField}>
+          <Text style={styles.label}>贴边态大小</Text>
+          <TextInput
+            style={styles.input}
+            value={String(edgeSizeDp)}
+            onChangeText={(value) => handleSizeChange('edge', value)}
+            keyboardType="number-pad"
+            placeholder={String(FLOATING_BALL_SIZE_DEFAULT)}
+            placeholderTextColor={colors.textTertiary}
+          />
+        </View>
+      </View>
 
       <View style={styles.switchRow}>
         <View style={styles.nativeToolText}>
@@ -3866,6 +3969,15 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   configChipText: { fontSize: 13, fontWeight: '500', color: colors.text },
   configChipTextActive: { color: '#FFFFFF' },
   field: { marginBottom: 14 },
+  floatingBallSizeRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 14,
+  },
+  floatingBallSizeField: {
+    flex: 1,
+    minWidth: 0,
+  },
   label: { fontSize: 14, color: colors.text, marginBottom: 6, fontWeight: '500' },
   input: {
     backgroundColor: colors.inputBackground, borderWidth: 1, borderColor: colors.inputBorder,

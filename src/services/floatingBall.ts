@@ -9,7 +9,9 @@ interface FloatingBallModule {
     normalUris: string[],
     edgeUris: string[],
     autoSwitchEnabled: boolean,
-    autoSwitchIntervalSeconds: number
+    autoSwitchIntervalSeconds: number,
+    normalSizeDp: number,
+    edgeSizeDp: number
   ) => Promise<boolean>;
   show: () => Promise<boolean>;
   hide: () => Promise<boolean>;
@@ -244,7 +246,9 @@ async function configureFloatingBallAssets(floatingBall: FloatingBallModule): Pr
     normalizeBallAssetUris(floatingBallConfig.normalImageUris, floatingBallConfig.normalImageUri),
     normalizeBallAssetUris(floatingBallConfig.edgeImageUris, floatingBallConfig.edgeImageUri),
     !!floatingBallConfig.assetAutoSwitchEnabled,
-    floatingBallConfig.assetAutoSwitchIntervalSeconds || 8
+    floatingBallConfig.assetAutoSwitchIntervalSeconds || 8,
+    floatingBallConfig.normalSizeDp || 64,
+    floatingBallConfig.edgeSizeDp || 64
   );
 }
 

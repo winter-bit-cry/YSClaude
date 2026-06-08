@@ -149,6 +149,8 @@ export interface FloatingBallConfig {
   edgeImageUri?: string;
   normalImageUris?: string[];
   edgeImageUris?: string[];
+  normalSizeDp?: number;
+  edgeSizeDp?: number;
   assetAutoSwitchEnabled?: boolean;
   assetAutoSwitchIntervalSeconds?: number;
 }
@@ -179,6 +181,8 @@ export interface StickerConfig {
 }
 
 export interface AppearanceConfig extends AppearanceThemeSnapshot {
+  useDefaultGreetings?: boolean;
+  defaultGreetingName?: string;
   appearanceThemes?: AppearanceTheme[];
   activeAppearanceThemeId?: string;
 }
@@ -286,6 +290,8 @@ function normalizeFloatingBallConfig(config?: FloatingBallConfig): FloatingBallC
     edgeImageUri: config?.edgeImageUri || edgeImageUris[0],
     normalImageUris,
     edgeImageUris,
+    normalSizeDp: Math.min(160, Math.max(32, config?.normalSizeDp ?? 64)),
+    edgeSizeDp: Math.min(160, Math.max(32, config?.edgeSizeDp ?? 64)),
     assetAutoSwitchEnabled: config?.assetAutoSwitchEnabled ?? false,
     assetAutoSwitchIntervalSeconds: Math.min(
       3600,
@@ -298,6 +304,8 @@ const DEFAULT_APPEARANCE_CONFIG: AppearanceConfig = {
   topBarIconUris: {},
   topBarIconsHidden: false,
   customGreetings: '',
+  useDefaultGreetings: false,
+  defaultGreetingName: '',
   messageAvatarsVisible: false,
   messageMetaVisible: true,
   messageAvatarRadius: 18,
@@ -333,7 +341,6 @@ function snapshotAppearanceConfig(config?: AppearanceConfig): AppearanceThemeSna
     topBarIconUris: { ...(source.topBarIconUris || {}) },
     topBarIconsHidden: source.topBarIconsHidden,
     topBarFadeHidden: source.topBarFadeHidden,
-    customGreetings: source.customGreetings,
     chatBackgroundImageUri: source.chatBackgroundImageUri,
     userBubbleColor: source.userBubbleColor,
     userBubbleTransparent: source.userBubbleTransparent,
@@ -508,6 +515,8 @@ export const useSettingsStore = create<SettingsState>()(
         edgeImageUri: undefined,
         normalImageUris: [],
         edgeImageUris: [],
+        normalSizeDp: 64,
+        edgeSizeDp: 64,
         assetAutoSwitchEnabled: false,
         assetAutoSwitchIntervalSeconds: 8,
       },
@@ -739,6 +748,9 @@ export const useSettingsStore = create<SettingsState>()(
             appearanceConfig: {
               ...DEFAULT_APPEARANCE_CONFIG,
               ...theme.config,
+              customGreetings: current.customGreetings,
+              useDefaultGreetings: current.useDefaultGreetings,
+              defaultGreetingName: current.defaultGreetingName,
               topBarIconUris: { ...(theme.config.topBarIconUris || {}) },
               inputIconUris: { ...(theme.config.inputIconUris || {}) },
               appearanceThemes: themes,
@@ -759,7 +771,15 @@ export const useSettingsStore = create<SettingsState>()(
             },
           };
         }),
-      resetAppearanceConfig: () => set({ appearanceConfig: createDefaultAppearanceConfig() }),
+      resetAppearanceConfig: () =>
+        set((state) => ({
+          appearanceConfig: {
+            ...createDefaultAppearanceConfig(),
+            customGreetings: state.appearanceConfig?.customGreetings || '',
+            useDefaultGreetings: state.appearanceConfig?.useDefaultGreetings ?? false,
+            defaultGreetingName: state.appearanceConfig?.defaultGreetingName || '',
+          },
+        })),
     }),
     {
       name: 'ysclaude-settings',
