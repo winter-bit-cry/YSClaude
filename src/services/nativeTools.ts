@@ -78,6 +78,7 @@ const AccessibilityScreenContext = NativeModules.AccessibilityScreenContext as
       openAccessibilitySettings: () => Promise<boolean>;
       openInputMethodSettings: () => Promise<boolean>;
       showInputMethodPicker: () => Promise<boolean>;
+      switchToYSClaudeInputMethod: () => Promise<AccessibilityActionResult>;
       isAccessibilityServiceEnabled: () => Promise<boolean>;
       isInputMethodReady: () => Promise<boolean>;
       captureScreenContext: () => Promise<{ imageUri?: string | null; nodeTree: string }>;
@@ -108,6 +109,8 @@ interface AccessibilityActionResult {
 }
 
 const ACCESSIBILITY_TOOL_TIMEOUT_MS = 4200;
+const INPUT_METHOD_READY_TIMEOUT_MS = 2600;
+const INPUT_METHOD_READY_POLL_MS = 120;
 
 function ensureAndroidSystemTools(): NonNullable<typeof AndroidSystemTools> {
   if (Platform.OS !== 'android') {
@@ -169,6 +172,45 @@ async function withAccessibilityTimeout<T>(promise: Promise<T>, actionName: stri
       clearTimeout(timeoutId);
     }
   }
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitForInputMethodReady(
+  module: NonNullable<typeof AccessibilityScreenContext>,
+  timeoutMs = INPUT_METHOD_READY_TIMEOUT_MS
+): Promise<boolean> {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    if (await module.isInputMethodReady()) return true;
+    await sleep(INPUT_METHOD_READY_POLL_MS);
+  }
+  return await module.isInputMethodReady();
+}
+
+async function ensureYSClaudeInputMethodReady(
+  module: NonNullable<typeof AccessibilityScreenContext>,
+  actionName: string
+): Promise<AccessibilityActionResult | null> {
+  if (await module.isInputMethodReady()) return null;
+
+  const switchResult = await withAccessibilityTimeout(
+    module.switchToYSClaudeInputMethod(),
+    `${actionName}:switch_to_ysclaude_ime`
+  );
+  if (!switchResult.success) return switchResult;
+
+  const ready = await waitForInputMethodReady(module);
+  if (!ready) {
+    return {
+      success: false,
+      message: 'YSClaude IME was selected, but no active input connection is ready. Tap or click an input field first.',
+      nodeTree: switchResult.nodeTree,
+    };
+  }
+  return null;
 }
 
 function getTimeRangeArgs(args: Record<string, any>, defaultDays: number): { startDate: Date; endDate: Date } {
@@ -299,6 +341,15 @@ export async function showInputMethodPicker(): Promise<string> {
   return toJson({ opened: true, target: 'input_method_picker' });
 }
 
+export async function switchToYSClaudeInputMethod(): Promise<string> {
+  const module = ensureAccessibilityScreenContext();
+  const result = await withAccessibilityTimeout(
+    module.switchToYSClaudeInputMethod(),
+    'switch_android_input_method_to_ysclaude'
+  );
+  return formatAccessibilityAction(result);
+}
+
 export async function readAccessibilityScreenContext(options: { includeFullTree?: boolean } = {}): Promise<string> {
   const module = ensureAccessibilityScreenContext();
   const context = await module.captureScreenContext();
@@ -402,6 +453,8 @@ export async function commitInputMethodText(args: Record<string, any>): Promise<
   const module = ensureAccessibilityScreenContext();
   const textValue = getArg(args, 'text', 'value', 'content');
   if (typeof textValue !== 'string') throw new Error('Missing text');
+  const switchResult = await ensureYSClaudeInputMethodReady(module, 'ime_commit_android_text');
+  if (switchResult) return formatAccessibilityAction(switchResult);
   const result = await withAccessibilityTimeout(module.commitInputMethodText(textValue), 'ime_commit_android_text');
   return formatAccessibilityAction(result);
 }
@@ -409,6 +462,8 @@ export async function commitInputMethodText(args: Record<string, any>): Promise<
 export async function performInputMethodAction(args: Record<string, any>): Promise<string> {
   const module = ensureAccessibilityScreenContext();
   const action = String(getArg(args, 'action') || 'send');
+  const switchResult = await ensureYSClaudeInputMethodReady(module, 'ime_android_action');
+  if (switchResult) return formatAccessibilityAction(switchResult);
   const result = await withAccessibilityTimeout(module.performInputMethodAction(action), 'ime_android_action');
   return formatAccessibilityAction(result);
 }
@@ -417,6 +472,8 @@ export async function deleteInputMethodText(args: Record<string, any>): Promise<
   const module = ensureAccessibilityScreenContext();
   const beforeLength = asNumber(getArg(args, 'before_length', 'beforeLength'), 1);
   const afterLength = asNumber(getArg(args, 'after_length', 'afterLength'), 0);
+  const switchResult = await ensureYSClaudeInputMethodReady(module, 'ime_delete_android_text');
+  if (switchResult) return formatAccessibilityAction(switchResult);
   const result = await withAccessibilityTimeout(
     module.deleteInputMethodText(beforeLength, afterLength),
     'ime_delete_android_text'

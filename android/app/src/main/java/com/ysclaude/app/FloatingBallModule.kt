@@ -1868,7 +1868,6 @@ private class DesktopMusicProgressView(context: Context) : View(context) {
     color = Color.rgb(20, 20, 20)
   }
   private var progress = 0f
-  private val clockHandler = Handler(Looper.getMainLooper())
   private var basePositionMs = 0L
   private var baseElapsedMs = 0L
   private var durationMs = 0L
@@ -1923,12 +1922,12 @@ private class DesktopMusicProgressView(context: Context) : View(context) {
 
   private fun scheduleClock() {
     if (!isAttachedToWindow || !isPlaying || durationMs <= 0L) return
-    clockHandler.removeCallbacks(clockRunnable)
-    clockHandler.postDelayed(clockRunnable, PROGRESS_TICK_MS)
+    removeCallbacks(clockRunnable)
+    postOnAnimation(clockRunnable)
   }
 
   private fun stopClock() {
-    clockHandler.removeCallbacks(clockRunnable)
+    removeCallbacks(clockRunnable)
   }
 
   private fun refreshPlaybackProgress() {
@@ -1938,7 +1937,7 @@ private class DesktopMusicProgressView(context: Context) : View(context) {
     val boundedProgress = nextProgress.coerceIn(0f, 1f)
     if (abs(progress - boundedProgress) < 0.001f) return
     progress = boundedProgress
-    invalidate()
+    postInvalidateOnAnimation()
   }
 
   override fun onDraw(canvas: android.graphics.Canvas) {
@@ -1949,10 +1948,6 @@ private class DesktopMusicProgressView(context: Context) : View(context) {
     canvas.drawRoundRect(0f, centerY - radius, width.toFloat(), centerY + radius, radius, radius, trackPaint)
     canvas.drawRoundRect(0f, centerY - radius, width * progress, centerY + radius, radius, radius, fillPaint)
   }
-
-  companion object {
-    private const val PROGRESS_TICK_MS = 500L
-  }
 }
 
 private class DesktopLyricTextView(context: Context) : TextView(context) {
@@ -1960,7 +1955,6 @@ private class DesktopLyricTextView(context: Context) : TextView(context) {
   private var lyricProgress = 0f
   private var displayedLyric = ""
   private var progressAnimator: ValueAnimator? = null
-  private val timelineHandler = Handler(Looper.getMainLooper())
   private var timelineLines: List<DesktopLyricLine> = emptyList()
   private var timelineSignature = ""
   private var timelineBasePositionMs = 0L
@@ -2102,12 +2096,12 @@ private class DesktopLyricTextView(context: Context) : TextView(context) {
 
   private fun scheduleTimelineTick() {
     if (!isAttachedToWindow || !timelineIsPlaying || timelineLines.isEmpty()) return
-    timelineHandler.removeCallbacks(timelineRunnable)
-    timelineHandler.postDelayed(timelineRunnable, TIMELINE_TICK_MS)
+    removeCallbacks(timelineRunnable)
+    postOnAnimation(timelineRunnable)
   }
 
   private fun stopTimelineTick() {
-    timelineHandler.removeCallbacks(timelineRunnable)
+    removeCallbacks(timelineRunnable)
   }
 
   private fun applyTimelineFrame(forceText: Boolean = false) {
@@ -2133,7 +2127,7 @@ private class DesktopLyricTextView(context: Context) : TextView(context) {
       }
       boundedProgress(positionMs, currentLine.timeMs, endMs)
     }
-    invalidate()
+    postInvalidateOnAnimation()
   }
 
   private fun currentTimelinePositionMs(): Long {
@@ -2172,7 +2166,6 @@ private class DesktopLyricTextView(context: Context) : TextView(context) {
   companion object {
     private val PLAYED_TEXT_COLOR = Color.rgb(0, 128, 245)
     private const val PROGRESS_ANIMATION_MS = 180L
-    private const val TIMELINE_TICK_MS = 180L
     private const val DEFAULT_LINE_DURATION_MS = 4000L
   }
 }

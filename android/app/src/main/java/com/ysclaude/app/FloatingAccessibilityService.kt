@@ -10,6 +10,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import org.json.JSONArray
@@ -293,6 +294,109 @@ class FloatingAccessibilityService : AccessibilityService() {
     }
   }
 
+  private fun isYSClaudeInputMethodCandidate(node: AccessibilityNodeInfo): Boolean {
+    val expectedLabel = getString(R.string.ysclaude_ime_label).lowercase()
+    val text = node.text?.toString()?.lowercase() ?: ""
+    val description = node.contentDescription?.toString()?.lowercase() ?: ""
+    return text.contains(expectedLabel) ||
+      description.contains(expectedLabel) ||
+      text.contains("ysclaude") ||
+      description.contains("ysclaude")
+  }
+
+  private fun findYSClaudeInputMethodCandidate(
+    node: AccessibilityNodeInfo,
+    depth: Int = 0,
+    budget: NodeBudget = NodeBudget()
+  ): AccessibilityNodeInfo? {
+    budget.count += 1
+    if (isYSClaudeInputMethodCandidate(node)) return AccessibilityNodeInfo.obtain(node)
+    if (depth >= MAX_INPUT_METHOD_PICKER_DEPTH || budget.count >= MAX_INPUT_METHOD_PICKER_NODES) return null
+
+    for (index in 0 until node.childCount) {
+      if (budget.count >= MAX_INPUT_METHOD_PICKER_NODES) break
+      val child = node.getChild(index) ?: continue
+      try {
+        val candidate = findYSClaudeInputMethodCandidate(child, depth + 1, budget)
+        if (candidate != null) return candidate
+      } finally {
+        child.recycle()
+      }
+    }
+
+    return null
+  }
+
+  private fun findYSClaudeInputMethodCandidateInWindows(): AccessibilityNodeInfo? {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+      for (window in windows) {
+        val root = window.root ?: continue
+        try {
+          val candidate = findYSClaudeInputMethodCandidate(root)
+          if (candidate != null) return candidate
+        } finally {
+          root.recycle()
+        }
+      }
+    }
+
+    val root = rootInActiveWindow ?: return null
+    return try {
+      findYSClaudeInputMethodCandidate(root)
+    } finally {
+      root.recycle()
+    }
+  }
+
+  private fun clickNodeOrClickableParent(node: AccessibilityNodeInfo): Boolean {
+    var current: AccessibilityNodeInfo? = node
+    var recycleCurrent = false
+    while (current != null) {
+      if (current.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+        if (recycleCurrent) current.recycle()
+        return true
+      }
+      val parent = current.parent
+      if (recycleCurrent) current.recycle()
+      current = parent
+      recycleCurrent = true
+    }
+    return false
+  }
+
+  private fun selectYSClaudeInputMethodFromPicker(callback: (Result<ActionResult>) -> Unit) {
+    val startedAt = SystemClock.uptimeMillis()
+
+    fun finish(success: Boolean, message: String) {
+      callback(Result.success(ActionResult(success, message, collectNodeTreeOrNull())))
+    }
+
+    fun attempt() {
+      val candidate = findYSClaudeInputMethodCandidateInWindows()
+      if (candidate != null) {
+        val clicked = try {
+          clickNodeOrClickableParent(candidate)
+        } finally {
+          candidate.recycle()
+        }
+        finish(
+          clicked,
+          if (clicked) "Selected YSClaude IME from Android input method picker" else "Found YSClaude IME, but picker row rejected click"
+        )
+        return
+      }
+
+      if (SystemClock.uptimeMillis() - startedAt >= INPUT_METHOD_PICKER_TIMEOUT_MS) {
+        finish(false, "YSClaude IME was not found in the Android input method picker. Enable it in input method settings first.")
+        return
+      }
+
+      mainHandler.postDelayed({ attempt() }, INPUT_METHOD_PICKER_RETRY_MS)
+    }
+
+    attempt()
+  }
+
   private fun collectNodeTreeOrNull(): String? {
     return runCatching { collectNodeTree() }.getOrNull()
   }
@@ -435,6 +539,10 @@ class FloatingAccessibilityService : AccessibilityService() {
     private const val MAX_TEXT_TARGET_SEARCH_DEPTH = 5
     private const val MAX_SET_TEXT_CHARS = 4000
     private const val GESTURE_TIMEOUT_MS = 2800L
+    private const val INPUT_METHOD_PICKER_TIMEOUT_MS = 2600L
+    private const val INPUT_METHOD_PICKER_RETRY_MS = 120L
+    private const val MAX_INPUT_METHOD_PICKER_DEPTH = 8
+    private const val MAX_INPUT_METHOD_PICKER_NODES = 120
 
     @Volatile
     private var instance: FloatingAccessibilityService? = null
@@ -541,6 +649,17 @@ class FloatingAccessibilityService : AccessibilityService() {
       }
       service.mainHandler.post {
         callback(Result.success(service.runSetFocusedText(text)))
+      }
+    }
+
+    fun selectYSClaudeInputMethod(callback: (Result<ActionResult>) -> Unit) {
+      val service = instance
+      if (service == null) {
+        callback(Result.failure(IllegalStateException("Please enable the YSClaude accessibility service first")))
+        return
+      }
+      service.mainHandler.post {
+        service.selectYSClaudeInputMethodFromPicker(callback)
       }
     }
 

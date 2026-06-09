@@ -18,6 +18,7 @@ import {
   setAccessibilityNodeText,
   setFocusedAccessibilityText,
   showInputMethodPicker,
+  switchToYSClaudeInputMethod,
   swipeAccessibilityScreen,
   tapAccessibilityScreen,
   tapAccessibilityScreenRelative,
@@ -92,6 +93,15 @@ const SHOW_INPUT_METHOD_PICKER_TOOL: ToolDefinition = {
   function: {
     name: 'show_android_input_method_picker',
     description: 'Show the Android input method picker so the user can switch the current keyboard to YSClaude IME. Use after the user has enabled YSClaude IME in system settings.',
+    parameters: { type: 'object', properties: {}, required: [] },
+  },
+};
+
+const SWITCH_TO_YSCLAUDE_INPUT_METHOD_TOOL: ToolDefinition = {
+  type: 'function',
+  function: {
+    name: 'switch_android_input_method_to_ysclaude',
+    description: 'Switch the current Android keyboard to YSClaude IME by opening the system input method picker and selecting YSClaude IME through the accessibility service. Use after focusing an input if ime_commit_android_text reports that no input connection is ready. If YSClaude IME is not enabled in system settings, ask the user to enable it once.',
     parameters: { type: 'object', properties: {}, required: [] },
   },
 };
@@ -222,7 +232,7 @@ const IME_COMMIT_ANDROID_TEXT_TOOL: ToolDefinition = {
   type: 'function',
   function: {
     name: 'ime_commit_android_text',
-    description: 'Commit text to the current focused input through YSClaude IME. Use this after tapping/clicking an input field and when YSClaude IME is active. This does not require an accessibility input node and works better for apps like WeChat whose input boxes are not exposed. Do not use for passwords, verification codes, payment, banking, or publishing/sending content unless the user explicitly asked.',
+    description: 'Commit text to the current focused input through YSClaude IME. Use this after tapping/clicking an input field. If YSClaude IME is enabled but not active, YSClaude will try to switch to it automatically before inserting text. This does not require an accessibility input node and works better for apps like WeChat whose input boxes are not exposed. Do not use for passwords, verification codes, payment, banking, or publishing/sending content unless the user explicitly asked.',
     parameters: {
       type: 'object',
       properties: {
@@ -368,6 +378,7 @@ export const nativeDeviceTool: ToolModule = {
     set_focused_android_text: '输入焦点文本',
     open_android_input_method_settings: '打开输入法设置',
     show_android_input_method_picker: '切换输入法',
+    switch_android_input_method_to_ysclaude: '切换到 YSClaude IME',
     ime_commit_android_text: 'IME 输入文本',
     ime_android_action: 'IME 执行动作',
     ime_delete_android_text: 'IME 删除文本',
@@ -388,6 +399,7 @@ export const nativeDeviceTool: ToolModule = {
         OPEN_ACCESSIBILITY_SETTINGS_TOOL,
         OPEN_INPUT_METHOD_SETTINGS_TOOL,
         SHOW_INPUT_METHOD_PICKER_TOOL,
+        SWITCH_TO_YSCLAUDE_INPUT_METHOD_TOOL,
         OBSERVE_ANDROID_SCREEN_TOOL,
         TAP_ANDROID_SCREEN_TOOL,
         TAP_ANDROID_RELATIVE_TOOL,
@@ -428,6 +440,8 @@ export const nativeDeviceTool: ToolModule = {
         return await openInputMethodSettings();
       case 'show_android_input_method_picker':
         return await showInputMethodPicker();
+      case 'switch_android_input_method_to_ysclaude':
+        return await switchToYSClaudeInputMethod();
       case 'observe_android_screen':
         return await readAccessibilityScreenContext();
       case 'tap_android_screen':

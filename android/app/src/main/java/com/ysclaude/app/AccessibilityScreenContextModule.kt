@@ -44,6 +44,24 @@ class AccessibilityScreenContextModule(
   }
 
   @ReactMethod
+  fun switchToYSClaudeInputMethod(promise: Promise) {
+    if (YSClaudeInputMethodService.isReady()) {
+      promise.resolve(actionToMap(FloatingAccessibilityService.ActionResult(true, "YSClaude IME is already active", null)))
+      return
+    }
+
+    val manager = reactContext.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+    manager.showInputMethodPicker()
+    FloatingAccessibilityService.selectYSClaudeInputMethod { result ->
+      result
+        .onSuccess { action -> promise.resolve(actionToMap(action)) }
+        .onFailure { error ->
+          promise.resolve(actionToMap(FloatingAccessibilityService.ActionResult(false, error.message ?: "Unable to switch to YSClaude IME", null)))
+        }
+    }
+  }
+
+  @ReactMethod
   fun isInputMethodReady(promise: Promise) {
     promise.resolve(YSClaudeInputMethodService.isReady())
   }
