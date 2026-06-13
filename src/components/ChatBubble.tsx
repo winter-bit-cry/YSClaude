@@ -49,10 +49,11 @@ const markdownRules = {
       horizontal
       nestedScrollEnabled
       showsHorizontalScrollIndicator
+      directionalLockEnabled
       style={styles.markdownTableScroll}
       contentContainerStyle={styles.markdownTableScrollContent}
     >
-      <View style={styles._VIEW_SAFE_table}>{children}</View>
+      <View style={[styles._VIEW_SAFE_table, styles.markdownTable]}>{children}</View>
     </ScrollView>
   ),
 };
@@ -1360,10 +1361,13 @@ const createThinkingMarkdownStyles = (colors: ThemeColors) => StyleSheet.create(
   fence: { backgroundColor: colors.codeBlock, borderRadius: 10, padding: 12, marginVertical: 8 },
   code_block: { color: colors.codeText, fontSize: 12, fontFamily: 'monospace' },
   link: { color: colors.primary },
-  markdownTableScroll: { width: '100%', maxWidth: '100%', marginVertical: 8 },
-  markdownTableScrollContent: { flexGrow: 0 },
-  table: { borderWidth: 1, borderColor: colors.border, borderRadius: 8, overflow: 'hidden' },
-  tr: { flexDirection: 'row', borderBottomWidth: 1, borderColor: colors.border },
+  markdownTableScroll: { alignSelf: 'stretch', width: '100%', maxWidth: '100%', marginVertical: 8 },
+  markdownTableScrollContent: { flexGrow: 0, alignItems: 'flex-start' },
+  markdownTable: { alignSelf: 'flex-start', flexShrink: 0 },
+  table: { borderWidth: 1, borderColor: colors.border, borderRadius: 8, overflow: 'hidden', flexShrink: 0 },
+  thead: { flexShrink: 0 },
+  tbody: { flexShrink: 0 },
+  tr: { flexDirection: 'row', alignSelf: 'flex-start', flexShrink: 0, borderBottomWidth: 1, borderColor: colors.border },
   th: { minWidth: 112, flexShrink: 0, paddingVertical: 7, paddingHorizontal: 9, backgroundColor: colors.surface },
   td: { minWidth: 112, flexShrink: 0, paddingVertical: 7, paddingHorizontal: 9 },
 });
@@ -1445,10 +1449,13 @@ const createMarkdownStyles = (
   },
   list_item: { marginVertical: 2, ...strokeStyle },
   link: { color: colors.primary },
-  markdownTableScroll: { width: '100%', maxWidth: '100%', marginVertical: 10 },
-  markdownTableScrollContent: { flexGrow: 0 },
-  table: { borderWidth: 1, borderColor: colors.border, borderRadius: 8, overflow: 'hidden' },
-  tr: { flexDirection: 'row', borderBottomWidth: 1, borderColor: colors.border },
+  markdownTableScroll: { alignSelf: 'stretch', width: '100%', maxWidth: '100%', marginVertical: 10 },
+  markdownTableScrollContent: { flexGrow: 0, alignItems: 'flex-start' },
+  markdownTable: { alignSelf: 'flex-start', flexShrink: 0 },
+  table: { borderWidth: 1, borderColor: colors.border, borderRadius: 8, overflow: 'hidden', flexShrink: 0 },
+  thead: { flexShrink: 0 },
+  tbody: { flexShrink: 0 },
+  tr: { flexDirection: 'row', alignSelf: 'flex-start', flexShrink: 0, borderBottomWidth: 1, borderColor: colors.border },
   th: { minWidth: 128, flexShrink: 0, paddingVertical: 8, paddingHorizontal: 10, backgroundColor: colors.surface, color: textColor, ...strokeStyle },
   td: { minWidth: 128, flexShrink: 0, paddingVertical: 8, paddingHorizontal: 10, color: textColor, ...strokeStyle },
   });
