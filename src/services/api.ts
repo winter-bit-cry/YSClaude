@@ -18,6 +18,7 @@ interface ChatRequest {
   messages: ChatMessage[];
   maxTokens?: number;
   temperature?: number;
+  returnNativeThinking?: boolean;
   sessionId?: string;
   usageContext?: ApiUsageContext;
 }
@@ -30,6 +31,8 @@ interface ChatCompletionChoice {
   message: {
     role: string;
     content: string | null;
+    reasoning_content?: string | null;
+    reasoning?: string | null;
     tool_calls?: {
       id: string;
       type: 'function';
@@ -182,6 +185,16 @@ function numberOrUndefined(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 }
 
+function normalizeNativeThinking(value: unknown): string {
+  return typeof value === 'string' ? value : '';
+}
+
+function wrapNativeThinking(thinking: string, content: string): string {
+  const trimmedThinking = thinking.trim();
+  if (!trimmedThinking) return content;
+  return `<thinking>${trimmedThinking}</thinking>${content}`;
+}
+
 function normalizeUsage(raw: RawApiUsage | null | undefined): ApiTokenUsage | undefined {
   if (!raw) return undefined;
   return {
@@ -255,7 +268,7 @@ async function recordApiUsage({
 export async function chatCompletion(
   request: ChatRequestWithTools
 ): Promise<ChatCompletionResponse> {
-  const { baseUrl, apiKey, model, messages, maxTokens, temperature, tools, sessionId } = request;
+  const { baseUrl, apiKey, model, messages, maxTokens, temperature, returnNativeThinking, tools, sessionId } = request;
   const startedAt = Date.now();
 
   const url = `${baseUrl.trim().replace(/\/$/, '')}/chat/completions`;
@@ -294,6 +307,18 @@ export async function chatCompletion(
     }
 
     const json = await response.json();
+    if (request.returnNativeThinking) {
+      for (const choice of json.choices || []) {
+        const message = choice?.message;
+        if (!message) continue;
+        const thinking =
+          normalizeNativeThinking(message.reasoning_content) ||
+          normalizeNativeThinking(message.reasoning);
+        if (thinking) {
+          message.content = wrapNativeThinking(thinking, message.content || '');
+        }
+      }
+    }
     await recordApiUsage({
       request,
       streaming: false,
@@ -321,7 +346,7 @@ export async function streamChatCompletion(
   onToken: (token: string) => void,
   signal?: AbortSignal
 ): Promise<StreamChatCompletionResult> {
-  const { baseUrl, apiKey, model, messages, maxTokens, temperature, tools, sessionId } = request;
+  const { baseUrl, apiKey, model, messages, maxTokens, temperature, returnNativeThinking, tools, sessionId } = request;
   const startedAt = Date.now();
 
   const url = `${baseUrl.trim().replace(/\/$/, '')}/chat/completions`;
@@ -369,6 +394,9 @@ export async function streamChatCompletion(
     const decoder = new TextDecoder();
     let buffer = '';
     let content = '';
+    let nativeThinking = '';
+    let nativeThinkingOpened = false;
+    let nativeThinkingClosed = false;
     let finishReason: string | undefined;
     const toolCallParts: StreamToolCall[] = [];
     const knownToolNames = new Set((tools || []).map((tool) => tool.function.name));
@@ -385,7 +413,24 @@ export async function streamChatCompletion(
       }
 
       const delta = choice.delta || {};
+      const thinkingDelta =
+        returnNativeThinking
+          ? normalizeNativeThinking(delta.reasoning_content) || normalizeNativeThinking(delta.reasoning)
+          : '';
+      if (thinkingDelta) {
+        if (!nativeThinkingOpened) {
+          nativeThinkingOpened = true;
+          onToken('<thinking>');
+        }
+        nativeThinking += thinkingDelta;
+        onToken(thinkingDelta);
+      }
+
       if (delta.content) {
+        if (nativeThinkingOpened && !nativeThinkingClosed) {
+          nativeThinkingClosed = true;
+          onToken('</thinking>');
+        }
         content += delta.content;
         onToken(delta.content);
       }
@@ -456,6 +501,11 @@ export async function streamChatCompletion(
       }
     }
 
+    if (nativeThinkingOpened && !nativeThinkingClosed) {
+      nativeThinkingClosed = true;
+      onToken('</thinking>');
+    }
+
     const toolCalls = expandConcatenatedToolNames(
       toolCallParts.filter((tc) => tc.function.name),
       knownToolNames
@@ -471,7 +521,7 @@ export async function streamChatCompletion(
     });
 
     return {
-      content,
+      content: wrapNativeThinking(nativeThinking, content),
       tool_calls: toolCalls.length > 0 ? toolCalls : undefined,
       finish_reason: finishReason,
       usage,
@@ -495,7 +545,7 @@ export async function streamChat(
   onToken: (token: string) => void,
   signal?: AbortSignal
 ): Promise<void> {
-  const { baseUrl, apiKey, model, messages, maxTokens, temperature, sessionId } = request;
+  const { baseUrl, apiKey, model, messages, maxTokens, temperature, returnNativeThinking, sessionId } = request;
   const startedAt = Date.now();
 
   const url = `${baseUrl.trim().replace(/\/$/, '')}/chat/completions`;
@@ -539,6 +589,8 @@ export async function streamChat(
 
     const decoder = new TextDecoder();
     let buffer = '';
+    let nativeThinkingOpened = false;
+    let nativeThinkingClosed = false;
 
     while (true) {
       const { done, value } = await reader.read();
@@ -558,14 +610,34 @@ export async function streamChat(
           if (json.usage) {
             rawUsage = json.usage;
           }
-          const delta = json.choices?.[0]?.delta?.content;
+          const rawDelta = json.choices?.[0]?.delta || {};
+          const thinkingDelta =
+            returnNativeThinking
+              ? normalizeNativeThinking(rawDelta.reasoning_content) || normalizeNativeThinking(rawDelta.reasoning)
+              : '';
+          if (thinkingDelta) {
+            if (!nativeThinkingOpened) {
+              nativeThinkingOpened = true;
+              onToken('<thinking>');
+            }
+            onToken(thinkingDelta);
+          }
+          const delta = rawDelta.content;
           if (delta) {
+            if (nativeThinkingOpened && !nativeThinkingClosed) {
+              nativeThinkingClosed = true;
+              onToken('</thinking>');
+            }
             onToken(delta);
           }
         } catch {
           // skip malformed JSON
         }
       }
+    }
+
+    if (nativeThinkingOpened && !nativeThinkingClosed) {
+      onToken('</thinking>');
     }
 
     await recordApiUsage({

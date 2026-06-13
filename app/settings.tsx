@@ -68,6 +68,10 @@ const CUSTOM_FLOATING_BALL_SELECTION_LIMIT = 50;
 const FLOATING_BALL_SIZE_DEFAULT = 64;
 const FLOATING_BALL_SIZE_MIN = 32;
 const FLOATING_BALL_SIZE_MAX = 160;
+const QQ_BOT_BACKEND_TIMEOUT_MS = 60000;
+const QQ_BOT_CONFIG_PAYLOAD_MAX_BYTES = 8 * 1024 * 1024;
+const QQ_BOT_STICKER_BATCH_MAX_BYTES = 900 * 1024;
+const QQ_BOT_STICKER_BATCH_MAX_COUNT = 5;
 const CHAT_INPUT_ICON_ITEMS: Array<{ key: ChatInputIconKey; label: string }> = [
   { key: 'options', label: '左侧菜单' },
   { key: 'sticker', label: '贴纸' },
@@ -2160,6 +2164,8 @@ function APIConfigTab({ showToast, keyboardBottomInset }: SettingsTabProps) {
   const [baseUrl, setBaseUrl] = useState('');
   const [apiKey, setApiKey] = useState('');
   const [model, setModel] = useState('');
+  const [temperature, setTemperature] = useState('');
+  const [returnNativeThinking, setReturnNativeThinking] = useState(false);
   const [imageEnabled, setImageEnabled] = useState(imageGenerationConfig?.enabled ?? false);
   const [imageBaseUrl, setImageBaseUrl] = useState(imageGenerationConfig?.baseUrl || '');
   const [imageApiKey, setImageApiKey] = useState(imageGenerationConfig?.apiKey || '');
@@ -2198,11 +2204,19 @@ function APIConfigTab({ showToast, keyboardBottomInset }: SettingsTabProps) {
       setBaseUrl(config.baseUrl);
       setApiKey(config.apiKey);
       setModel(config.model);
+      setTemperature(typeof config.temperature === 'number' ? String(config.temperature) : '');
+      setReturnNativeThinking(!!config.returnNativeThinking);
     }
   }
 
   function handleNew() {
-    setName(''); setBaseUrl(''); setApiKey(''); setModel(''); setModels([]);
+    setName('');
+    setBaseUrl('');
+    setApiKey('');
+    setModel('');
+    setTemperature('');
+    setReturnNativeThinking(false);
+    setModels([]);
   }
 
   function resolveModelFetchCredentials(target: ModelPickerTarget) {
@@ -2218,6 +2232,14 @@ function APIConfigTab({ showToast, keyboardBottomInset }: SettingsTabProps) {
       baseUrl: imageBaseUrl.trim() || activeConfig?.baseUrl?.trim() || '',
       apiKey: imageApiKey.trim() || activeConfig?.apiKey?.trim() || '',
     };
+  }
+
+  function parseOptionalTemperature(value: string): number | undefined | null {
+    const trimmed = value.trim();
+    if (!trimmed) return undefined;
+    const parsed = Number(trimmed);
+    if (!Number.isFinite(parsed) || parsed < 0 || parsed > 2) return null;
+    return parsed;
   }
 
   async function handleFetchModels(target: ModelPickerTarget = 'chat') {
@@ -2256,6 +2278,11 @@ function APIConfigTab({ showToast, keyboardBottomInset }: SettingsTabProps) {
     }
     setTesting(true);
     try {
+      const parsedTemperature = parseOptionalTemperature(temperature);
+      if (parsedTemperature === null) {
+        Alert.alert('提示', 'temperature 必须是 0 到 2 之间的数字，或留空使用服务默认值');
+        return;
+      }
       const url = `${baseUrl.trim().replace(/\/$/, '')}/chat/completions`;
       const resp = await fetch(url, {
         method: 'POST',
@@ -2267,6 +2294,7 @@ function APIConfigTab({ showToast, keyboardBottomInset }: SettingsTabProps) {
           model: model.trim(),
           messages: [{ role: 'user', content: 'hi' }],
           max_tokens: 5,
+          ...(parsedTemperature !== undefined ? { temperature: parsedTemperature } : {}),
         }),
       });
       if (!resp.ok) {
@@ -2287,8 +2315,15 @@ function APIConfigTab({ showToast, keyboardBottomInset }: SettingsTabProps) {
     if (!baseUrl.trim() || !apiKey.trim() || !model.trim()) {
       Alert.alert('提示', '请填写完整配置'); return;
     }
+    const parsedTemperature = parseOptionalTemperature(temperature);
+    if (parsedTemperature === null) {
+      Alert.alert('提示', 'temperature 必须是 0 到 2 之间的数字，或留空使用服务默认值');
+      return;
+    }
     const config: NamedAPIConfig = {
       name: trimmedName, baseUrl: baseUrl.trim(), apiKey: apiKey.trim(), model: model.trim(),
+      ...(parsedTemperature !== undefined ? { temperature: parsedTemperature } : {}),
+      returnNativeThinking,
     };
     saveAPIConfig(config);
     const newIndex = useSettingsStore.getState().apiConfigs.findIndex((c) => c.name === trimmedName);
@@ -2496,6 +2531,29 @@ function APIConfigTab({ showToast, keyboardBottomInset }: SettingsTabProps) {
             {fetching ? <ActivityIndicator size="small" color="#FFF" /> : <Text style={styles.fetchButtonText}>拉取</Text>}
           </Pressable>
         </View>
+      </View>
+      <View style={styles.field}>
+        <Text style={styles.label}>Temperature</Text>
+        <TextInput
+          style={styles.input}
+          value={temperature}
+          onChangeText={setTemperature}
+          keyboardType="decimal-pad"
+          placeholder="留空使用服务默认值"
+          placeholderTextColor={colors.textTertiary}
+        />
+      </View>
+      <View style={styles.switchRow}>
+        <View style={styles.switchText}>
+          <Text style={styles.label}>返回原生思维链</Text>
+          <Text style={styles.hint}>开启后会显示兼容接口返回的 reasoning_content；关闭后忽略该字段。</Text>
+        </View>
+        <Switch
+          value={returnNativeThinking}
+          onValueChange={setReturnNativeThinking}
+          trackColor={{ false: colors.border, true: colors.primary }}
+          thumbColor="#FFFFFF"
+        />
       </View>
 
       <View style={styles.actions}>
@@ -3576,10 +3634,6 @@ function ToolConfigTab({ showToast, keyboardBottomInset }: SettingsTabProps) {
 
   function validateQqBotConfig(config: QQBotConfig): boolean {
     if (!validateQqBotBackendUrl(config)) return false;
-    if (config.enabled && (!config.appId || !config.appSecret)) {
-      Alert.alert('提示', '启用 QQ 机器人时请填写 AppID 和 AppSecret');
-      return false;
-    }
     if (config.enabled && (!config.openAiBaseUrl || !config.openAiApiKey || !config.model)) {
       Alert.alert('提示', '启用 QQ 机器人时请填写 OpenAI 兼容接口、密钥和模型名');
       return false;
@@ -3607,11 +3661,108 @@ function ToolConfigTab({ showToast, keyboardBottomInset }: SettingsTabProps) {
     return headers;
   }
 
+  function omitUnsetQqBotBackendCredentials(config: Record<string, any>) {
+    if (!String(config.appId || '').trim()) delete config.appId;
+    const appSecret = String(config.appSecret || '').trim();
+    if (!appSecret || isMaskedBackendSecret(appSecret)) delete config.appSecret;
+  }
+
+  function isMaskedBackendSecret(value: string): boolean {
+    return value === '********' || /^.{4}\.\.\..{4}$/.test(value);
+  }
+
+  function measureUtf8Bytes(value: string): number {
+    return new TextEncoder().encode(value).length;
+  }
+
+  function buildStickerSyncBatches(stickers: Array<{ name: string; mimeType: string; dataBase64: string }>) {
+    const batches: Array<Array<{ name: string; mimeType: string; dataBase64: string }>> = [];
+    let current: Array<{ name: string; mimeType: string; dataBase64: string }> = [];
+    for (const sticker of stickers) {
+      const candidate = [...current, sticker];
+      const candidateBytes = measureUtf8Bytes(JSON.stringify({ stickers: candidate }));
+      if (
+        current.length > 0 &&
+        (current.length >= QQ_BOT_STICKER_BATCH_MAX_COUNT || candidateBytes > QQ_BOT_STICKER_BATCH_MAX_BYTES)
+      ) {
+        batches.push(current);
+        current = [sticker];
+      } else {
+        current = candidate;
+      }
+    }
+    if (current.length > 0) batches.push(current);
+    return batches;
+  }
+
+  async function syncQqBotStickers(
+    draft: QQBotConfig,
+    stickers: Array<{ name: string; mimeType: string; dataBase64: string }>
+  ) {
+    const batches = buildStickerSyncBatches(stickers);
+    if (batches.length === 0) {
+      const resp = await fetchQqBotBackend(`${draft.backendUrl}/config/stickers`, {
+        method: 'PUT',
+        headers: {
+          ...makeQqBotControlHeaders(draft),
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ replace: true, stickers: [] }),
+      });
+      const text = await resp.text();
+      if (!resp.ok) throw new Error(text || `HTTP ${resp.status}`);
+      return 0;
+    }
+
+    let syncedCount = 0;
+    for (let index = 0; index < batches.length; index += 1) {
+      const batch = batches[index];
+      const body = JSON.stringify({ replace: index === 0, stickers: batch });
+      const resp = await fetchQqBotBackend(`${draft.backendUrl}/config/stickers`, {
+        method: 'PUT',
+        headers: {
+          ...makeQqBotControlHeaders(draft),
+          'Content-Type': 'application/json',
+        },
+        body,
+      });
+      const text = await resp.text();
+      if (!resp.ok) throw new Error(text || `HTTP ${resp.status}`);
+      syncedCount += batch.length;
+      setQqBackendStatus(`正在同步表情包 ${syncedCount}/${stickers.length}`);
+    }
+    return syncedCount;
+  }
+
+  async function fetchQqBotBackend(url: string, init: RequestInit = {}) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), QQ_BOT_BACKEND_TIMEOUT_MS);
+    try {
+      return await fetch(url, {
+        ...init,
+        signal: controller.signal,
+      });
+    } catch (error: any) {
+      const errorName = String(error?.name || '').toLowerCase();
+      const errorMessage = String(error?.message || '').toLowerCase();
+      if (
+        errorName === 'aborterror' ||
+        errorMessage.includes('abort') ||
+        errorMessage.includes('cancel')
+      ) {
+        throw new Error('后端响应超时，请检查后端日志或稍后再试');
+      }
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
   function handleSaveQqBot(): boolean {
     const draft = buildQqBotConfigDraft();
     if (!validateQqBotBackendUrl(draft)) return false;
     setQqBotConfig(draft);
-    if (draft.enabled && (!draft.appId || !draft.appSecret || !draft.openAiBaseUrl || !draft.openAiApiKey || !draft.model)) {
+    if (draft.enabled && (!draft.openAiBaseUrl || !draft.openAiApiKey || !draft.model)) {
       showToast('QQ 机器人草稿已保存，启动前还需补全必填项');
     } else {
       showToast(draft.enabled ? 'QQ 机器人配置已保存' : 'QQ 机器人已关闭');
@@ -3731,7 +3882,7 @@ function ToolConfigTab({ showToast, keyboardBottomInset }: SettingsTabProps) {
     if (!validateQqBotConfig({ ...draft, enabled: false })) return;
     setQqBackendTesting(true);
     try {
-      const resp = await fetch(`${draft.backendUrl}/health`, {
+      const resp = await fetchQqBotBackend(`${draft.backendUrl}/health`, {
         method: 'GET',
         headers: makeQqBotControlHeaders(draft),
       });
@@ -3767,16 +3918,22 @@ function ToolConfigTab({ showToast, keyboardBottomInset }: SettingsTabProps) {
       const backendConfig = Object.fromEntries(
         Object.entries(draft).filter(([key]) => key !== 'backendUrl' && key !== 'controlToken')
       );
+      omitUnsetQqBotBackendCredentials(backendConfig);
       const stickerCandidateCount = getQqStickerCount();
       const stickerPayload = await buildQqBotStickerPayload();
-      backendConfig.stickers = stickerPayload;
-      const resp = await fetch(`${draft.backendUrl}/config`, {
+      backendConfig.stickers = [];
+      const body = JSON.stringify(backendConfig);
+      const bodyBytes = measureUtf8Bytes(body);
+      if (bodyBytes > QQ_BOT_CONFIG_PAYLOAD_MAX_BYTES) {
+        throw new Error(`同步内容约 ${(bodyBytes / 1024 / 1024).toFixed(1)}MB，可能超过后端代理限制。请先关闭表情包同步或减少表情包数量/大小。`);
+      }
+      const resp = await fetchQqBotBackend(`${draft.backendUrl}/config`, {
         method: 'PUT',
         headers: {
           ...makeQqBotControlHeaders(draft),
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(backendConfig),
+        body,
       });
       const text = await resp.text();
       if (!resp.ok) throw new Error(text || `HTTP ${resp.status}`);
@@ -3786,6 +3943,9 @@ function ToolConfigTab({ showToast, keyboardBottomInset }: SettingsTabProps) {
         backendStickerCount = Array.isArray(json?.config?.stickers) ? json.config.stickers.length : backendStickerCount;
       } catch {
         // Non-JSON responses are handled by the HTTP status above.
+      }
+      if (qqStickersEnabled) {
+        backendStickerCount = await syncQqBotStickers(draft, stickerPayload);
       }
       const stickerStatus = qqStickersEnabled
         ? `表情包 ${backendStickerCount}/${stickerCandidateCount}`
@@ -3810,7 +3970,7 @@ function ToolConfigTab({ showToast, keyboardBottomInset }: SettingsTabProps) {
       Alert.alert('微信扫码登录', '点击确定后请打开 Zeabur 服务日志查看二维码并用微信扫码。二维码过期后可重新点击登录。');
     }
     try {
-      const resp = await fetch(`${draft.backendUrl}/control/wechat/${action}`, {
+      const resp = await fetchQqBotBackend(`${draft.backendUrl}/control/wechat/${action}`, {
         method: 'POST',
         headers: makeQqBotControlHeaders(draft),
       });
@@ -5076,6 +5236,7 @@ function DiaryTab({ showToast, keyboardBottomInset }: SettingsTabProps) {
             { role: 'user', content: `${summaryPrompt}\n\n以下是对话内容：\n\n${conversationText}` },
           ],
           maxTokens: maxOutputTokens || undefined,
+          temperature: config.temperature,
         },
         (token: string) => setSummaryText((prev) => prev + token),
         summaryAbort.current.signal

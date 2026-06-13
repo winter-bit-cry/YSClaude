@@ -82,6 +82,8 @@ export interface APIConfig {
   baseUrl: string;
   apiKey: string;
   model: string;
+  temperature?: number;
+  returnNativeThinking?: boolean;
 }
 
 export type ReadingBookFormat = 'txt' | 'epub';
@@ -235,4 +237,9 @@ export interface ApiUsageSummary {
 
 export interface ApiUsageGroupSummary extends ApiUsageSummary {
   key: string;
+  channels?: string[];
+}
+
+export interface ApiUsageDailySummary extends ApiUsageSummary {
+  dateKey: string;
 }

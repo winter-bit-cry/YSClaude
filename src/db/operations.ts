@@ -19,6 +19,7 @@ import {
   ToolCall,
   GeneratedPicture,
   ApiUsageEvent,
+  ApiUsageDailySummary,
   ApiUsageGroupSummary,
   ApiUsageStatus,
   ApiUsageSummary,
@@ -1990,6 +1991,15 @@ interface ApiUsageSummaryRow {
   total_duration_ms: number | null;
 }
 
+interface ApiUsageDailySummaryRow extends ApiUsageSummaryRow {
+  date_key: string;
+}
+
+interface ApiUsageModelSummaryRow extends ApiUsageSummaryRow {
+  key_name: string;
+  channels: string | null;
+}
+
 function normalizeApiUsageStatus(value: string): ApiUsageStatus {
   if (value === 'error' || value === 'aborted') return value;
   return 'success';
@@ -2093,12 +2103,56 @@ export async function getApiUsageEvents(limit = 100): Promise<ApiUsageEvent[]> {
   return rows.map(mapApiUsageEventRow);
 }
 
+export async function getApiUsageEventsByDate(dateKey: string, limit = 200): Promise<ApiUsageEvent[]> {
+  const db = await getDatabase();
+  const { startAt, endAt } = dateRangeForLocalKey(dateKey);
+  const rows = await db.getAllAsync<ApiUsageEventRow>(
+    `SELECT *
+       FROM api_usage_events
+      WHERE started_at >= ? AND started_at < ?
+      ORDER BY started_at DESC
+      LIMIT ?`,
+    [startAt, endAt, Math.max(1, limit)]
+  );
+  return rows.map(mapApiUsageEventRow);
+}
+
 export async function getApiUsageSummary(): Promise<ApiUsageSummary> {
   const db = await getDatabase();
   const row = await db.getFirstAsync<ApiUsageSummaryRow>(
     `SELECT ${API_USAGE_SUMMARY_SELECT} FROM api_usage_events`
   );
   return mapApiUsageSummaryRow(row);
+}
+
+export async function getApiUsageSummaryByDate(dateKey: string): Promise<ApiUsageSummary> {
+  const db = await getDatabase();
+  const { startAt, endAt } = dateRangeForLocalKey(dateKey);
+  const row = await db.getFirstAsync<ApiUsageSummaryRow>(
+    `SELECT ${API_USAGE_SUMMARY_SELECT}
+       FROM api_usage_events
+      WHERE started_at >= ? AND started_at < ?`,
+    [startAt, endAt]
+  );
+  return mapApiUsageSummaryRow(row);
+}
+
+export async function getApiUsageDailySummaries(limit = 180): Promise<ApiUsageDailySummary[]> {
+  const db = await getDatabase();
+  const rows = await db.getAllAsync<ApiUsageDailySummaryRow>(
+    `SELECT
+        date(started_at / 1000, 'unixepoch', 'localtime') as date_key,
+        ${API_USAGE_SUMMARY_SELECT}
+       FROM api_usage_events
+      GROUP BY date_key
+      ORDER BY date_key DESC
+      LIMIT ?`,
+    [Math.max(1, limit)]
+  );
+  return rows.map((row) => ({
+    dateKey: row.date_key,
+    ...mapApiUsageSummaryRow(row),
+  }));
 }
 
 export async function getApiUsageSummaryByFeature(): Promise<ApiUsageGroupSummary[]> {
@@ -2117,14 +2171,21 @@ export async function getApiUsageSummaryByFeature(): Promise<ApiUsageGroupSummar
 
 export async function getApiUsageSummaryByModel(): Promise<ApiUsageGroupSummary[]> {
   const db = await getDatabase();
-  const rows = await db.getAllAsync<ApiUsageSummaryRow & { key_name: string }>(
-    `SELECT model as key_name, ${API_USAGE_SUMMARY_SELECT}
+  const rows = await db.getAllAsync<ApiUsageModelSummaryRow>(
+    `SELECT
+        model as key_name,
+        GROUP_CONCAT(DISTINCT base_url) as channels,
+        ${API_USAGE_SUMMARY_SELECT}
        FROM api_usage_events
       GROUP BY model
       ORDER BY total_tokens DESC, total_calls DESC`
   );
   return rows.map((row) => ({
     key: row.key_name || 'unknown',
+    channels: (row.channels || '')
+      .split(',')
+      .map((channel) => channel.trim())
+      .filter(Boolean),
     ...mapApiUsageSummaryRow(row),
   }));
 }

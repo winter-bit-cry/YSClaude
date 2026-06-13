@@ -848,7 +848,7 @@ function isAbortError(err: any): boolean {
  * 返回是否已由工具流式路径处理；若没有启用任何工具则返回 false（调用方走普通流式路径）。
  */
 async function runToolLoop(
-  config: { baseUrl: string; apiKey: string; model: string },
+  config: { baseUrl: string; apiKey: string; model: string; temperature?: number; returnNativeThinking?: boolean },
   requestMessages: ChatMessage[],
   maxTokens: number | undefined,
   onToken: (token: string) => void,
@@ -913,6 +913,8 @@ async function runToolLoop(
       model: config.model,
       messages,
       maxTokens,
+      temperature: config.temperature,
+      returnNativeThinking: config.returnNativeThinking,
       tools,
       sessionId: options?.sessionId,
       usageContext: {
@@ -1346,6 +1348,8 @@ async function streamAssistantResponse(
           model: config.model,
           messages: outgoingMessages,
           maxTokens: settings.maxOutputTokens || undefined,
+          temperature: config.temperature,
+          returnNativeThinking: config.returnNativeThinking,
           sessionId,
           usageContext: {
             feature: 'chat',
