@@ -124,6 +124,20 @@ export default function GameHomeScreen() {
       </View>
 
       <View style={styles.content}>
+        <View style={styles.builtinSection}>
+          <Text style={styles.sectionTitle}>内置小游戏</Text>
+          <Pressable style={styles.townSimCard} onPress={() => router.push('/game/town')}>
+            <View style={styles.townSimVisual}>
+              <Text style={styles.townSimGlyph}>田</Text>
+            </View>
+            <View style={styles.townSimInfo}>
+              <Text style={styles.townSimTitle}>城镇经营</Text>
+              <Text style={styles.townSimMeta}>Token 兑换金币 · 种植 · 养殖 · 手工业</Text>
+            </View>
+            <Text style={styles.townSimArrow}>›</Text>
+          </Pressable>
+        </View>
+
         <View style={styles.toolbar}>
           <Text style={styles.sectionTitle}>副本</Text>
           <Pressable style={styles.createButton} onPress={handleCreateScenario}>
@@ -951,6 +965,54 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   content: {
     flex: 1,
     paddingTop: 18,
+  },
+  builtinSection: {
+    paddingHorizontal: 18,
+    marginBottom: 16,
+  },
+  townSimCard: {
+    minHeight: 88,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: colors.surface,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 12,
+  },
+  townSimVisual: {
+    width: 56,
+    height: 56,
+    borderRadius: 8,
+    backgroundColor: colors.primaryLight,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  townSimGlyph: {
+    color: colors.primary,
+    fontSize: 24,
+    fontWeight: '900',
+  },
+  townSimInfo: {
+    flex: 1,
+    minWidth: 0,
+  },
+  townSimTitle: {
+    color: colors.text,
+    fontSize: 17,
+    fontWeight: '900',
+  },
+  townSimMeta: {
+    marginTop: 4,
+    color: colors.textSecondary,
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  townSimArrow: {
+    color: colors.textTertiary,
+    fontSize: 28,
+    lineHeight: 30,
   },
   contentInner: {
     padding: 18,
