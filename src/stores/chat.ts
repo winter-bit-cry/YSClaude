@@ -800,6 +800,29 @@ function prependRuntimeContext(message: ChatMessage, runtimeContext: string): Ch
   };
 }
 
+function prependRuntimeContextToFirstMessage(messages: ChatMessage[], runtimeContext: string): ChatMessage[] {
+  if (messages.length === 0) return [{ role: 'user', content: runtimeContext }];
+  return [
+    prependRuntimeContext(messages[0], runtimeContext),
+    ...messages.slice(1),
+  ];
+}
+
+function findPendingInputStartIndex(
+  filteredMessages: Message[],
+  boundaryMessageId: string | null | undefined
+): number {
+  if (boundaryMessageId === undefined) {
+    return filteredMessages[filteredMessages.length - 1]?.role === 'user'
+      ? filteredMessages.length - 1
+      : filteredMessages.length;
+  }
+  if (boundaryMessageId === null) return 0;
+
+  const boundaryIndex = filteredMessages.findIndex((message) => message.id === boundaryMessageId);
+  return boundaryIndex >= 0 ? boundaryIndex + 1 : filteredMessages.length;
+}
+
 function truncateInlineText(value: string, maxLength: number): string {
   const text = value.replace(/\s+/g, ' ').trim();
   if (text.length <= maxLength) return text;
@@ -1080,6 +1103,7 @@ async function streamAssistantResponse(
   const timestampMessageIndex = boundaryMessageId
     ? filtered.findIndex((message) => message.id === boundaryMessageId)
     : -1;
+  const pendingInputStartIndex = findPendingInputStartIndex(filtered, boundaryMessageId);
   const previousMessageTime =
     timestampMessageIndex >= 0 ? formatFullTime(filtered[timestampMessageIndex].createdAt) : null;
 
@@ -1109,12 +1133,8 @@ async function streamAssistantResponse(
   });
 
   const apiMessages = await Promise.all(apiMessagesPromises);
-  const latestUserMessage = apiMessages[apiMessages.length - 1]?.role === 'user'
-    ? apiMessages[apiMessages.length - 1]
-    : null;
-  const historyApiMessages = latestUserMessage
-    ? apiMessages.slice(0, -1)
-    : apiMessages;
+  const pendingApiMessages = apiMessages.slice(pendingInputStartIndex);
+  const historyApiMessages = apiMessages.slice(0, pendingInputStartIndex);
 
   const runtimeSections: string[] = [];
   if (pendingWebCruise) {
@@ -1193,9 +1213,7 @@ async function streamAssistantResponse(
 
   const suffixMessages: ChatMessage[] = shouldUseSyntheticAccessibilityRequest
     ? [{ role: 'user', content: runtimeContext }]
-    : latestUserMessage
-      ? [prependRuntimeContext(latestUserMessage, runtimeContext)]
-      : [{ role: 'user', content: runtimeContext }];
+    : prependRuntimeContextToFirstMessage(pendingApiMessages, runtimeContext);
 
   if (pendingAndroidContext?.imageUri && suffixMessages[0]) {
     const dataUrl = await readImageAsDataUrl(pendingAndroidContext.imageUri);

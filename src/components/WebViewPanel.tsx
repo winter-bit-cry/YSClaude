@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Dimensions,
   Image,
+  Linking,
   PanResponder,
   Pressable,
   ScrollView,
@@ -50,6 +51,7 @@ const MAX_WEB_BOOKMARKS = 80;
 const DESKTOP_WEBVIEW_MIN_WIDTH = 1280;
 const DESKTOP_WEBVIEW_USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36';
+const EXTERNAL_AUTH_OPEN_COOLDOWN_MS = 2500;
 
 interface WebBookmark {
   id: string;
@@ -439,6 +441,42 @@ function buildGoogleTranslateUrl(value: string): string | null {
   }
 }
 
+function normalizeExternalBrowserUrl(value: string): string | null {
+  try {
+    const parsed = new URL(value);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      return null;
+    }
+    return parsed.toString();
+  } catch {
+    return null;
+  }
+}
+
+function shouldOpenGoogleAuthExternally(value: string): boolean {
+  try {
+    const parsed = new URL(value);
+    const hostname = parsed.hostname.toLowerCase();
+    const pathname = parsed.pathname.toLowerCase();
+
+    if (hostname === 'accounts.google.com' || hostname === 'accounts.youtube.com') {
+      return true;
+    }
+
+    if ((hostname === 'www.google.com' || hostname === 'google.com') && (
+      pathname.startsWith('/accounts') ||
+      pathname.startsWith('/o/oauth2') ||
+      pathname.startsWith('/signin')
+    )) {
+      return true;
+    }
+
+    return false;
+  } catch {
+    return false;
+  }
+}
+
 function clampPanelSize(width: number, height: number) {
   const screen = Dimensions.get('window');
   return {
@@ -504,6 +542,7 @@ export function WebViewPanel() {
   const urlRef = useRef('');
   const titleRef = useRef('');
   const userAgentRef = useRef<string | undefined>(undefined);
+  const lastExternalAuthOpenRef = useRef<{ url: string; openedAt: number } | null>(null);
   const [visible, setVisible] = useState(false);
   const [url, setUrl] = useState('');
   const [addressInput, setAddressInput] = useState('');
@@ -1007,6 +1046,47 @@ export function WebViewPanel() {
     setCanGoBack(!!navState.canGoBack);
   };
 
+  const openInSystemBrowser = useCallback(async (targetUrl = urlRef.current, nextStatus = '已在系统浏览器打开') => {
+    const externalUrl = normalizeExternalBrowserUrl(targetUrl);
+    setShowWebMenu(false);
+    setShowClearDataMenu(false);
+    setShowBookmarks(false);
+
+    if (!externalUrl) {
+      setStatus('当前网址无法用系统浏览器打开');
+      return;
+    }
+
+    try {
+      setStatus('正在打开系统浏览器');
+      await Linking.openURL(externalUrl);
+      setStatus(nextStatus);
+    } catch (err) {
+      console.warn('[WebView] open external browser failed:', err);
+      setStatus('无法打开系统浏览器');
+    }
+  }, []);
+
+  const handleShouldStartLoadWithRequest = useCallback((request: any) => {
+    const requestUrl = typeof request?.url === 'string' ? request.url : '';
+    if (!requestUrl || requestUrl === 'about:blank') {
+      return true;
+    }
+
+    if (shouldOpenGoogleAuthExternally(requestUrl)) {
+      const now = Date.now();
+      const lastOpen = lastExternalAuthOpenRef.current;
+      if (!lastOpen || lastOpen.url !== requestUrl || now - lastOpen.openedAt > EXTERNAL_AUTH_OPEN_COOLDOWN_MS) {
+        lastExternalAuthOpenRef.current = { url: requestUrl, openedAt: now };
+        void openInSystemBrowser(requestUrl, 'Google 登录已转到系统浏览器');
+      }
+      setStatus('Google 登录需要系统浏览器');
+      return false;
+    }
+
+    return true;
+  }, [openInSystemBrowser]);
+
   const handleMessage = (event: WebViewMessageEvent) => {
     let payload: any;
     try {
@@ -1300,6 +1380,13 @@ export function WebViewPanel() {
           >
             <Text style={[styles.webMenuText, !url && styles.webMenuTextDisabled]}>翻译当前页</Text>
           </Pressable>
+          <Pressable
+            style={[styles.webMenuItem, !url && styles.webMenuItemDisabled]}
+            onPress={() => openInSystemBrowser()}
+            disabled={!url}
+          >
+            <Text style={[styles.webMenuText, !url && styles.webMenuTextDisabled]}>系统浏览器打开</Text>
+          </Pressable>
           <Pressable style={styles.webMenuItem} onPress={toggleUserAgent}>
             <Text style={styles.webMenuText}>{webViewUserAgent ? '切换移动端 UA' : '切换网页端 UA'}</Text>
           </Pressable>
@@ -1398,6 +1485,7 @@ export function WebViewPanel() {
             onLoadEnd={handleLoadEnd}
             onMessage={handleMessage}
             onNavigationStateChange={handleNavigationStateChange}
+            onShouldStartLoadWithRequest={handleShouldStartLoadWithRequest}
             injectedJavaScript={`${webViewUserAgent ? DESKTOP_LAYOUT_SCROLL_SCRIPT : ''}\n${LOGIN_OVERLAY_CLEANUP_SCRIPT}`}
             setSupportMultipleWindows={false}
           />
