@@ -1,3 +1,4 @@
+import type { ComponentType } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
@@ -9,6 +10,17 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
+import {
+  BookOpen,
+  Fish,
+  Map as MapIcon,
+  Package,
+  RefreshCw,
+  ScrollText,
+  ShoppingBag,
+  Store,
+  X,
+} from 'lucide-react-native';
 import type { McpToolConfig } from '../stores/settings';
 import type { Message } from '../types';
 import { useThemeColors, type ThemeColors } from '../theme/colors';
@@ -36,7 +48,9 @@ interface FishingFloatingPanelProps {
 
 const PANEL_HEIGHT = 390;
 const POLL_INTERVAL_MS = 5000;
-type FishingPanelTab = 'log' | 'inventory' | 'encyclopedia';
+type FishingPanelTab = 'log' | 'inventory' | 'shop';
+type FishingPanelMenu = 'actions' | 'map' | null;
+type FishingIcon = ComponentType<{ color?: string; size?: number; strokeWidth?: number }>;
 
 interface FishingPanelItem {
   id: string;
@@ -59,6 +73,20 @@ interface FishingUserAction {
   nextTab?: FishingPanelTab;
 }
 
+const FISHING_LOCATIONS = [
+  { id: 'moonlit_pond', name: '月光池塘' },
+  { id: 'reed_river', name: '芦苇河' },
+  { id: 'abyssal_trench', name: '深渊海沟' },
+  { id: 'floating_lake', name: '浮空之湖' },
+  { id: 'lava_spring', name: '熔岩温泉' },
+  { id: 'mangrove_shoal', name: '红树林浅滩' },
+  { id: 'whispering_mire', name: '耳语沼泽' },
+  { id: 'starry_delta', name: '星河三角洲' },
+  { id: 'sunken_ruins', name: '沉没遗迹' },
+  { id: 'geyser_falls', name: '间歇泉瀑布' },
+  { id: 'crystal_cave', name: '水晶洞' },
+];
+
 export function FishingFloatingPanel({
   visible,
   messages,
@@ -79,7 +107,10 @@ export function FishingFloatingPanel({
   const [tab, setTab] = useState<FishingPanelTab>('log');
   const [inventoryText, setInventoryText] = useState('');
   const [encyclopediaText, setEncyclopediaText] = useState('');
+  const [shopText, setShopText] = useState('');
+  const [encyclopediaVisible, setEncyclopediaVisible] = useState(false);
   const [detail, setDetail] = useState<FishingDetail | null>(null);
+  const [menu, setMenu] = useState<FishingPanelMenu>(null);
   const [inspectLoading, setInspectLoading] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const connection = useMemo(() => resolveFishingServer(mcpToolConfig), [mcpToolConfig]);
@@ -145,9 +176,11 @@ export function FishingFloatingPanel({
       if (target === 'inventory') {
         setInventoryText(payload.result);
         setDetail(null);
-      } else if (target === 'encyclopedia') {
-        setEncyclopediaText(payload.result);
+      } else if (target === 'shop') {
+        setShopText(payload.result);
         setDetail(null);
+      } else if (command === 'encyclopedia') {
+        setEncyclopediaText(payload.result);
       } else {
         setDetail({ title, body: stripStateLine(payload.result) });
       }
@@ -175,6 +208,7 @@ export function FishingFloatingPanel({
       const body = stripStateLine(payload.result);
       setDetail({ title: `用户操作：${action.label}`, body });
       setTab(action.nextTab || 'log');
+      setMenu(null);
       if (payload.state) setServerState(payload.state);
       if (payload.run_id) setRunId(payload.run_id);
       await onUserActionMessage?.(formatUserActionSystemMessage(action, payload.result, sessionId));
@@ -182,6 +216,11 @@ export function FishingFloatingPanel({
         setInventoryText(payload.result);
       } else {
         setInventoryText('');
+      }
+      if (action.request.action === 'shop') {
+        setShopText(payload.result);
+      } else if (action.request.action === 'buy' || action.request.action === 'sell') {
+        setShopText('');
       }
       if (action.request.action === 'encyclopedia') {
         setEncyclopediaText(payload.result);
@@ -223,6 +262,14 @@ export function FishingFloatingPanel({
     () => buildInventoryItems(inventoryText, latestState),
     [inventoryText, latestState]
   );
+  const shopActions = useMemo(
+    () => buildShopActions(inventoryItems),
+    [inventoryItems]
+  );
+  const allActions = useMemo(
+    () => [...userActions, ...shopActions],
+    [shopActions, userActions]
+  );
   const encyclopediaItems = useMemo(
     () => parseEncyclopediaItems(encyclopediaText),
     [encyclopediaText]
@@ -233,10 +280,11 @@ export function FishingFloatingPanel({
     if (tab === 'inventory' && !inventoryText && !inspectLoading) {
       runInspect('inventory', '背包', 'inventory').catch(() => undefined);
     }
-    if (tab === 'encyclopedia' && !encyclopediaText && !inspectLoading) {
-      runInspect('encyclopedia', '图鉴', 'encyclopedia').catch(() => undefined);
+    if (tab === 'shop' && !inspectLoading) {
+      if (!shopText) runInspect('shop', '商店', 'shop').catch(() => undefined);
+      if (!inventoryText) runInspect('inventory', '背包', 'inventory').catch(() => undefined);
     }
-  }, [visible, tab, inventoryText, encyclopediaText, inspectLoading]);
+  }, [visible, tab, inventoryText, shopText, inspectLoading]);
 
   if (!visible) return null;
 
@@ -260,14 +308,6 @@ export function FishingFloatingPanel({
               {formatPlace(latestState)}
             </Text>
           </View>
-          <View style={styles.headerActions}>
-            <Pressable style={styles.iconButton} onPress={() => refresh().catch(() => undefined)}>
-              <Text style={styles.iconButtonText}>{loading ? '...' : '刷新'}</Text>
-            </Pressable>
-            <Pressable style={styles.iconButton} onPress={onClose}>
-              <Text style={styles.iconButtonText}>关闭</Text>
-            </Pressable>
-          </View>
         </View>
       </View>
 
@@ -278,10 +318,6 @@ export function FishingFloatingPanel({
           label="图鉴"
           value={latestState?.enc || '-'}
           styles={styles}
-          onPress={() => {
-            setTab('encyclopedia');
-            runInspect('encyclopedia', '图鉴', 'encyclopedia').catch(() => undefined);
-          }}
         />
         <Status label="回合" value={formatMaybeNumber(latestState?.turn)} styles={styles} />
       </View>
@@ -289,38 +325,100 @@ export function FishingFloatingPanel({
       {!!runId && <Text style={styles.metaText} numberOfLines={1}>run: {runId}</Text>}
       {!!error && <Text style={[styles.errorText, error.includes('本地工具调用记录') && styles.warningText]}>{error}</Text>}
 
-      <View style={styles.actionStrip}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.actionList}>
-          {userActions.map((action) => (
-            <Pressable
-              key={action.id}
-              style={[styles.actionButton, actionLoading === action.id && styles.actionButtonDisabled]}
-              onPress={() => runUserAction(action).catch(() => undefined)}
-              disabled={!!actionLoading}
-            >
-              <Text style={styles.actionButtonText} numberOfLines={1}>
-                {actionLoading === action.id ? '执行中' : action.label}
-              </Text>
-            </Pressable>
-          ))}
-        </ScrollView>
+      <View style={styles.toolbar}>
+        <ToolbarButton
+          Icon={RefreshCw}
+          label="刷新"
+          styles={styles}
+          color={colors.textSecondary}
+          disabled={loading}
+          onPress={() => refresh().catch(() => undefined)}
+        />
+        <ToolbarButton
+          Icon={MapIcon}
+          label="切换地图"
+          styles={styles}
+          color={menu === 'map' ? '#FFFFFF' : colors.textSecondary}
+          active={menu === 'map'}
+          onPress={() => setMenu((current) => current === 'map' ? null : 'map')}
+        />
+        <ToolbarButton
+          Icon={Fish}
+          label="操作"
+          styles={styles}
+          color={menu === 'actions' ? '#FFFFFF' : colors.textSecondary}
+          active={menu === 'actions'}
+          disabled={!!actionLoading}
+          onPress={() => setMenu((current) => current === 'actions' ? null : 'actions')}
+        />
+        <ToolbarButton
+          Icon={ScrollText}
+          label="日志"
+          styles={styles}
+          color={tab === 'log' ? '#FFFFFF' : colors.textSecondary}
+          active={tab === 'log'}
+          onPress={() => {
+            setMenu(null);
+            setTab('log');
+          }}
+        />
+        <ToolbarButton
+          Icon={Package}
+          label="背包"
+          styles={styles}
+          color={tab === 'inventory' ? '#FFFFFF' : colors.textSecondary}
+          active={tab === 'inventory'}
+          onPress={() => {
+            setMenu(null);
+            setTab('inventory');
+            runInspect('inventory', '背包', 'inventory').catch(() => undefined);
+          }}
+        />
+        <ToolbarButton
+          Icon={Store}
+          label="商店"
+          styles={styles}
+          color={tab === 'shop' ? '#FFFFFF' : colors.textSecondary}
+          active={tab === 'shop'}
+          onPress={() => {
+            setMenu(null);
+            setTab('shop');
+            runInspect('shop', '商店', 'shop').catch(() => undefined);
+            runInspect('inventory', '背包', 'inventory').catch(() => undefined);
+          }}
+        />
+        <ToolbarButton
+          Icon={BookOpen}
+          label="图鉴"
+          styles={styles}
+          color={colors.textSecondary}
+          onPress={() => {
+            setMenu(null);
+            setEncyclopediaVisible(true);
+            runInspect('encyclopedia', '图鉴').catch(() => undefined);
+          }}
+        />
+        <ToolbarButton
+          Icon={X}
+          label="关闭"
+          styles={styles}
+          color={colors.textSecondary}
+          onPress={onClose}
+        />
       </View>
 
-      <View style={styles.tabs}>
-        {(['log', 'inventory', 'encyclopedia'] as FishingPanelTab[]).map((item) => (
-          <Pressable
-            key={item}
-            style={[styles.tabButton, tab === item && styles.tabButtonActive]}
-            onPress={() => {
-              setTab(item);
-              if (item === 'inventory') runInspect('inventory', '背包', 'inventory').catch(() => undefined);
-              if (item === 'encyclopedia') runInspect('encyclopedia', '图鉴', 'encyclopedia').catch(() => undefined);
-            }}
-          >
-            <Text style={[styles.tabText, tab === item && styles.tabTextActive]}>{tabLabel(item)}</Text>
-          </Pressable>
-        ))}
-      </View>
+      {menu === 'actions' && renderActionMenu({
+        actions: allActions,
+        styles,
+        actionLoading,
+        onAction: (action) => runUserAction(action).catch(() => undefined),
+      })}
+      {menu === 'map' && renderMapMenu({
+        latestState,
+        styles,
+        actionLoading,
+        onAction: (action) => runUserAction(action).catch(() => undefined),
+      })}
 
       <ScrollView
         style={styles.logScroll}
@@ -333,7 +431,7 @@ export function FishingFloatingPanel({
             <View style={styles.detailHeader}>
               <Text style={styles.detailTitle} numberOfLines={1}>{detail.title}</Text>
               <Pressable style={styles.detailClose} onPress={() => setDetail(null)}>
-                <Text style={styles.detailCloseText}>收起</Text>
+                <X color={colors.textSecondary} size={15} strokeWidth={2.3} />
               </Pressable>
             </View>
             <Text selectable style={styles.detailBody}>{detail.body}</Text>
@@ -349,15 +447,44 @@ export function FishingFloatingPanel({
           inspectLoading,
           onLook: (item) => item.lookId && runInspect(`look ${item.lookId}`, item.label).catch(() => undefined),
         })}
-        {tab === 'encyclopedia' && renderItems({
-          items: encyclopediaItems,
-          emptyTitle: inspectLoading === 'encyclopedia' ? '正在读取图鉴' : '还没有图鉴记录',
-          emptyText: '发现鱼之后，点这里的鱼名可以查看 look 详情。',
+        {tab === 'shop' && renderShop({
+          shopText,
           styles,
-          inspectLoading,
-          onLook: (item) => item.lookId && runInspect(`look ${item.lookId}`, item.label).catch(() => undefined),
         })}
       </ScrollView>
+
+      {encyclopediaVisible && (
+        <View style={styles.popupOverlay}>
+          <View style={styles.popupPanel}>
+            <View style={styles.popupHeader}>
+              <View>
+                <Text style={styles.popupKicker}>图鉴</Text>
+                <Text style={styles.popupTitle}>{latestState?.enc || '等待记录'}</Text>
+              </View>
+              <Pressable style={styles.detailClose} onPress={() => setEncyclopediaVisible(false)}>
+                <X color={colors.textSecondary} size={15} strokeWidth={2.3} />
+              </Pressable>
+            </View>
+            <ScrollView style={styles.popupScroll} contentContainerStyle={styles.popupContent}>
+              {encyclopediaItems.length === 0 ? (
+                <View style={styles.emptyState}>
+                  <Text style={styles.emptyTitle}>{inspectLoading === 'encyclopedia' ? '正在读取图鉴' : '还没有图鉴记录'}</Text>
+                  <Text style={styles.emptyText}>发现鱼之后，点这里的鱼名可以查看 look 详情。</Text>
+                </View>
+              ) : (
+                renderItems({
+                  items: encyclopediaItems,
+                  emptyTitle: '还没有图鉴记录',
+                  emptyText: '发现鱼之后，点这里的鱼名可以查看 look 详情。',
+                  styles,
+                  inspectLoading,
+                  onLook: (item) => item.lookId && runInspect(`look ${item.lookId}`, item.label).catch(() => undefined),
+                })
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      )}
     </Animated.View>
   );
 }
@@ -381,6 +508,36 @@ function Status({
       <Text style={styles.statusLabel}>{label}</Text>
       <Text style={styles.statusValue} numberOfLines={1}>{value}</Text>
     </Container>
+  );
+}
+
+function ToolbarButton({
+  Icon,
+  label,
+  styles,
+  color,
+  active = false,
+  disabled = false,
+  onPress,
+}: {
+  Icon: FishingIcon;
+  label: string;
+  styles: ReturnType<typeof createStyles>;
+  color: string;
+  active?: boolean;
+  disabled?: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      style={[styles.toolbarButton, active && styles.toolbarButtonActive, disabled && styles.actionButtonDisabled]}
+      onPress={onPress}
+      disabled={disabled}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+    >
+      <Icon color={color} size={17} strokeWidth={2.35} />
+    </Pressable>
   );
 }
 
@@ -418,32 +575,6 @@ function buildUserActions(state: FishingState | null): FishingUserAction[] {
       request: { action: 'status' },
     },
     {
-      id: 'shop',
-      label: '商店',
-      commandLabel: 'shop',
-      request: { action: 'shop' },
-    },
-    {
-      id: 'inventory',
-      label: '背包',
-      commandLabel: 'inventory',
-      request: { action: 'inventory' },
-      nextTab: 'inventory',
-    },
-    {
-      id: 'encyclopedia',
-      label: '图鉴',
-      commandLabel: 'encyclopedia',
-      request: { action: 'encyclopedia' },
-      nextTab: 'encyclopedia',
-    },
-    {
-      id: 'buy-worm',
-      label: '买饵×5',
-      commandLabel: 'buy basic_worm 5',
-      request: { action: 'buy', bait_id: 'basic_worm', qty: 5 },
-    },
-    {
       id: 'cast',
       label: '抛竿',
       commandLabel: 'cast',
@@ -454,13 +585,6 @@ function buildUserActions(state: FishingState | null): FishingUserAction[] {
       label: '连钓5',
       commandLabel: 'cast 5 stop=new,rare,event',
       request: { action: 'cast', times: 5, stop_on: ['new', 'rare', 'event'] },
-    },
-    {
-      id: 'sell-all',
-      label: '卖鱼',
-      commandLabel: 'sell all',
-      request: { action: 'sell', target: 'all' },
-      nextTab: 'inventory',
     },
   ];
 
@@ -479,10 +603,10 @@ function buildUserActions(state: FishingState | null): FishingUserAction[] {
     });
   } else {
     actions.push({
-      id: 'buy-oxygen',
-      label: '买氧气',
-      commandLabel: 'buy oxygen 1',
-      request: { action: 'buy', bait_id: 'oxygen', qty: 1 },
+      id: 'dive',
+      label: '潜水',
+      commandLabel: 'dive',
+      request: { action: 'dive' },
     });
   }
 
@@ -492,6 +616,70 @@ function buildUserActions(state: FishingState | null): FishingUserAction[] {
     commandLabel: 'surface',
     request: { action: 'surface' },
   });
+
+  return actions;
+}
+
+function buildShopActions(inventoryItems: FishingPanelItem[]): FishingUserAction[] {
+  const actions: FishingUserAction[] = [
+    {
+      id: 'buy-basic-worm-5',
+      label: '普通蚯蚓×5',
+      commandLabel: 'buy basic_worm 5',
+      request: { action: 'buy', bait_id: 'basic_worm', qty: 5 },
+      nextTab: 'shop',
+    },
+    {
+      id: 'buy-glow-bait-3',
+      label: '夜光饵×3',
+      commandLabel: 'buy glow_bait 3',
+      request: { action: 'buy', bait_id: 'glow_bait', qty: 3 },
+      nextTab: 'shop',
+    },
+    {
+      id: 'buy-golden-lure-1',
+      label: '黄金亮片×1',
+      commandLabel: 'buy golden_lure 1',
+      request: { action: 'buy', bait_id: 'golden_lure', qty: 1 },
+      nextTab: 'shop',
+    },
+    {
+      id: 'buy-oxygen-1',
+      label: '氧气瓶×1',
+      commandLabel: 'buy oxygen 1',
+      request: { action: 'buy', bait_id: 'oxygen', qty: 1 },
+      nextTab: 'shop',
+    },
+    {
+      id: 'buy-oxygen-5',
+      label: '氧气瓶×5',
+      commandLabel: 'buy oxygen 5',
+      request: { action: 'buy', bait_id: 'oxygen', qty: 5 },
+      nextTab: 'shop',
+    },
+    {
+      id: 'sell-all',
+      label: '卖全部渔获',
+      commandLabel: 'sell all',
+      request: { action: 'sell', target: 'all' },
+      nextTab: 'shop',
+    },
+  ];
+
+  const sellableItems = inventoryItems.filter((item) =>
+    item.kind === 'item' &&
+    !!item.id &&
+    !!item.meta?.includes('可 sell item')
+  );
+  for (const item of sellableItems) {
+    actions.push({
+      id: `sell-item-${item.id}`,
+      label: `卖${item.label}`,
+      commandLabel: `sell item ${item.id}`,
+      request: { action: 'sell', target: `item ${item.id}` },
+      nextTab: 'shop',
+    });
+  }
 
   return actions;
 }
@@ -508,18 +696,125 @@ function formatUserActionSystemMessage(action: FishingUserAction, result: string
   ].join('\n');
 }
 
-function tabLabel(tab: FishingPanelTab): string {
-  if (tab === 'inventory') return '背包';
-  if (tab === 'encyclopedia') return '图鉴';
-  return '日志';
-}
-
 function stripStateLine(text: string): string {
   return text
     .split(/\r?\n/)
     .filter((line) => !line.trim().startsWith('📊'))
     .join('\n')
     .trim();
+}
+
+function renderActionMenu({
+  actions,
+  styles,
+  actionLoading,
+  onAction,
+}: {
+  actions: FishingUserAction[];
+  styles: ReturnType<typeof createStyles>;
+  actionLoading: string | null;
+  onAction: (action: FishingUserAction) => void;
+}) {
+  const playActions = actions.filter((action) => action.request.action !== 'buy' && action.request.action !== 'sell');
+  const tradeActions = actions.filter((action) => action.request.action === 'buy' || action.request.action === 'sell');
+  return (
+    <View style={styles.menuPanel}>
+      <Text style={styles.menuTitle}>操作</Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.menuRow}>
+        {[...playActions, ...tradeActions].map((action) => (
+          <ActionMenuButton
+            key={action.id}
+            action={action}
+            styles={styles}
+            loading={actionLoading === action.id}
+            disabled={!!actionLoading}
+            onPress={() => onAction(action)}
+          />
+        ))}
+      </ScrollView>
+    </View>
+  );
+}
+
+function renderMapMenu({
+  latestState,
+  styles,
+  actionLoading,
+  onAction,
+}: {
+  latestState: FishingState | null;
+  styles: ReturnType<typeof createStyles>;
+  actionLoading: string | null;
+  onAction: (action: FishingUserAction) => void;
+}) {
+  return (
+    <View style={styles.menuPanel}>
+      <Text style={styles.menuTitle}>地图</Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.menuRow}>
+        {FISHING_LOCATIONS.map((location) => {
+          const active = latestState?.loc === location.name;
+          const action: FishingUserAction = {
+            id: `goto-${location.id}`,
+            label: location.name,
+            commandLabel: `goto ${location.id}`,
+            request: { action: 'goto', location_id: location.id },
+          };
+          return (
+            <Pressable
+              key={location.id}
+              style={[styles.menuButton, active && styles.menuButtonActive, actionLoading === action.id && styles.actionButtonDisabled]}
+              onPress={() => onAction(action)}
+              disabled={!!actionLoading || active}
+              accessibilityRole="button"
+              accessibilityLabel={`切换到${location.name}`}
+            >
+              <MapIcon color={active ? '#FFFFFF' : styles.menuIconColor.color} size={15} strokeWidth={2.3} />
+              <Text style={[styles.menuButtonText, active && styles.menuButtonTextActive]} numberOfLines={1}>
+                {location.name}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+    </View>
+  );
+}
+
+function ActionMenuButton({
+  action,
+  styles,
+  loading,
+  disabled,
+  onPress,
+}: {
+  action: FishingUserAction;
+  styles: ReturnType<typeof createStyles>;
+  loading: boolean;
+  disabled: boolean;
+  onPress: () => void;
+}) {
+  const Icon = actionIcon(action);
+  return (
+    <Pressable
+      style={[styles.menuButton, loading && styles.actionButtonDisabled]}
+      onPress={onPress}
+      disabled={disabled}
+      accessibilityRole="button"
+      accessibilityLabel={action.label}
+    >
+      <Icon color={styles.menuIconColor.color} size={15} strokeWidth={2.3} />
+      <Text style={styles.menuButtonText} numberOfLines={1}>
+        {loading ? '执行中' : action.label}
+      </Text>
+    </Pressable>
+  );
+}
+
+function actionIcon(action: FishingUserAction): FishingIcon {
+  if (action.request.action === 'buy') return ShoppingBag;
+  if (action.request.action === 'sell') return Store;
+  if (action.request.action === 'status') return ScrollText;
+  return Fish;
 }
 
 function renderLog(entries: FishingLogEntry[], styles: ReturnType<typeof createStyles>) {
@@ -588,6 +883,23 @@ function renderItems({
       </Container>
     );
   });
+}
+
+function renderShop({
+  shopText,
+  styles,
+}: {
+  shopText: string;
+  styles: ReturnType<typeof createStyles>;
+}) {
+  return (
+    <View style={styles.shopSection}>
+      <Text style={styles.shopTitle}>货架</Text>
+      <Text selectable style={styles.shopText}>
+        {stripStateLine(shopText) || '正在读取商店...'}
+      </Text>
+    </View>
+  );
 }
 
 function buildInventoryItems(text: string, state: FishingState | null): FishingPanelItem[] {
@@ -708,23 +1020,6 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     fontWeight: '900',
     marginTop: 2,
   },
-  headerActions: {
-    flexDirection: 'row',
-    gap: 6,
-  },
-  iconButton: {
-    minHeight: 32,
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: colors.inputBackground,
-  },
-  iconButtonText: {
-    color: colors.primary,
-    fontSize: 12,
-    fontWeight: '800',
-  },
   statusBar: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -778,19 +1073,18 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   warningText: {
     color: colors.textTertiary,
   },
-  actionStrip: {
+  toolbar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 4,
     paddingHorizontal: 12,
     paddingTop: 8,
   },
-  actionList: {
-    gap: 6,
-    paddingRight: 4,
-  },
-  actionButton: {
-    minWidth: 62,
-    height: 32,
+  toolbarButton: {
+    width: 30,
+    height: 30,
     borderRadius: 8,
-    paddingHorizontal: 10,
     backgroundColor: colors.inputBackground,
     borderWidth: 1,
     borderColor: colors.border,
@@ -800,35 +1094,56 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   actionButtonDisabled: {
     opacity: 0.6,
   },
-  actionButtonText: {
+  toolbarButtonActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  menuPanel: {
+    marginHorizontal: 12,
+    marginTop: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    padding: 8,
+    gap: 7,
+  },
+  menuTitle: {
     color: colors.text,
     fontSize: 12,
     fontWeight: '900',
   },
-  tabs: {
-    flexDirection: 'row',
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingTop: 8,
+  menuRow: {
+    gap: 7,
+    paddingRight: 4,
   },
-  tabButton: {
-    flex: 1,
-    minHeight: 32,
+  menuButton: {
+    minWidth: 82,
+    height: 32,
     borderRadius: 8,
-    backgroundColor: colors.surface,
-    justifyContent: 'center',
+    paddingHorizontal: 9,
+    backgroundColor: colors.inputBackground,
+    borderWidth: 1,
+    borderColor: colors.border,
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
   },
-  tabButtonActive: {
+  menuButtonActive: {
     backgroundColor: colors.primary,
+    borderColor: colors.primary,
   },
-  tabText: {
+  menuButtonText: {
     color: colors.textSecondary,
     fontSize: 12,
     fontWeight: '900',
   },
-  tabTextActive: {
+  menuButtonTextActive: {
     color: '#FFFFFF',
+  },
+  menuIconColor: {
+    color: colors.textSecondary,
   },
   logScroll: {
     flex: 1,
@@ -866,11 +1181,6 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: colors.surface,
-  },
-  detailCloseText: {
-    color: colors.textSecondary,
-    fontSize: 11,
-    fontWeight: '800',
   },
   detailBody: {
     color: colors.textSecondary,
@@ -951,6 +1261,71 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     fontSize: 11,
     lineHeight: 15,
     marginTop: 3,
+  },
+  shopSection: {
+    borderRadius: 8,
+    backgroundColor: colors.surface,
+    padding: 10,
+    gap: 8,
+  },
+  shopTitle: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: '900',
+  },
+  shopText: {
+    color: colors.textSecondary,
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  popupOverlay: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 20,
+    backgroundColor: 'rgba(20,20,19,0.30)',
+    padding: 14,
+    justifyContent: 'center',
+  },
+  popupPanel: {
+    flex: 1,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.background,
+    overflow: 'hidden',
+  },
+  popupHeader: {
+    minHeight: 58,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    backgroundColor: colors.surface,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  popupKicker: {
+    color: colors.primary,
+    fontSize: 11,
+    fontWeight: '900',
+  },
+  popupTitle: {
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: '900',
+    marginTop: 2,
+  },
+  popupScroll: {
+    flex: 1,
+  },
+  popupContent: {
+    gap: 10,
+    padding: 12,
   },
   emptyState: {
     minHeight: 150,

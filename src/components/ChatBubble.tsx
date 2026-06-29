@@ -1803,7 +1803,7 @@ const createUserMarkdownStyles = (
     fontSize,
     color: textColor,
     lineHeight: Math.round(fontSize * 1.38),
-    fontFamily: fonts.serif,
+    fontFamily: fonts.serifBold,
     fontWeight: 'normal',
     ...customTextStyleWithoutFontWeight,
   },
@@ -1812,7 +1812,7 @@ const createUserMarkdownStyles = (
     marginBottom: 0,
   },
   strong: {
-    fontFamily: fonts.serifBold,
+    fontFamily: fonts.serifStrong,
     fontWeight: 'normal',
     color: textColor,
   },
@@ -1861,7 +1861,7 @@ const createMarkdownStyles = (
     : {};
 
   return StyleSheet.create({
-  body: { width: '100%', fontSize, color: textColor, lineHeight: Math.round(fontSize * 1.5), fontFamily: fonts.serif, fontWeight: 'normal', ...strokeStyle, ...customTextStyleWithoutFontWeight },
+  body: { width: '100%', fontSize, color: textColor, lineHeight: Math.round(fontSize * 1.5), fontFamily: fonts.serifBold, fontWeight: 'normal', ...strokeStyle, ...customTextStyleWithoutFontWeight },
   code_inline: {
     backgroundColor: colors.surface, color: colors.primary,
     paddingHorizontal: 5, paddingVertical: 2, borderRadius: 4, fontSize: 14, fontFamily: 'monospace',
@@ -1871,7 +1871,7 @@ const createMarkdownStyles = (
   heading1: { fontSize: 22, fontFamily: fonts.serifBold, fontWeight: 'normal', marginVertical: 8, color: textColor, ...strokeStyle },
   heading2: { fontSize: 18, fontFamily: fonts.serifBold, fontWeight: 'normal', marginVertical: 6, color: textColor, ...strokeStyle },
   heading3: { fontSize: 16, fontFamily: fonts.serifBold, fontWeight: 'normal', marginVertical: 4, color: textColor, ...strokeStyle },
-  strong: { fontFamily: fonts.serifBold, fontWeight: 'normal', color: textColor, ...strokeStyle },
+  strong: { fontFamily: fonts.serifStrong, fontWeight: 'normal', color: textColor, ...strokeStyle },
   blockquote: {
     borderLeftWidth: 3, borderLeftColor: colors.primary, paddingLeft: 12, marginVertical: 8, opacity: 0.8,
   },

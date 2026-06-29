@@ -40,6 +40,7 @@ export default function RootLayout() {
     'SohneMono': require('../assets/SohneMono-Buch.otf'),
     'TiemposText': require('../assets/TiemposText.otf'),
     'TiemposText-Bold': require('../assets/TiemposText-bold.otf'),
+    'TiemposText-Strong': require('../assets/TiemposText-bold2.otf'),
   });
   const settingsHydrated = useSettingsStore((state) => state._hydrated);
   const licenseHydrated = useLicenseStore((state) => state._hydrated);
