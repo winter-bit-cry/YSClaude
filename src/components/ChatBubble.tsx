@@ -17,6 +17,7 @@ import { StickerContent } from './StickerContent';
 import { buildStickerDefinitions, hasStickerToken, isStickerOnlyContent } from '../utils/stickers';
 import { formatSmartTime } from '../utils/time';
 import { getLinkCardInfo, getSingleHttpUrlMessage } from '../utils/sharedLinks';
+import { parseDailyPaperCardMessage, type DailyPaperCardPayload } from '../utils/dailyPaperShare';
 
 
 let colors = lightColors;
@@ -309,6 +310,17 @@ function SharedLinkCard({ url }: { url: string }) {
   );
 }
 
+function DailyPaperForwardCard({ paper }: { paper: DailyPaperCardPayload }) {
+  return (
+    <View style={styles.dailyPaperCard}>
+      <Text style={styles.dailyPaperEyebrow}>每日日报 · {paper.dateKey}</Text>
+      <Text style={styles.dailyPaperTitle} numberOfLines={2}>{paper.title}</Text>
+      <Text style={styles.dailyPaperSummary} numberOfLines={3}>{paper.summary || '点击查看完整日报'}</Text>
+      <Text style={styles.dailyPaperMeta}>{paper.sourceCount || paper.sources.length} 个来源 · 点击看全文</Text>
+    </View>
+  );
+}
+
 export const ChatBubble = React.memo(function ChatBubble({
   message,
   blurTarget,
@@ -380,6 +392,7 @@ export const ChatBubble = React.memo(function ChatBubble({
   const messageHasSticker = hasStickerToken(message.content, messageStickers);
   const messageIsStickerOnly = isStickerOnlyContent(message.content, messageStickers);
   const sharedLinkUrl = isUser ? getSingleHttpUrlMessage(message.content) : null;
+  const dailyPaperCard = isUser ? parseDailyPaperCardMessage(message.content) : null;
   const editMessage = useChatStore((state) => state.editMessage);
   const removeMessage = useChatStore((state) => state.removeMessage);
   const removeToolInvocation = useChatStore((state) => state.removeToolInvocation);
@@ -400,6 +413,7 @@ export const ChatBubble = React.memo(function ChatBubble({
   const [pictureActionTarget, setPictureActionTarget] = useState<GeneratedPicture | null>(null);
   const [pictureActionBusy, setPictureActionBusy] = useState(false);
   const [previewImage, setPreviewImage] = useState<{ uri: string; title?: string } | null>(null);
+  const [dailyPaperVisible, setDailyPaperVisible] = useState(false);
   // 长按时测量得到的气泡屏幕坐标，用于把菜单锚定到气泡上方
   const [menuAnchor, setMenuAnchor] = useState({ x: 0, y: 0, width: 0, height: 0 });
   const [expandedTools, setExpandedTools] = useState<Record<number, boolean>>({});
@@ -559,6 +573,37 @@ export const ChatBubble = React.memo(function ChatBubble({
       </Pressable>
     </Modal>
   );
+  const dailyPaperModal = (
+    <Modal
+      transparent
+      visible={dailyPaperVisible}
+      animationType="fade"
+      onRequestClose={() => setDailyPaperVisible(false)}
+    >
+      <Pressable style={styles.dailyPaperModalOverlay} onPress={() => setDailyPaperVisible(false)}>
+        <View style={styles.dailyPaperModal} onStartShouldSetResponder={() => true}>
+          <Text style={styles.dailyPaperModalTitle}>{dailyPaperCard?.title || '每日日报'}</Text>
+          <Text style={styles.dailyPaperModalDate}>{dailyPaperCard?.dateKey || ''}</Text>
+          <ScrollView style={styles.dailyPaperModalBody}>
+            <Text selectable style={styles.dailyPaperModalText}>{dailyPaperCard?.body || ''}</Text>
+            {!!dailyPaperCard?.sources.length && (
+              <View style={styles.dailyPaperModalSources}>
+                <Text style={styles.dailyPaperModalSourceTitle}>来源</Text>
+                {dailyPaperCard.sources.map((source, index) => (
+                  <Text key={`${source.url}-${index}`} selectable style={styles.dailyPaperModalSourceText}>
+                    {index + 1}. {source.title}{source.sourceName ? ` · ${source.sourceName}` : ''}{source.url ? `\n${source.url}` : ''}
+                  </Text>
+                ))}
+              </View>
+            )}
+          </ScrollView>
+          <Pressable style={styles.imagePreviewClose} onPress={() => setDailyPaperVisible(false)}>
+            <Text style={styles.imagePreviewCloseText}>关闭</Text>
+          </Pressable>
+        </View>
+      </Pressable>
+    </Modal>
+  );
 
   if (isUser) {
     // 菜单宽度估算，用于让菜单右对齐气泡右缘
@@ -627,7 +672,7 @@ export const ChatBubble = React.memo(function ChatBubble({
           {message.content.length > 0 && (
             <Pressable
               ref={bubbleRef}
-              onPress={sharedLinkUrl ? openSharedLinkCard : onBubblePress}
+              onPress={dailyPaperCard ? () => setDailyPaperVisible(true) : sharedLinkUrl ? openSharedLinkCard : onBubblePress}
               onLongPress={handleUserLongPress}
               style={userBubbleBaseStyle}
             >
@@ -651,7 +696,9 @@ export const ChatBubble = React.memo(function ChatBubble({
                   <View pointerEvents="none" style={styles.glassInnerGlow} />
                 </>
               )}
-              {sharedLinkUrl ? (
+              {dailyPaperCard ? (
+                <DailyPaperForwardCard paper={dailyPaperCard} />
+              ) : sharedLinkUrl ? (
                 <SharedLinkCard url={sharedLinkUrl} />
               ) : (
                 <StickerContent
@@ -723,6 +770,7 @@ export const ChatBubble = React.memo(function ChatBubble({
 
         {editModal}
         {imagePreviewModal}
+        {dailyPaperModal}
       </View>
     );
   }
@@ -1389,6 +1437,87 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     marginBottom: 4,
   },
   sharedLinkSubtitle: {
+    fontSize: 12,
+    lineHeight: 17,
+    color: colors.textSecondary,
+  },
+  dailyPaperCard: {
+    width: Math.min(310, LINK_CARD_MAX_WIDTH),
+    gap: 6,
+  },
+  dailyPaperEyebrow: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.primary,
+  },
+  dailyPaperTitle: {
+    fontSize: 16,
+    lineHeight: 21,
+    fontWeight: '800',
+    color: colors.text,
+  },
+  dailyPaperSummary: {
+    fontSize: 12,
+    lineHeight: 17,
+    color: colors.textSecondary,
+  },
+  dailyPaperMeta: {
+    marginTop: 2,
+    fontSize: 11,
+    color: colors.textTertiary,
+  },
+  dailyPaperModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.48)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
+  },
+  dailyPaperModal: {
+    width: '100%',
+    maxWidth: 620,
+    maxHeight: '86%',
+    borderRadius: 14,
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 16,
+  },
+  dailyPaperModalTitle: {
+    fontSize: 18,
+    lineHeight: 24,
+    fontWeight: '900',
+    color: colors.text,
+    textAlign: 'center',
+  },
+  dailyPaperModalDate: {
+    marginTop: 4,
+    marginBottom: 10,
+    fontSize: 12,
+    color: colors.textTertiary,
+    textAlign: 'center',
+  },
+  dailyPaperModalBody: {
+    maxHeight: 460,
+  },
+  dailyPaperModalText: {
+    fontSize: 15,
+    lineHeight: 23,
+    color: colors.text,
+  },
+  dailyPaperModalSources: {
+    marginTop: 18,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    gap: 8,
+  },
+  dailyPaperModalSourceTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: colors.text,
+  },
+  dailyPaperModalSourceText: {
     fontSize: 12,
     lineHeight: 17,
     color: colors.textSecondary,

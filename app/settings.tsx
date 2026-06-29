@@ -11,14 +11,14 @@ import { copyAsync } from 'expo-file-system/legacy';
 import { lightColors, useThemeColors, type ThemeColors } from '../src/theme/colors';
 
 import { fonts } from '../src/theme/fonts';
-import { useSettingsStore, NamedAPIConfig, TTSConfig, MemoryVaultConfig, WebSearchConfig, type BubbleTextureConfig, type ChatInputIconKey, type ChatInputAppearanceStyle, type AssistantBubbleAppearanceStyle, type ShizukuFileRoot, type StickerOwner, type CustomSticker, type QQBotConfig, type ImageGenerationFaceReference } from '../src/stores/settings';
+import { useSettingsStore, NamedAPIConfig, TTSConfig, MemoryVaultConfig, WebSearchConfig, type BubbleTextureConfig, type ChatInputIconKey, type ChatInputAppearanceStyle, type AssistantBubbleAppearanceStyle, type ShizukuFileRoot, type StickerOwner, type CustomSticker, type QQBotConfig, type ImageGenerationFaceReference, type DailyPaperSourceConfig } from '../src/stores/settings';
 import { TopBarIcon, TOP_BAR_ICON_ITEMS } from '../src/components/TopBarIcon';
 import type { TopBarIconKey } from '../src/utils/topBarIconTypes';
 import { useChatStore } from '../src/stores/chat';
 import { useDiaryStore } from '../src/stores/diary';
 import { playTTS, stopTTS } from '../src/services/tts';
 import { streamChat } from '../src/services/api';
-import { Diary, HiddenRange } from '../src/types';
+import { Diary, HiddenRange, IncomingLetterOccasion } from '../src/types';
 import { getChatDiagnosticsConversation, getFavoriteDiaries, type ChatDiagnosticsMessage } from '../src/db/operations';
 import { uploadDiary } from '../src/services/tools';
 import { formatFullTime, formatDateOnly } from '../src/utils/time';
@@ -44,13 +44,14 @@ import {
   syncFloatingBallAssets,
 } from '../src/services/floatingBall';
 import { createAndShareBackup, pickBackupFile, restoreBackup, type PickedBackup } from '../src/services/backup';
+import { generateImmediateIncomingLetter } from '../src/services/incomingLetters';
 import { useKeyboardHeight } from '../src/hooks/useKeyboardHeight';
 import { buildStickerDefinitions, normalizeStickerName } from '../src/utils/stickers';
 import { mergeRanges } from '../src/utils/ranges';
 
 
 let colors = lightColors;
-const TABS = ['API 配置', '对话设置', 'TTS 配置', '工具设置', '日记', '悬浮球', '表情包', '欢迎页', '美化'] as const;
+const TABS = ['API 配置', '对话设置', 'TTS 配置', '工具设置', '日记', '来信', '悬浮球', '表情包', '欢迎页', '美化'] as const;
 type ToastFn = (message: string) => void;
 type SettingsTabProps = { showToast: ToastFn; keyboardBottomInset: number };
 const CUSTOM_TOP_BAR_ICON_MAX_BYTES = 2 * 1024 * 1024;
@@ -153,10 +154,11 @@ export default function SettingsScreen() {
       {activeTab === 2 && <TTSConfigTab showToast={showToast} keyboardBottomInset={keyboardHeight} />}
       {activeTab === 3 && <ToolConfigTab showToast={showToast} keyboardBottomInset={keyboardHeight} />}
       {activeTab === 4 && <DiaryTab showToast={showToast} keyboardBottomInset={keyboardHeight} />}
-      {activeTab === 5 && <FloatingBallTab showToast={showToast} keyboardBottomInset={keyboardHeight} />}
-      {activeTab === 6 && <StickerTab showToast={showToast} keyboardBottomInset={keyboardHeight} />}
-      {activeTab === 7 && <WelcomePageTab showToast={showToast} keyboardBottomInset={keyboardHeight} />}
-      {activeTab === 8 && <AppearanceTab showToast={showToast} keyboardBottomInset={keyboardHeight} />}
+      {activeTab === 5 && <IncomingLetterTab showToast={showToast} keyboardBottomInset={keyboardHeight} />}
+      {activeTab === 6 && <FloatingBallTab showToast={showToast} keyboardBottomInset={keyboardHeight} />}
+      {activeTab === 7 && <StickerTab showToast={showToast} keyboardBottomInset={keyboardHeight} />}
+      {activeTab === 8 && <WelcomePageTab showToast={showToast} keyboardBottomInset={keyboardHeight} />}
+      {activeTab === 9 && <AppearanceTab showToast={showToast} keyboardBottomInset={keyboardHeight} />}
 
       {toastMessage && (
         <View pointerEvents="none" style={styles.toast}>
@@ -3935,6 +3937,7 @@ function ToolConfigTab({ showToast, keyboardBottomInset }: SettingsTabProps) {
     webPageReaderConfig,
     webInteractionConfig,
     hotboardConfig,
+    dailyPaperConfig,
     runCommandConfig,
     qqBotConfig,
     nativeToolConfig,
@@ -3946,6 +3949,7 @@ function ToolConfigTab({ showToast, keyboardBottomInset }: SettingsTabProps) {
     setWebPageReaderConfig,
     setWebInteractionConfig,
     setHotboardConfig,
+    setDailyPaperConfig,
     setRunCommandConfig,
     setQqBotConfig,
     setNativeToolConfig,
@@ -3983,6 +3987,13 @@ function ToolConfigTab({ showToast, keyboardBottomInset }: SettingsTabProps) {
     normalizeHotboardPlatformTypes(hotboardConfig?.platforms || DEFAULT_HOTBOARD_PLATFORM_TYPES.join(','))
   );
   const [hbPlatformsExpanded, setHbPlatformsExpanded] = useState(false);
+
+  const [dailyUseDefaultSources, setDailyUseDefaultSources] = useState(dailyPaperConfig?.useDefaultSources ?? true);
+  const [dailyCustomSources, setDailyCustomSources] = useState<DailyPaperSourceConfig[]>(dailyPaperConfig?.customSources || []);
+  const [dailySourceName, setDailySourceName] = useState('');
+  const [dailySourceUrl, setDailySourceUrl] = useState('');
+  const [dailySourceCategory, setDailySourceCategory] = useState('general');
+  const [dailySourceLanguage, setDailySourceLanguage] = useState('zh');
 
   const [rcEnabled, setRcEnabled] = useState(!!runCommandConfig?.enabled);
   const [rcEndpointUrl, setRcEndpointUrl] = useState(runCommandConfig?.endpointUrl || '');
@@ -4206,6 +4217,70 @@ function ToolConfigTab({ showToast, keyboardBottomInset }: SettingsTabProps) {
       platforms: hbPlatformTypes.join(','),
     });
     showToast(hbEnabled ? 'AI 网页巡游热榜配置已保存' : 'AI 网页巡游热榜已关闭');
+  }
+
+  function handleAddDailySource() {
+    const url = dailySourceUrl.trim();
+    if (!/^https?:\/\//i.test(url)) {
+      Alert.alert('提示', 'RSS 地址必须以 http:// 或 https:// 开头');
+      return;
+    }
+    const now = Date.now();
+    let fallbackName = '自定义来源';
+    try {
+      fallbackName = new URL(url).hostname || fallbackName;
+    } catch {}
+    const source: DailyPaperSourceConfig = {
+      id: randomUUID(),
+      name: dailySourceName.trim() || fallbackName,
+      url,
+      category: dailySourceCategory.trim() || 'general',
+      language: dailySourceLanguage.trim() || 'zh',
+      enabled: true,
+      createdAt: now,
+      updatedAt: now,
+    };
+    setDailyCustomSources((sources) => [source, ...sources]);
+    setDailySourceName('');
+    setDailySourceUrl('');
+    setDailySourceCategory('general');
+    setDailySourceLanguage('zh');
+  }
+
+  function handleUpdateDailySource(id: string, patch: Partial<DailyPaperSourceConfig>) {
+    setDailyCustomSources((sources) =>
+      sources.map((source) =>
+        source.id === id ? { ...source, ...patch, updatedAt: Date.now() } : source
+      )
+    );
+  }
+
+  function handleRemoveDailySource(id: string) {
+    setDailyCustomSources((sources) => sources.filter((source) => source.id !== id));
+  }
+
+  function handleSaveDailyPaperSources() {
+    const normalizedSources = dailyCustomSources
+      .map((source) => ({
+        ...source,
+        name: source.name.trim() || '自定义来源',
+        url: source.url.trim(),
+        category: source.category.trim() || 'general',
+        language: source.language.trim() || 'zh',
+        updatedAt: Date.now(),
+      }))
+      .filter((source) => /^https?:\/\//i.test(source.url));
+    if (!dailyUseDefaultSources && normalizedSources.filter((source) => source.enabled).length === 0) {
+      Alert.alert('提示', '请保留内置来源，或至少启用一个自定义 RSS 来源');
+      return false;
+    }
+    setDailyCustomSources(normalizedSources);
+    setDailyPaperConfig({
+      useDefaultSources: dailyUseDefaultSources,
+      customSources: normalizedSources,
+    });
+    showToast('日报来源已保存');
+    return true;
   }
 
   function buildRunCommandConfigDraft() {
@@ -5189,6 +5264,7 @@ function ToolConfigTab({ showToast, keyboardBottomInset }: SettingsTabProps) {
     { key: 'webSearch', name: '联网搜索', intro: '通过 Tavily 搜索互联网，补充实时信息。', enabled: wsEnabled, onValueChange: setWsEnabled, meta: '1 个工具' },
     { key: 'webPageReader', name: '网页读取', intro: '读取链接中的网页正文，可配置渲染服务兜底。', enabled: wprEnabled, onValueChange: setWprEnabled, meta: '1 个工具' },
     { key: 'hotboard', name: '热榜查询', intro: '从已选择的平台列表中查询热门话题。', enabled: hbEnabled, onValueChange: setHbEnabled, meta: hbPlatformTypes.length + ' 个平台' },
+    { key: 'dailyPaperSources', name: '日报来源', intro: '配置每日日报生成时读取的 RSS 新闻来源。', enabled: dailyUseDefaultSources || dailyCustomSources.some((source) => source.enabled), onValueChange: setDailyUseDefaultSources, meta: (dailyUseDefaultSources ? 6 : 0) + dailyCustomSources.filter((source) => source.enabled).length + ' 个来源' },
     { key: 'runCommand', name: '远程命令', intro: '通过你配置的远程命令服务执行 shell 命令。', enabled: rcEnabled, onValueChange: setRcEnabled, meta: '最多 ' + (rcMaxCalls || '4') + ' 次' },
     { key: 'qqBot', name: 'QQ 机器人', intro: '把 QQ 官方机器人消息接入独立后端，由 YSClaude 生成回复。', enabled: qqEnabled, onValueChange: setQqEnabled, meta: qqBackendStatus === '尚未检测' ? '官方 Bot' : qqBackendStatus },
     { key: 'webInteraction', name: '网页交互', intro: '允许 AI 打开、观察并操作应用内网页面板。', enabled: wiEnabled, onValueChange: setWiEnabled, meta: '最多 ' + (wiMaxCalls || '8') + ' 次' },
@@ -5310,6 +5386,8 @@ function ToolConfigTab({ showToast, keyboardBottomInset }: SettingsTabProps) {
       case 'hotboard':
         handleSaveHotboard();
         break;
+      case 'dailyPaperSources':
+        return handleSaveDailyPaperSources();
       case 'runCommand':
         return handleSaveRunCommand();
       case 'webInteraction':
@@ -5350,6 +5428,11 @@ function ToolConfigTab({ showToast, keyboardBottomInset }: SettingsTabProps) {
             case 'hotboard':
               setHbEnabled(false);
               setHotboardConfig({ enabled: false });
+              break;
+            case 'dailyPaperSources':
+              setDailyUseDefaultSources(false);
+              setDailyCustomSources((sources) => sources.map((source) => ({ ...source, enabled: false })));
+              setDailyPaperConfig({ useDefaultSources: false, customSources: dailyCustomSources.map((source) => ({ ...source, enabled: false })) });
               break;
             case 'runCommand':
               setRcEnabled(false);
@@ -5426,6 +5509,58 @@ function ToolConfigTab({ showToast, keyboardBottomInset }: SettingsTabProps) {
         return (<><Text style={styles.toolModalDescription}>AI 可以读取链接中的网页正文。</Text><View style={styles.switchRow}><Text style={styles.label}>启用网页读取</Text><Switch value={wprEnabled} onValueChange={setWprEnabled} trackColor={{ true: colors.primary }} /></View><View style={styles.field}><Text style={styles.label}>渲染读取服务地址</Text><TextInput style={styles.input} value={wprRenderServiceUrl} onChangeText={setWprRenderServiceUrl} placeholder="http://localhost:8787/read" placeholderTextColor={colors.textTertiary} autoCapitalize="none" /></View></>);
       case 'hotboard':
         return (<><Text style={styles.toolModalDescription}>AI 可以从已选择的平台类型中查询热榜。</Text><View style={styles.switchRow}><Text style={styles.label}>启用热榜查询</Text><Switch value={hbEnabled} onValueChange={setHbEnabled} trackColor={{ true: colors.primary }} /></View><View style={styles.field}><Text style={styles.label}>UAPI 密钥</Text><TextInput style={styles.input} value={hbApiKey} onChangeText={setHbApiKey} placeholder="Bearer 令牌" placeholderTextColor={colors.textTertiary} secureTextEntry autoCapitalize="none" /></View><View style={styles.platformActions}><Pressable style={styles.platformActionButton} onPress={selectDefaultHotboardPlatforms}><Text style={styles.platformActionText}>默认</Text></Pressable><Pressable style={styles.platformActionButton} onPress={selectAllHotboardPlatforms}><Text style={styles.platformActionText}>全选</Text></Pressable><Pressable style={styles.platformActionButton} onPress={clearHotboardPlatforms}><Text style={styles.platformActionText}>清空</Text></Pressable></View><View style={styles.platformGrid}>{HOTBOARD_PLATFORMS.map((platform) => { const selected = hbPlatformTypes.includes(platform.type); return (<Pressable key={platform.type} style={[styles.platformChip, selected && styles.platformChipSelected]} onPress={() => toggleHotboardPlatform(platform.type)}><Text style={[styles.platformChipLabel, selected && styles.platformChipLabelSelected]}>{platform.label}</Text><Text style={[styles.platformChipType, selected && styles.platformChipTypeSelected]}>{platform.type}</Text></Pressable>); })}</View></>);
+      case 'dailyPaperSources':
+        return (
+          <>
+            <Text style={styles.toolModalDescription}>每日日报会读取已启用的 RSS 源，再交给当前聊天 API 生成中文日报。</Text>
+            <View style={styles.switchRow}><Text style={styles.label}>使用内置新闻源</Text><Switch value={dailyUseDefaultSources} onValueChange={setDailyUseDefaultSources} trackColor={{ true: colors.primary }} /></View>
+            <View style={styles.toolAddPanel}>
+              <Text style={styles.sectionTitle}>添加 RSS 来源</Text>
+              <TextInput style={styles.input} value={dailySourceName} onChangeText={setDailySourceName} placeholder="来源名称，例如 Reuters" placeholderTextColor={colors.textTertiary} />
+              <TextInput style={styles.input} value={dailySourceUrl} onChangeText={setDailySourceUrl} placeholder="https://example.com/rss.xml" placeholderTextColor={colors.textTertiary} autoCapitalize="none" />
+              <View style={styles.toolNumberRow}>
+                <View style={styles.toolNumberField}><Text style={styles.label}>分类</Text><TextInput style={styles.input} value={dailySourceCategory} onChangeText={setDailySourceCategory} placeholder="technology" placeholderTextColor={colors.textTertiary} autoCapitalize="none" /></View>
+                <View style={styles.toolNumberField}><Text style={styles.label}>语言</Text><TextInput style={styles.input} value={dailySourceLanguage} onChangeText={setDailySourceLanguage} placeholder="zh" placeholderTextColor={colors.textTertiary} autoCapitalize="none" /></View>
+              </View>
+              <Pressable style={styles.addPathButton} onPress={handleAddDailySource}><Text style={styles.addPathButtonText}>添加来源</Text></Pressable>
+            </View>
+            {dailyCustomSources.length === 0 ? (
+              <Text style={styles.emptyText}>尚未添加自定义 RSS 来源</Text>
+            ) : (
+              <View style={styles.toolListPreview}>
+                {dailyCustomSources.map((source) => (
+                  <View key={source.id} style={styles.toolListPreviewItem}>
+                    <View style={styles.toolListPreviewText}>
+                      <TextInput
+                        style={[styles.input, styles.dailySourceInlineInput]}
+                        value={source.name}
+                        onChangeText={(value) => handleUpdateDailySource(source.id, { name: value })}
+                        placeholder="来源名称"
+                        placeholderTextColor={colors.textTertiary}
+                      />
+                      <TextInput
+                        style={[styles.input, styles.dailySourceInlineInput]}
+                        value={source.url}
+                        onChangeText={(value) => handleUpdateDailySource(source.id, { url: value })}
+                        placeholder="RSS URL"
+                        placeholderTextColor={colors.textTertiary}
+                        autoCapitalize="none"
+                      />
+                      <View style={styles.toolNumberRow}>
+                        <View style={styles.toolNumberField}><TextInput style={[styles.input, styles.dailySourceInlineInput]} value={source.category} onChangeText={(value) => handleUpdateDailySource(source.id, { category: value })} placeholder="分类" placeholderTextColor={colors.textTertiary} autoCapitalize="none" /></View>
+                        <View style={styles.toolNumberField}><TextInput style={[styles.input, styles.dailySourceInlineInput]} value={source.language} onChangeText={(value) => handleUpdateDailySource(source.id, { language: value })} placeholder="语言" placeholderTextColor={colors.textTertiary} autoCapitalize="none" /></View>
+                      </View>
+                    </View>
+                    <View style={styles.mcpResourceSwitches}>
+                      <Switch value={source.enabled} onValueChange={(value) => handleUpdateDailySource(source.id, { enabled: value })} trackColor={{ true: colors.primary }} />
+                      <Pressable style={styles.removeSmallButton} onPress={() => handleRemoveDailySource(source.id)}><Text style={styles.removeSmallButtonText}>删除</Text></Pressable>
+                    </View>
+                  </View>
+                ))}
+              </View>
+            )}
+          </>
+        );
       case 'runCommand':
         return (
           <>
@@ -5857,6 +5992,280 @@ function ToolConfigTab({ showToast, keyboardBottomInset }: SettingsTabProps) {
   );
 
 
+}
+
+/* ==================== 来信 Tab ==================== */
+
+function IncomingLetterTab({ showToast, keyboardBottomInset }: SettingsTabProps) {
+  const {
+    incomingLetterConfig,
+    setIncomingLetterConfig,
+    addIncomingLetterOccasion,
+    updateIncomingLetterOccasion,
+    removeIncomingLetterOccasion,
+  } = useSettingsStore();
+  const occasions = incomingLetterConfig?.occasions || [];
+  const [editing, setEditing] = useState<IncomingLetterOccasion | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [draftTitle, setDraftTitle] = useState('');
+  const [draftDate, setDraftDate] = useState('');
+  const [draftRepeatYearly, setDraftRepeatYearly] = useState(true);
+  const [draftEnabled, setDraftEnabled] = useState(true);
+  const [draftSystemPrompt, setDraftSystemPrompt] = useState('');
+  const [generatingOccasionId, setGeneratingOccasionId] = useState<string | null>(null);
+
+  function openCreate() {
+    setEditing(null);
+    setDraftTitle('');
+    setDraftDate(formatDateOnly(Date.now()));
+    setDraftRepeatYearly(true);
+    setDraftEnabled(true);
+    setDraftSystemPrompt('');
+    setCreating(true);
+  }
+
+  function openEdit(occasion: IncomingLetterOccasion) {
+    setEditing(occasion);
+    setDraftTitle(occasion.title);
+    setDraftDate(occasion.date);
+    setDraftRepeatYearly(occasion.repeatYearly);
+    setDraftEnabled(occasion.enabled);
+    setDraftSystemPrompt(occasion.systemPrompt);
+    setCreating(true);
+  }
+
+  function closeEditor() {
+    setCreating(false);
+    setEditing(null);
+  }
+
+  function validateDate(value: string): boolean {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+    const [year, month, day] = value.split('-').map((part) => parseInt(part, 10));
+    const date = new Date(year, month - 1, day);
+    return (
+      date.getFullYear() === year &&
+      date.getMonth() === month - 1 &&
+      date.getDate() === day
+    );
+  }
+
+  function handleSaveDraft() {
+    const title = draftTitle.trim();
+    const date = draftDate.trim();
+    if (!title) {
+      Alert.alert('提示', '请填写收信日名称');
+      return;
+    }
+    if (!validateDate(date)) {
+      Alert.alert('提示', '日期格式应为 YYYY-MM-DD');
+      return;
+    }
+
+    const now = Date.now();
+    if (editing) {
+      updateIncomingLetterOccasion(editing.id, {
+        title,
+        date,
+        repeatYearly: draftRepeatYearly,
+        enabled: draftEnabled,
+        systemPrompt: draftSystemPrompt.trim(),
+        updatedAt: now,
+      });
+      showToast('收信日已更新');
+    } else {
+      addIncomingLetterOccasion({
+        id: randomUUID(),
+        title,
+        date,
+        repeatYearly: draftRepeatYearly,
+        enabled: draftEnabled,
+        systemPrompt: draftSystemPrompt.trim(),
+        createdAt: now,
+        updatedAt: now,
+      });
+      showToast('收信日已添加');
+    }
+    closeEditor();
+  }
+
+  function handleDelete(occasion: IncomingLetterOccasion) {
+    Alert.alert('删除收信日', `确定删除「${occasion.title || '收信日'}」？历史信件会保留。`, [
+      { text: '取消', style: 'cancel' },
+      {
+        text: '删除',
+        style: 'destructive',
+        onPress: () => {
+          removeIncomingLetterOccasion(occasion.id);
+          showToast('收信日已删除');
+        },
+      },
+    ]);
+  }
+
+  async function handleGenerateNow(occasion: IncomingLetterOccasion) {
+    if (generatingOccasionId) return;
+    setGeneratingOccasionId(occasion.id);
+    try {
+      await generateImmediateIncomingLetter(occasion);
+      showToast('测试来信已生成');
+      Alert.alert('已生成来信', '回到首页后会弹出这封测试来信。');
+    } catch (error: any) {
+      Alert.alert('生成失败', error?.message || '无法生成测试来信');
+    } finally {
+      setGeneratingOccasionId(null);
+    }
+  }
+
+  return (
+    <ScrollView
+      style={styles.content}
+      contentContainerStyle={{ paddingBottom: keyboardBottomInset + 20 }}
+      keyboardShouldPersistTaps="handled"
+    >
+      <View style={styles.switchRow}>
+        <View style={styles.switchText}>
+          <Text style={styles.label}>启用来信</Text>
+          <Text style={styles.hint}>当天打开 App 或回到前台时，会为命中的收信日生成并保存一封信。</Text>
+        </View>
+        <Switch
+          value={!!incomingLetterConfig?.enabled}
+          onValueChange={(value) => {
+            setIncomingLetterConfig({ enabled: value });
+            showToast(value ? '来信已开启' : '来信已关闭');
+          }}
+          trackColor={{ false: colors.border, true: colors.primary }}
+          thumbColor="#FFFFFF"
+        />
+      </View>
+
+      <View style={styles.diaryHeaderRow}>
+        <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>自定义收信日</Text>
+        <Pressable style={styles.diaryAddButton} onPress={openCreate}>
+          <Text style={styles.diaryAddText}>+ 新建</Text>
+        </Pressable>
+      </View>
+
+      {occasions.length === 0 ? (
+        <View style={styles.customStickerEmpty}>
+          <Text style={styles.hint}>暂无收信日。可以添加生日、纪念日或任何你想收到信的日子。</Text>
+        </View>
+      ) : (
+        <View style={styles.rangeList}>
+          {occasions.map((occasion) => (
+            <Pressable
+              key={occasion.id}
+              style={styles.diaryItem}
+              onPress={() => openEdit(occasion)}
+            >
+              <View style={styles.diaryContent}>
+                <Text style={styles.diaryTitle}>{occasion.title || '收信日'}</Text>
+                <Text style={styles.diaryPreview} numberOfLines={2}>
+                  {occasion.date} · {occasion.repeatYearly ? '每年重复' : '仅此一次'} · {occasion.enabled ? '已开启' : '已关闭'}
+                </Text>
+                <Text style={styles.diaryDate} numberOfLines={1}>
+                  {occasion.systemPrompt ? '已设置专属 System Prompt' : '未设置 System Prompt'}
+                </Text>
+              </View>
+              <Switch
+                value={occasion.enabled}
+                onValueChange={(enabled) => updateIncomingLetterOccasion(occasion.id, { enabled })}
+                trackColor={{ false: colors.border, true: colors.primary }}
+                thumbColor="#FFFFFF"
+              />
+              <Pressable
+                style={[
+                  styles.smallActionButton,
+                  styles.incomingLetterNowButton,
+                  generatingOccasionId === occasion.id && styles.smallActionButtonDisabled,
+                ]}
+                onPress={() => handleGenerateNow(occasion)}
+                disabled={!!generatingOccasionId}
+              >
+                {generatingOccasionId === occasion.id ? (
+                  <ActivityIndicator size="small" color={colors.primary} />
+                ) : (
+                  <Text style={styles.smallActionText}>立即来信</Text>
+                )}
+              </Pressable>
+              <Pressable style={styles.deleteButton} onPress={() => handleDelete(occasion)}>
+                <Text style={styles.deleteIcon}>×</Text>
+              </Pressable>
+            </Pressable>
+          ))}
+        </View>
+      )}
+
+      <Modal visible={creating} transparent animationType="fade" onRequestClose={closeEditor}>
+        <View style={styles.overlay}>
+          <View style={[styles.modal, styles.bubbleTextureModal]}>
+            <Text style={styles.modalTitle}>{editing ? '编辑收信日' : '新建收信日'}</Text>
+            <ScrollView style={styles.bubbleTextureModalBody} keyboardShouldPersistTaps="handled">
+              <View style={styles.field}>
+                <Text style={styles.label}>名称</Text>
+                <TextInput
+                  style={styles.input}
+                  value={draftTitle}
+                  onChangeText={setDraftTitle}
+                  placeholder="生日 / 纪念日"
+                  placeholderTextColor={colors.textTertiary}
+                />
+              </View>
+              <View style={styles.field}>
+                <Text style={styles.label}>日期</Text>
+                <TextInput
+                  style={styles.input}
+                  value={draftDate}
+                  onChangeText={setDraftDate}
+                  placeholder="YYYY-MM-DD"
+                  placeholderTextColor={colors.textTertiary}
+                  keyboardType="numbers-and-punctuation"
+                />
+              </View>
+              <View style={styles.switchRow}>
+                <Text style={styles.label}>每年重复</Text>
+                <Switch
+                  value={draftRepeatYearly}
+                  onValueChange={setDraftRepeatYearly}
+                  trackColor={{ false: colors.border, true: colors.primary }}
+                  thumbColor="#FFFFFF"
+                />
+              </View>
+              <View style={styles.switchRow}>
+                <Text style={styles.label}>启用这个收信日</Text>
+                <Switch
+                  value={draftEnabled}
+                  onValueChange={setDraftEnabled}
+                  trackColor={{ false: colors.border, true: colors.primary }}
+                  thumbColor="#FFFFFF"
+                />
+              </View>
+              <View style={styles.field}>
+                <Text style={styles.label}>System Prompt</Text>
+                <TextInput
+                  style={[styles.input, styles.multilineInput, { minHeight: 180 }]}
+                  value={draftSystemPrompt}
+                  onChangeText={setDraftSystemPrompt}
+                  multiline
+                  textAlignVertical="top"
+                  placeholder="这里写这个收信日专用的写信规则、语气、长度和输出格式。"
+                  placeholderTextColor={colors.textTertiary}
+                />
+              </View>
+            </ScrollView>
+            <View style={styles.modalButtons}>
+              <Pressable style={styles.modalCancel} onPress={closeEditor}>
+                <Text style={styles.modalCancelText}>取消</Text>
+              </Pressable>
+              <Pressable style={styles.modalConfirm} onPress={handleSaveDraft}>
+                <Text style={styles.modalConfirmText}>保存</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </ScrollView>
+  );
 }
 
 /* ==================== 日记 Tab ==================== */
@@ -6527,6 +6936,11 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     alignItems: 'center',
   },
   addPathButtonText: { fontSize: 14, fontWeight: '600', color: colors.primary },
+  dailySourceInlineInput: {
+    minHeight: 38,
+    marginBottom: 6,
+    paddingVertical: 8,
+  },
   content: { flex: 1, padding: 20 },
   sectionTitle: {
     fontSize: 13, fontWeight: '600', color: colors.textSecondary,
@@ -7139,6 +7553,9 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     borderColor: colors.primary,
     backgroundColor: colors.background,
   },
+  incomingLetterNowButton: {
+    minWidth: 84,
+  },
   smallActionButtonDisabled: {
     opacity: 0.45,
   },
@@ -7148,6 +7565,17 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     fontWeight: '600',
   },
   smallActionTextDisabled: {
+    color: colors.textTertiary,
+  },
+  deleteButton: {
+    width: 32,
+    height: 32,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 16,
+  },
+  deleteIcon: {
+    fontSize: 20,
     color: colors.textTertiary,
   },
   colorSwatchRow: {

@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { sqliteStorage } from '../db/kv-storage';
-import { APIConfig } from '../types';
+import { APIConfig, IncomingLetterOccasion } from '../types';
 import { DEFAULT_HOTBOARD_PLATFORM_TYPES } from '../utils/hotboardPlatforms';
 import type { TopBarIconKey } from '../utils/topBarIconTypes';
 
@@ -328,6 +328,27 @@ export interface ImageGenerationConfig {
   faceReferences: ImageGenerationFaceReference[];
 }
 
+export interface IncomingLetterConfig {
+  enabled: boolean;
+  occasions: IncomingLetterOccasion[];
+}
+
+export interface DailyPaperSourceConfig {
+  id: string;
+  name: string;
+  url: string;
+  category: string;
+  language: string;
+  enabled: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface DailyPaperConfig {
+  useDefaultSources: boolean;
+  customSources: DailyPaperSourceConfig[];
+}
+
 export type StickerOwner = 'user' | 'assistant';
 
 export interface CustomSticker {
@@ -434,6 +455,42 @@ function normalizeImageGenerationConfig(config?: Partial<ImageGenerationConfig>)
         uri: item.uri,
         enabled: item.enabled !== false,
         createdAt: item.createdAt || Date.now(),
+      })),
+  };
+}
+
+function normalizeIncomingLetterConfig(config?: Partial<IncomingLetterConfig>): IncomingLetterConfig {
+  return {
+    enabled: config?.enabled ?? false,
+    occasions: (config?.occasions || [])
+      .filter((item) => !!item?.id && !!item?.date)
+      .map((item) => ({
+        id: item.id,
+        title: item.title || '收信日',
+        date: item.date,
+        repeatYearly: item.repeatYearly !== false,
+        enabled: item.enabled !== false,
+        systemPrompt: item.systemPrompt || '',
+        createdAt: item.createdAt || Date.now(),
+        updatedAt: item.updatedAt || item.createdAt || Date.now(),
+      })),
+  };
+}
+
+export function normalizeDailyPaperConfig(config?: Partial<DailyPaperConfig>): DailyPaperConfig {
+  return {
+    useDefaultSources: config?.useDefaultSources ?? true,
+    customSources: (config?.customSources || [])
+      .filter((source) => !!source?.url)
+      .map((source) => ({
+        id: source.id || createId('daily-source'),
+        name: source.name?.trim() || '自定义来源',
+        url: source.url.trim(),
+        category: source.category?.trim() || 'general',
+        language: source.language?.trim() || 'zh',
+        enabled: source.enabled !== false,
+        createdAt: source.createdAt || Date.now(),
+        updatedAt: source.updatedAt || source.createdAt || Date.now(),
       })),
   };
 }
@@ -547,6 +604,8 @@ interface SettingsState {
   promptCacheConfig: PromptCacheConfig;
   imageGenerationConfig: ImageGenerationConfig;
   imageGenerationPrompt: string;
+  incomingLetterConfig: IncomingLetterConfig;
+  dailyPaperConfig: DailyPaperConfig;
   stickerConfig: StickerConfig;
   appearanceConfig: AppearanceConfig;
 
@@ -575,6 +634,11 @@ interface SettingsState {
   setPromptCacheConfig: (config: Partial<PromptCacheConfig>) => void;
   setImageGenerationConfig: (config: Partial<ImageGenerationConfig>) => void;
   setImageGenerationPrompt: (prompt: string) => void;
+  setIncomingLetterConfig: (config: Partial<IncomingLetterConfig>) => void;
+  setDailyPaperConfig: (config: Partial<DailyPaperConfig>) => void;
+  addIncomingLetterOccasion: (occasion: IncomingLetterOccasion) => void;
+  updateIncomingLetterOccasion: (id: string, patch: Partial<IncomingLetterOccasion>) => void;
+  removeIncomingLetterOccasion: (id: string) => void;
   setStickerSuggestionsEnabled: (enabled: boolean) => void;
   addSticker: (owner: StickerOwner, sticker: CustomSticker) => void;
   updateSticker: (owner: StickerOwner, id: string, patch: Partial<Pick<CustomSticker, 'name' | 'uri'>>) => void;
@@ -757,6 +821,14 @@ export const useSettingsStore = create<SettingsState>()(
         faceReferences: [],
       },
       imageGenerationPrompt: '高质量图片，画面清晰，主体明确，无水印，无乱码文字。',
+      incomingLetterConfig: {
+        enabled: false,
+        occasions: [],
+      },
+      dailyPaperConfig: {
+        useDefaultSources: true,
+        customSources: [],
+      },
       stickerConfig: createDefaultStickerConfig(),
       appearanceConfig: DEFAULT_APPEARANCE_CONFIG,
 
@@ -855,6 +927,54 @@ export const useSettingsStore = create<SettingsState>()(
           }),
         })),
       setImageGenerationPrompt: (prompt) => set({ imageGenerationPrompt: prompt }),
+      setIncomingLetterConfig: (config) =>
+        set((state) => ({
+          incomingLetterConfig: normalizeIncomingLetterConfig({
+            ...state.incomingLetterConfig,
+            ...config,
+          }),
+        })),
+      setDailyPaperConfig: (config) =>
+        set((state) => ({
+          dailyPaperConfig: normalizeDailyPaperConfig({
+            ...state.dailyPaperConfig,
+            ...config,
+          }),
+        })),
+      addIncomingLetterOccasion: (occasion) =>
+        set((state) => {
+          const current = normalizeIncomingLetterConfig(state.incomingLetterConfig);
+          return {
+            incomingLetterConfig: {
+              ...current,
+              occasions: [occasion, ...current.occasions],
+            },
+          };
+        }),
+      updateIncomingLetterOccasion: (id, patch) =>
+        set((state) => {
+          const current = normalizeIncomingLetterConfig(state.incomingLetterConfig);
+          return {
+            incomingLetterConfig: {
+              ...current,
+              occasions: current.occasions.map((occasion) =>
+                occasion.id === id
+                  ? { ...occasion, ...patch, updatedAt: patch.updatedAt || Date.now() }
+                  : occasion
+              ),
+            },
+          };
+        }),
+      removeIncomingLetterOccasion: (id) =>
+        set((state) => {
+          const current = normalizeIncomingLetterConfig(state.incomingLetterConfig);
+          return {
+            incomingLetterConfig: {
+              ...current,
+              occasions: current.occasions.filter((occasion) => occasion.id !== id),
+            },
+          };
+        }),
       setStickerSuggestionsEnabled: (enabled) =>
         set((state) => {
           const current = normalizeStickerConfig(state.stickerConfig);
@@ -1081,6 +1201,8 @@ export const useSettingsStore = create<SettingsState>()(
         promptCacheConfig: state.promptCacheConfig,
         imageGenerationConfig: state.imageGenerationConfig,
         imageGenerationPrompt: state.imageGenerationPrompt,
+        incomingLetterConfig: state.incomingLetterConfig,
+        dailyPaperConfig: state.dailyPaperConfig,
         stickerConfig: state.stickerConfig,
         appearanceConfig: state.appearanceConfig,
       }),
@@ -1090,6 +1212,8 @@ export const useSettingsStore = create<SettingsState>()(
           stickerConfig: normalizeStickerConfig(state?.stickerConfig),
           floatingBallConfig: normalizeFloatingBallConfig(state?.floatingBallConfig),
           imageGenerationConfig: normalizeImageGenerationConfig(state?.imageGenerationConfig),
+          incomingLetterConfig: normalizeIncomingLetterConfig(state?.incomingLetterConfig),
+          dailyPaperConfig: normalizeDailyPaperConfig(state?.dailyPaperConfig),
         });
       },
     }

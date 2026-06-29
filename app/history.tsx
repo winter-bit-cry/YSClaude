@@ -4,7 +4,7 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import { lightColors, useThemeColors, type ThemeColors } from '../src/theme/colors';
 
 import { fonts } from '../src/theme/fonts';
-import { Conversation } from '../src/types';
+import { Conversation, IncomingLetter } from '../src/types';
 import {
   getAllConversations,
   deleteConversation,
@@ -14,6 +14,7 @@ import {
   getGeneratedPictureGalleryItems,
   getMessageByConversationAndId,
   updateMessageGeneratedPics,
+  getAllIncomingLetters,
   type GeneratedPictureGalleryItem,
 } from '../src/db/operations';
 import { useChatStore } from '../src/stores/chat';
@@ -22,7 +23,7 @@ import { deleteGeneratedImageFile } from '../src/services/imageGeneration';
 
 let colors = lightColors;
 type SearchScope = 'current' | 'global';
-type HistoryViewMode = 'chats' | 'gallery';
+type HistoryViewMode = 'chats' | 'gallery' | 'letters';
 const GALLERY_COLUMNS = 3;
 const GALLERY_GAP = 8;
 const GALLERY_ITEM_SIZE = Math.floor((Dimensions.get('window').width - 32 - GALLERY_GAP * (GALLERY_COLUMNS - 1)) / GALLERY_COLUMNS);
@@ -45,6 +46,9 @@ export default function HistoryScreen() {
   const [galleryLoading, setGalleryLoading] = useState(false);
   const [previewPicture, setPreviewPicture] = useState<GeneratedPictureGalleryItem | null>(null);
   const [deletingGalleryItemId, setDeletingGalleryItemId] = useState<string | null>(null);
+  const [letters, setLetters] = useState<IncomingLetter[]>([]);
+  const [lettersLoading, setLettersLoading] = useState(false);
+  const [previewLetter, setPreviewLetter] = useState<IncomingLetter | null>(null);
   const {
     conversationId,
     messages,
@@ -59,6 +63,7 @@ export default function HistoryScreen() {
     useCallback(() => {
       loadList();
       loadGallery();
+      loadLetters();
     }, [])
   );
 
@@ -74,6 +79,16 @@ export default function HistoryScreen() {
       setGalleryItems(list);
     } finally {
       setGalleryLoading(false);
+    }
+  }
+
+  async function loadLetters() {
+    setLettersLoading(true);
+    try {
+      const list = await getAllIncomingLetters();
+      setLetters(list);
+    } finally {
+      setLettersLoading(false);
     }
   }
 
@@ -273,6 +288,12 @@ export default function HistoryScreen() {
         >
           <Text style={[styles.modeTabText, viewMode === 'gallery' && styles.modeTabTextActive]}>图片画廊</Text>
         </Pressable>
+        <Pressable
+          style={[styles.modeTab, viewMode === 'letters' && styles.modeTabActive]}
+          onPress={() => setViewMode('letters')}
+        >
+          <Text style={[styles.modeTabText, viewMode === 'letters' && styles.modeTabTextActive]}>来信</Text>
+        </Pressable>
       </View>
 
       {viewMode === 'chats' && (
@@ -309,7 +330,41 @@ export default function HistoryScreen() {
         </View>
       )}
 
-      {viewMode === 'gallery' ? (
+      {viewMode === 'letters' ? (
+        <FlatList
+          key="letters"
+          data={letters}
+          keyExtractor={(item) => item.id}
+          renderItem={({ item }) => (
+            <Pressable style={styles.letterItem} onPress={() => setPreviewLetter(item)}>
+              <View style={styles.itemContent}>
+                <View style={styles.searchResultHeader}>
+                  <Text style={styles.itemTitle} numberOfLines={1}>
+                    {item.title || item.occasionTitle || '来信'}
+                  </Text>
+                  <Text style={styles.searchResultTime}>{item.dateKey}</Text>
+                </View>
+                <Text style={styles.itemMeta}>
+                  {item.status === 'ready' ? '已生成' : item.status === 'failed' ? '生成失败' : '生成中'}
+                </Text>
+                <Text style={styles.searchResultSnippet} numberOfLines={3}>
+                  {item.content || item.errorMessage || '还没有正文'}
+                </Text>
+              </View>
+            </Pressable>
+          )}
+          contentContainerStyle={styles.list}
+          ListEmptyComponent={
+            <View style={styles.empty}>
+              {lettersLoading ? (
+                <ActivityIndicator size="small" color={colors.primary} />
+              ) : (
+                <Text style={styles.emptyText}>暂无来信</Text>
+              )}
+            </View>
+          }
+        />
+      ) : viewMode === 'gallery' ? (
         <FlatList
           key="gallery"
           data={galleryItems}
@@ -467,6 +522,39 @@ export default function HistoryScreen() {
                   </Pressable>
                   <Pressable style={styles.previewOpen} onPress={() => handleOpenGalleryItem(previewPicture)}>
                     <Text style={styles.previewOpenText}>打开对话</Text>
+                  </Pressable>
+                </View>
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={!!previewLetter} transparent animationType="fade" onRequestClose={() => setPreviewLetter(null)}>
+        <View style={styles.previewOverlay}>
+          <Pressable style={styles.previewBackdrop} onPress={() => setPreviewLetter(null)} />
+          <View style={styles.letterPreviewPanel}>
+            {previewLetter && (
+              <>
+                <Text style={styles.previewTitle}>
+                  {previewLetter.title || previewLetter.occasionTitle || '来信'}
+                </Text>
+                <Text style={styles.previewPrompt}>
+                  {previewLetter.dateKey} · {previewLetter.occasionTitle || '收信日'}
+                </Text>
+                <FlatList
+                  data={[previewLetter.content || previewLetter.errorMessage || '还没有正文']}
+                  keyExtractor={(_, index) => String(index)}
+                  renderItem={({ item }) => (
+                    <Text selectable style={styles.letterPreviewContent}>
+                      {item}
+                    </Text>
+                  )}
+                  contentContainerStyle={styles.letterPreviewBody}
+                />
+                <View style={styles.previewActions}>
+                  <Pressable style={styles.previewCancel} onPress={() => setPreviewLetter(null)}>
+                    <Text style={styles.previewCancelText}>关闭</Text>
                   </Pressable>
                 </View>
               </>
@@ -654,6 +742,12 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     borderBottomWidth: 0.5,
     borderBottomColor: colors.border,
   },
+  letterItem: {
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    borderBottomWidth: 0.5,
+    borderBottomColor: colors.border,
+  },
   searchResultHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -770,6 +864,24 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     borderRadius: 12,
     overflow: 'hidden',
     backgroundColor: colors.background,
+  },
+  letterPreviewPanel: {
+    width: '100%',
+    maxWidth: 540,
+    maxHeight: '82%',
+    borderRadius: 12,
+    overflow: 'hidden',
+    backgroundColor: colors.background,
+  },
+  letterPreviewBody: {
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 8,
+  },
+  letterPreviewContent: {
+    fontSize: 15,
+    lineHeight: 24,
+    color: colors.text,
   },
   previewImage: {
     width: '100%',

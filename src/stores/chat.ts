@@ -1,5 +1,5 @@
 ﻿import { create } from 'zustand';
-import { Message, Conversation, HiddenRange, ToolInvocation, GeneratedPicture } from '../types';
+import { Message, Conversation, HiddenRange, ToolInvocation, GeneratedPicture, DailyPaper } from '../types';
 import { randomUUID } from 'expo-crypto';
 import { File } from 'expo-file-system';
 import { ChatMessage, streamChat, streamChatCompletion } from '../services/api';
@@ -29,6 +29,7 @@ import {
 import { buildRadioRuntimeContext } from '../utils/radioMarkers';
 import { buildFocusEventSystemPrompt } from '../utils/focusEvents';
 import { buildPeriodSystemPrompt } from '../utils/periods';
+import { buildDailyPaperCardMessage, formatDailyPaperCardForAi } from '../utils/dailyPaperShare';
 import {
   ANDROID_ACCESSIBILITY_CAPTURE_NOTICE_PREFIX,
   ANDROID_ACCESSIBILITY_CONTROL_MARKER,
@@ -420,6 +421,7 @@ interface ChatState {
   sendMessage: (content: string, imageUri?: string, imageGenerationReferenceUris?: string[]) => Promise<void>;
   addUserMessage: (content: string, imageUri?: string, imageGenerationReferenceUris?: string[]) => Promise<Message | null>;
   addSharedLinkToLatestConversation: (url: string) => Promise<string>;
+  addDailyPaperToLatestConversation: (paper: DailyPaper) => Promise<string>;
   addSystemMessage: (content: string) => Promise<Message | null>;
   enableWebCruise: () => Promise<void>;
   triggerResponse: () => Promise<void>;
@@ -1259,7 +1261,7 @@ async function streamAssistantResponse(
   const apiMessagesPromises = filtered.map(async (m, index) => {
     const prev = index > 0 ? filtered[index - 1] : null;
     const needMarker = !prev || m.createdAt - prev.createdAt >= TIME_GAP_THRESHOLD_MS;
-    let msgContent = m.content;
+    let msgContent = formatDailyPaperCardForAi(m.content);
     if (settings.stripThinking) {
       msgContent = msgContent.replace(/<thinking>[\s\S]*?<\/thinking>/gi, '').trim();
     }
@@ -1709,6 +1711,46 @@ export const useChatStore = create<ChatState>((set, get) => ({
       id: randomUUID(),
       role: 'user',
       content: url,
+      createdAt: now,
+    };
+
+    await insertMessage(targetConversation.id, userMessage);
+    await updateConversation(targetConversation.id, { updatedAt: now });
+
+    if (get().conversationId === targetConversation.id) {
+      set((state) => ({
+        messages: [...state.messages, userMessage],
+        error: null,
+        openToBottomRequestId: state.openToBottomRequestId + 1,
+      }));
+    }
+
+    return targetConversation.id;
+  },
+
+  addDailyPaperToLatestConversation: async (paper: DailyPaper) => {
+    const now = Date.now();
+    const settings = useSettingsStore.getState();
+    const config = settings.apiConfigs[settings.activeConfigIndex];
+    const conversations = await getAllConversations();
+    let targetConversation = conversations[0] ?? null;
+
+    if (!targetConversation) {
+      targetConversation = {
+        id: randomUUID(),
+        title: paper.title || '每日日报',
+        systemPrompt: settings.systemPrompt,
+        model: config?.model || '',
+        createdAt: now,
+        updatedAt: now,
+      };
+      await createConversation(targetConversation);
+    }
+
+    const userMessage: Message = {
+      id: randomUUID(),
+      role: 'user',
+      content: buildDailyPaperCardMessage(paper),
       createdAt: now,
     };
 

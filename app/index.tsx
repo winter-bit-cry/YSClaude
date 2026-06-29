@@ -2,6 +2,7 @@ import React, { useRef, useEffect, useLayoutEffect, useState, useMemo, useCallba
 import {
   View,
   FlatList,
+  ScrollView,
   AppState,
   Text,
   TextInput,
@@ -40,7 +41,7 @@ import { ChatBubble } from '../src/components/ChatBubble';
 import { ChatInput } from '../src/components/ChatInput';
 import { ModelSelector } from '../src/components/ModelSelector';
 import { TimeDivider } from '../src/components/TimeDivider';
-import { Message } from '../src/types';
+import { IncomingLetter, Message } from '../src/types';
 import { TIME_GAP_THRESHOLD_MS } from '../src/utils/time';
 import { pickGreeting } from '../src/utils/greetings';
 import {
@@ -54,7 +55,9 @@ import {
   getConversationMessageDates,
   getFirstMessageInDateRange,
   getDailyPaperDateKeys,
+  markIncomingLetterShown,
 } from '../src/db/operations';
+import { ensureTodayIncomingLetters } from '../src/services/incomingLetters';
 
 
 let colors = lightColors;
@@ -162,6 +165,8 @@ export default function ChatScreen() {
   const insets = useSafeAreaInsets();
   const appearanceConfig = useSettingsStore((state) => state.appearanceConfig);
   const hotboardConfig = useSettingsStore((state) => state.hotboardConfig);
+  const settingsHydrated = useSettingsStore((state) => state._hydrated);
+  const incomingLetterEnabled = useSettingsStore((state) => !!state.incomingLetterConfig?.enabled);
   const topBarIconUris = appearanceConfig?.topBarIconUris || {};
   const topBarIconsHidden = !!appearanceConfig?.topBarIconsHidden;
   const topBarFadeHidden = !!appearanceConfig?.topBarFadeHidden;
@@ -212,6 +217,7 @@ export default function ChatScreen() {
   const [enteringMessageIds, setEnteringMessageIds] = useState<Set<string>>(new Set());
   const [isInitialPositioning, setIsInitialPositioning] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [incomingLetter, setIncomingLetter] = useState<IncomingLetter | null>(null);
   const flatListRef = useRef<FlatList<Message>>(null);
   const blurTargetRef = useRef<View | null>(null);
   const scrollFrameRef = useRef<number | null>(null);
@@ -235,6 +241,8 @@ export default function ChatScreen() {
   const floorVisibleAtTouchStartRef = useRef(false);
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
   const restoreBottomOnActiveRef = useRef(false);
+  const incomingLetterCheckRef = useRef(false);
+  const shownIncomingLetterIdsRef = useRef<Set<string>>(new Set());
 
   const keyboard = useAnimatedKeyboard();
   const periodDateKeys = useMemo(() => buildPeriodDateSet(periodRecords), [periodRecords]);
@@ -247,6 +255,39 @@ export default function ChatScreen() {
     () => periodRecords.find((record) => !record.endDate) || null,
     [periodRecords]
   );
+
+  const checkIncomingLetters = useCallback(async () => {
+    if (!settingsHydrated || !incomingLetterEnabled || incomingLetterCheckRef.current) return;
+    incomingLetterCheckRef.current = true;
+    try {
+      const letters = await ensureTodayIncomingLetters();
+      const nextLetter = letters.find((letter) => !shownIncomingLetterIdsRef.current.has(letter.id));
+      if (nextLetter) {
+        shownIncomingLetterIdsRef.current.add(nextLetter.id);
+        setIncomingLetter(nextLetter);
+      }
+    } catch (error) {
+      console.warn('[IncomingLetter] check failed:', error);
+    } finally {
+      incomingLetterCheckRef.current = false;
+    }
+  }, [incomingLetterEnabled, settingsHydrated]);
+
+  const closeIncomingLetter = useCallback(async () => {
+    const letter = incomingLetter;
+    setIncomingLetter(null);
+    if (letter && !letter.shownAt) {
+      try {
+        await markIncomingLetterShown(letter.id);
+      } catch (error) {
+        console.warn('[IncomingLetter] mark shown failed:', error);
+      }
+    }
+  }, [incomingLetter]);
+
+  useEffect(() => {
+    checkIncomingLetters().catch(() => undefined);
+  }, [checkIncomingLetters]);
 
   const openCalendar = useCallback(async () => {
     const lastMessage = messages[messages.length - 1];
@@ -538,11 +579,18 @@ export default function ChatScreen() {
         restoreBottomOnActiveRef.current = false;
         finishInitialPositioning();
       }
+
+      if (
+        nextState === 'active' &&
+        (previousState === 'background' || previousState === 'inactive')
+      ) {
+        checkIncomingLetters().catch(() => undefined);
+      }
     };
 
     const subscription = AppState.addEventListener('change', handleAppStateChange);
     return () => subscription.remove();
-  }, [finishInitialPositioning, prepareBottomRestore]);
+  }, [checkIncomingLetters, finishInitialPositioning, prepareBottomRestore]);
 
   const handleScreenTouchStart = useCallback(() => {
     const shouldKeepBottom = shouldStickToBottomRef.current;
@@ -1051,6 +1099,30 @@ export default function ChatScreen() {
         </View>
       )}
 
+      <Modal visible={!!incomingLetter} transparent animationType="fade" onRequestClose={closeIncomingLetter}>
+        <View style={styles.letterOverlay}>
+          <Pressable style={styles.letterBackdrop} onPress={closeIncomingLetter} />
+          <View style={styles.letterPanel}>
+            {incomingLetter && (
+              <>
+                <Text style={styles.letterEyebrow}>{incomingLetter.dateKey}</Text>
+                <Text style={styles.letterTitle}>{incomingLetter.title || incomingLetter.occasionTitle || '有一封信给你'}</Text>
+                <ScrollView style={styles.letterScroll} contentContainerStyle={styles.letterBody}>
+                  <Text selectable style={styles.letterContent}>
+                    {incomingLetter.content}
+                  </Text>
+                </ScrollView>
+                <View style={styles.letterActions}>
+                  <Pressable style={styles.letterCloseButton} onPress={closeIncomingLetter}>
+                    <Text style={styles.letterCloseText}>收下</Text>
+                  </Pressable>
+                </View>
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
+
       <Modal visible={calendarVisible} transparent animationType="fade" onRequestClose={() => setCalendarVisible(false)}>
         <Pressable style={styles.calendarOverlay} onPress={() => setCalendarVisible(false)}>
           <View style={styles.calendarPanel} onStartShouldSetResponder={() => true}>
@@ -1336,6 +1408,76 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     fontWeight: '600',
     textAlign: 'center',
     overflow: 'hidden',
+  },
+  letterOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(20,20,19,0.38)',
+    paddingHorizontal: 22,
+  },
+  letterBackdrop: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+  },
+  letterPanel: {
+    width: '100%',
+    maxWidth: 520,
+    maxHeight: '82%',
+    borderRadius: 12,
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
+    overflow: 'hidden',
+  },
+  letterEyebrow: {
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.primary,
+  },
+  letterTitle: {
+    paddingHorizontal: 20,
+    paddingTop: 6,
+    fontSize: 20,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  letterScroll: {
+    flexShrink: 1,
+  },
+  letterBody: {
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 10,
+  },
+  letterContent: {
+    fontSize: 15,
+    lineHeight: 25,
+    color: colors.text,
+  },
+  letterActions: {
+    padding: 16,
+    alignItems: 'flex-end',
+    borderTopWidth: 0.5,
+    borderTopColor: colors.border,
+  },
+  letterCloseButton: {
+    minHeight: 38,
+    paddingHorizontal: 18,
+    borderRadius: 10,
+    backgroundColor: colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  letterCloseText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
   messageLift: {
     flex: 1,

@@ -11,9 +11,9 @@ import {
   DailyPaperContent,
   DailyPaperSource,
 } from '../types';
-import type { NamedAPIConfig } from '../stores/settings';
+import type { DailyPaperConfig, DailyPaperSourceConfig, NamedAPIConfig } from '../stores/settings';
 
-interface RssSourceConfig {
+export interface RssSourceConfig {
   name: string;
   url: string;
   category: string;
@@ -83,6 +83,13 @@ function dateFromKey(key: string): Date {
   return new Date(year, month - 1, day);
 }
 
+function dateKey(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 function addDays(date: Date, days: number): Date {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate() + days);
 }
@@ -144,13 +151,17 @@ function parseItemDate(item: any): string | undefined {
 }
 
 function isItemInDateWindow(item: RssItem, dateKey: string): boolean {
-  if (!item.publishedAt) return true;
+  if (!item.publishedAt) return dateKey === dateKeyForToday();
   const time = Date.parse(item.publishedAt);
-  if (!Number.isFinite(time)) return true;
+  if (!Number.isFinite(time)) return dateKey === dateKeyForToday();
   const target = dateFromKey(dateKey);
-  const start = addDays(target, -1).getTime();
+  const start = target.getTime();
   const end = addDays(target, 1).getTime();
   return time >= start && time < end;
+}
+
+function dateKeyForToday(): string {
+  return dateKey(new Date());
 }
 
 async function fetchRssSource(source: RssSourceConfig): Promise<RssItem[]> {
@@ -191,8 +202,8 @@ async function fetchRssSource(source: RssSourceConfig): Promise<RssItem[]> {
   }
 }
 
-async function collectRssItems(dateKey: string): Promise<RssItem[]> {
-  const settled = await Promise.allSettled(DAILY_PAPER_RSS_SOURCES.map(fetchRssSource));
+async function collectRssItems(dateKey: string, sources: RssSourceConfig[]): Promise<RssItem[]> {
+  const settled = await Promise.allSettled(sources.map(fetchRssSource));
   const seen = new Set<string>();
   const items: RssItem[] = [];
 
@@ -208,6 +219,23 @@ async function collectRssItems(dateKey: string): Promise<RssItem[]> {
   }
 
   return items.slice(0, MAX_ITEMS_FOR_PROMPT);
+}
+
+function customSourceToRssSource(source: DailyPaperSourceConfig): RssSourceConfig {
+  return {
+    name: source.name,
+    url: source.url,
+    category: source.category || 'general',
+    language: source.language || 'zh',
+  };
+}
+
+function getDailyPaperRssSources(config?: DailyPaperConfig): RssSourceConfig[] {
+  const sources = config?.useDefaultSources === false ? [] : [...DAILY_PAPER_RSS_SOURCES];
+  const customSources = (config?.customSources || [])
+    .filter((source) => source.enabled !== false && source.url.trim())
+    .map(customSourceToRssSource);
+  return [...sources, ...customSources];
 }
 
 function fallbackContent(dateKey: string, items: RssItem[]): DailyPaperContent {
@@ -354,7 +382,8 @@ export async function ensureDailyPaperDraft(dateKey: string): Promise<DailyPaper
 export async function generateDailyPaper(
   dateKey: string,
   apiConfig: NamedAPIConfig,
-  maxOutputTokens: number | null
+  maxOutputTokens: number | null,
+  dailyPaperConfig?: DailyPaperConfig
 ): Promise<DailyPaper> {
   const draft = await ensureDailyPaperDraft(dateKey);
   await updateDailyPaper(dateKey, {
@@ -364,7 +393,11 @@ export async function generateDailyPaper(
   });
 
   try {
-    const items = await collectRssItems(dateKey);
+    const sources = getDailyPaperRssSources(dailyPaperConfig);
+    if (sources.length === 0) {
+      throw new Error('请先在设置中启用至少一个日报新闻来源。');
+    }
+    const items = await collectRssItems(dateKey, sources);
     if (items.length === 0) {
       throw new Error('没有从 RSS 源获取到可用于生成日报的新闻条目。');
     }

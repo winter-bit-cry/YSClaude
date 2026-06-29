@@ -115,6 +115,26 @@ async function initTables(database: SQLite.SQLiteDatabase) {
     CREATE INDEX IF NOT EXISTS idx_daily_papers_date ON daily_papers(date_key DESC);
     CREATE INDEX IF NOT EXISTS idx_daily_papers_status ON daily_papers(status);
 
+    CREATE TABLE IF NOT EXISTS incoming_letters (
+      id TEXT PRIMARY KEY,
+      occasion_id TEXT NOT NULL,
+      occasion_title TEXT NOT NULL DEFAULT '',
+      date_key TEXT NOT NULL,
+      title TEXT NOT NULL DEFAULT '',
+      content TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'generating',
+      generated_at INTEGER,
+      shown_at INTEGER,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      error_message TEXT,
+      tool_invocations TEXT,
+      UNIQUE (occasion_id, date_key)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_incoming_letters_date ON incoming_letters(date_key DESC);
+    CREATE INDEX IF NOT EXISTS idx_incoming_letters_status ON incoming_letters(status);
+
     CREATE TABLE IF NOT EXISTS reading_books (
       id TEXT PRIMARY KEY,
       title TEXT NOT NULL DEFAULT '',
@@ -539,6 +559,32 @@ async function runMigrations(database: SQLite.SQLiteDatabase) {
   }
   if (version < 17) {
     await database.execAsync('PRAGMA user_version = 17;');
+  }
+
+  if (version < 18) {
+    await database.execAsync(`
+      CREATE TABLE IF NOT EXISTS incoming_letters (
+        id TEXT PRIMARY KEY,
+        occasion_id TEXT NOT NULL,
+        occasion_title TEXT NOT NULL DEFAULT '',
+        date_key TEXT NOT NULL,
+        title TEXT NOT NULL DEFAULT '',
+        content TEXT NOT NULL DEFAULT '',
+        status TEXT NOT NULL DEFAULT 'generating',
+        generated_at INTEGER,
+        shown_at INTEGER,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        error_message TEXT,
+        tool_invocations TEXT,
+        UNIQUE (occasion_id, date_key)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_incoming_letters_date ON incoming_letters(date_key DESC);
+      CREATE INDEX IF NOT EXISTS idx_incoming_letters_status ON incoming_letters(status);
+
+      PRAGMA user_version = 18;
+    `);
   }
 }
 

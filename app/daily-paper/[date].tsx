@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -15,6 +15,7 @@ import { DailyPaper } from '../../src/types';
 import { getDailyPaperByDate } from '../../src/db/operations';
 import { ensureDailyPaperDraft, generateDailyPaper } from '../../src/services/dailyPaper';
 import { useSettingsStore } from '../../src/stores/settings';
+import { useChatStore } from '../../src/stores/chat';
 import { lightColors, useThemeColors, type ThemeColors } from '../../src/theme/colors';
 import { fonts } from '../../src/theme/fonts';
 
@@ -55,26 +56,42 @@ export default function DailyPaperScreen() {
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ date?: string }>();
   const routeDateKey = normalizeDateParam(params.date);
+  const routeDateKeyRef = useRef(routeDateKey);
+  routeDateKeyRef.current = routeDateKey;
   const apiConfigs = useSettingsStore((state) => state.apiConfigs);
   const activeConfigIndex = useSettingsStore((state) => state.activeConfigIndex);
   const maxOutputTokens = useSettingsStore((state) => state.maxOutputTokens);
+  const dailyPaperConfig = useSettingsStore((state) => state.dailyPaperConfig);
+  const addDailyPaperToLatestConversation = useChatStore((state) => state.addDailyPaperToLatestConversation);
   const activeApiConfig = apiConfigs[activeConfigIndex];
   const [paper, setPaper] = useState<DailyPaper | null>(null);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
+  const [forwarding, setForwarding] = useState(false);
 
   const loadPaper = useCallback(async () => {
+    const requestDateKey = routeDateKey;
     setLoading(true);
     try {
-      setPaper(await ensureDailyPaperDraft(routeDateKey));
+      const nextPaper = await ensureDailyPaperDraft(requestDateKey);
+      if (routeDateKeyRef.current === requestDateKey) {
+        setPaper(nextPaper);
+      }
     } finally {
-      setLoading(false);
+      if (routeDateKeyRef.current === requestDateKey) {
+        setLoading(false);
+      }
     }
   }, [routeDateKey]);
 
   useEffect(() => {
+    setPaper(null);
+    setGenerating(false);
+    setForwarding(false);
     loadPaper().catch((error) => {
-      setLoading(false);
+      if (routeDateKeyRef.current === routeDateKey) {
+        setLoading(false);
+      }
       Alert.alert('读取失败', error?.message || '无法读取日报');
     });
   }, [loadPaper]);
@@ -84,22 +101,50 @@ export default function DailyPaperScreen() {
   }, [router]);
 
   const handleGenerate = useCallback(async () => {
+    const requestDateKey = routeDateKey;
     if (!activeApiConfig?.baseUrl || !activeApiConfig.apiKey || !activeApiConfig.model) {
       Alert.alert('缺少 API 配置', '请先在设置里配置当前聊天 API。');
       return;
     }
     setGenerating(true);
     try {
-      setPaper((await getDailyPaperByDate(routeDateKey)) || paper);
-      const next = await generateDailyPaper(routeDateKey, activeApiConfig, maxOutputTokens);
-      setPaper(next);
+      const current = await getDailyPaperByDate(requestDateKey);
+      if (routeDateKeyRef.current === requestDateKey) {
+        setPaper(current || paper);
+      }
+      const next = await generateDailyPaper(requestDateKey, activeApiConfig, maxOutputTokens, dailyPaperConfig);
+      if (routeDateKeyRef.current === requestDateKey) {
+        setPaper(next);
+      }
     } catch (error: any) {
-      setPaper(await getDailyPaperByDate(routeDateKey));
-      Alert.alert('生成失败', error?.message || '日报生成失败');
+      const failedPaper = await getDailyPaperByDate(requestDateKey);
+      if (routeDateKeyRef.current === requestDateKey) {
+        setPaper(failedPaper);
+        Alert.alert('生成失败', error?.message || '日报生成失败');
+      }
     } finally {
-      setGenerating(false);
+      if (routeDateKeyRef.current === requestDateKey) {
+        setGenerating(false);
+      }
     }
-  }, [activeApiConfig, maxOutputTokens, paper, routeDateKey]);
+  }, [activeApiConfig, dailyPaperConfig, maxOutputTokens, paper, routeDateKey]);
+
+  const handleForward = useCallback(async () => {
+    const currentPaper = paper;
+    if (!currentPaper?.content) {
+      Alert.alert('无法转发', '请先生成日报。');
+      return;
+    }
+    setForwarding(true);
+    try {
+      await addDailyPaperToLatestConversation(currentPaper);
+      Alert.alert('已转发', '日报已转发到最新创建的对话窗口。');
+    } catch (error: any) {
+      Alert.alert('转发失败', error?.message || '无法转发日报');
+    } finally {
+      setForwarding(false);
+    }
+  }, [addDailyPaperToLatestConversation, paper]);
 
   const content = paper?.content;
   const isBusy = loading || generating || paper?.status === 'generating';
@@ -158,6 +203,9 @@ export default function DailyPaperScreen() {
               <View style={styles.actionRow}>
                 <Pressable style={[styles.secondaryButton, isBusy && styles.buttonDisabled]} onPress={handleGenerate} disabled={isBusy}>
                   {generating ? <ActivityIndicator size="small" color={colors.primary} /> : <Text style={styles.secondaryButtonText}>重新生成</Text>}
+                </Pressable>
+                <Pressable style={[styles.secondaryButton, (isBusy || forwarding) && styles.buttonDisabled]} onPress={handleForward} disabled={isBusy || forwarding}>
+                  {forwarding ? <ActivityIndicator size="small" color={colors.primary} /> : <Text style={styles.secondaryButtonText}>转发到最新对话</Text>}
                 </Pressable>
               </View>
 
@@ -363,7 +411,11 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     textAlign: 'center',
   },
   actionRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
     alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 10,
     marginBottom: 16,
   },
   secondaryButton: {

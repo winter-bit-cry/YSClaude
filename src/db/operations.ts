@@ -27,6 +27,8 @@ import {
   ApiUsageGroupSummary,
   ApiUsageStatus,
   ApiUsageSummary,
+  IncomingLetter,
+  IncomingLetterStatus,
 } from '../types';
 import {
   ANDROID_ACCESSIBILITY_CAPTURE_NOTICE_PREFIX,
@@ -85,6 +87,22 @@ export interface GeneratedPictureGalleryItem {
   createdAt: number;
   updatedAt: number;
   referenceImageUris?: string[];
+}
+
+interface IncomingLetterRow {
+  id: string;
+  occasion_id: string;
+  occasion_title: string;
+  date_key: string;
+  title: string;
+  content: string;
+  status: string;
+  generated_at: number | null;
+  shown_at: number | null;
+  created_at: number;
+  updated_at: number;
+  error_message: string | null;
+  tool_invocations: string | null;
 }
 
 export interface ChatDiagnosticsConversation {
@@ -400,6 +418,121 @@ export async function updateMessageGeneratedPics(
   ]);
 }
 
+export async function insertIncomingLetter(letter: IncomingLetter): Promise<void> {
+  const db = await getDatabase();
+  await db.runAsync(
+    `INSERT OR REPLACE INTO incoming_letters
+      (id, occasion_id, occasion_title, date_key, title, content, status, generated_at,
+       shown_at, created_at, updated_at, error_message, tool_invocations)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      letter.id,
+      letter.occasionId,
+      letter.occasionTitle,
+      letter.dateKey,
+      letter.title,
+      letter.content,
+      letter.status,
+      letter.generatedAt,
+      letter.shownAt,
+      letter.createdAt,
+      letter.updatedAt,
+      letter.errorMessage || null,
+      letter.toolInvocations && letter.toolInvocations.length > 0
+        ? JSON.stringify(letter.toolInvocations)
+        : null,
+    ]
+  );
+}
+
+export async function updateIncomingLetter(
+  id: string,
+  updates: Partial<Pick<IncomingLetter, 'title' | 'content' | 'status' | 'generatedAt' | 'shownAt' | 'updatedAt' | 'errorMessage' | 'toolInvocations'>>
+): Promise<void> {
+  const db = await getDatabase();
+  const sets: string[] = [];
+  const values: any[] = [];
+
+  if (updates.title !== undefined) {
+    sets.push('title = ?');
+    values.push(updates.title);
+  }
+  if (updates.content !== undefined) {
+    sets.push('content = ?');
+    values.push(updates.content);
+  }
+  if (updates.status !== undefined) {
+    sets.push('status = ?');
+    values.push(updates.status);
+  }
+  if (updates.generatedAt !== undefined) {
+    sets.push('generated_at = ?');
+    values.push(updates.generatedAt);
+  }
+  if (updates.shownAt !== undefined) {
+    sets.push('shown_at = ?');
+    values.push(updates.shownAt);
+  }
+  if (updates.updatedAt !== undefined) {
+    sets.push('updated_at = ?');
+    values.push(updates.updatedAt);
+  }
+  if (updates.errorMessage !== undefined) {
+    sets.push('error_message = ?');
+    values.push(updates.errorMessage || null);
+  }
+  if (updates.toolInvocations !== undefined) {
+    sets.push('tool_invocations = ?');
+    values.push(
+      updates.toolInvocations && updates.toolInvocations.length > 0
+        ? JSON.stringify(updates.toolInvocations)
+        : null
+    );
+  }
+
+  if (sets.length === 0) return;
+  values.push(id);
+  await db.runAsync(`UPDATE incoming_letters SET ${sets.join(', ')} WHERE id = ?`, values);
+}
+
+export async function getIncomingLetterByOccasionDate(
+  occasionId: string,
+  dateKey: string
+): Promise<IncomingLetter | null> {
+  const db = await getDatabase();
+  const row = await db.getFirstAsync<IncomingLetterRow>(
+    'SELECT * FROM incoming_letters WHERE occasion_id = ? AND date_key = ? LIMIT 1',
+    [occasionId, dateKey]
+  );
+  return row ? mapIncomingLetterRow(row) : null;
+}
+
+export async function getAllIncomingLetters(): Promise<IncomingLetter[]> {
+  const db = await getDatabase();
+  const rows = await db.getAllAsync<IncomingLetterRow>(
+    'SELECT * FROM incoming_letters ORDER BY date_key DESC, created_at DESC'
+  );
+  return rows.map(mapIncomingLetterRow);
+}
+
+export async function getUnshownIncomingLettersByDate(dateKey: string): Promise<IncomingLetter[]> {
+  const db = await getDatabase();
+  const rows = await db.getAllAsync<IncomingLetterRow>(
+    `SELECT *
+       FROM incoming_letters
+      WHERE date_key = ?
+        AND status = 'ready'
+        AND shown_at IS NULL
+      ORDER BY generated_at ASC, created_at ASC`,
+    [dateKey]
+  );
+  return rows.map(mapIncomingLetterRow);
+}
+
+export async function markIncomingLetterShown(id: string, shownAt = Date.now()): Promise<void> {
+  await updateIncomingLetter(id, { shownAt, updatedAt: shownAt });
+}
+
 export async function deleteMessage(id: string): Promise<void> {
   const db = await getDatabase();
   await db.runAsync('DELETE FROM messages WHERE id = ?', [id]);
@@ -577,6 +710,29 @@ function parseJsonArray<T>(raw: string | null | undefined): T[] | undefined {
   } catch {
     return undefined;
   }
+}
+
+function normalizeIncomingLetterStatus(value: string): IncomingLetterStatus {
+  if (value === 'ready' || value === 'failed') return value;
+  return 'generating';
+}
+
+function mapIncomingLetterRow(row: IncomingLetterRow): IncomingLetter {
+  return {
+    id: row.id,
+    occasionId: row.occasion_id,
+    occasionTitle: row.occasion_title,
+    dateKey: row.date_key,
+    title: row.title,
+    content: row.content,
+    status: normalizeIncomingLetterStatus(row.status),
+    generatedAt: row.generated_at,
+    shownAt: row.shown_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    errorMessage: row.error_message || undefined,
+    toolInvocations: parseJsonArray<ToolInvocation>(row.tool_invocations),
+  };
 }
 
 function mapMessageRow(row: MessageRow): Message {

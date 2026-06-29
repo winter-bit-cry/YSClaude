@@ -119,6 +119,35 @@ export interface DailyPaper {
   errorMessage?: string;
 }
 
+export type IncomingLetterStatus = 'generating' | 'ready' | 'failed';
+
+export interface IncomingLetterOccasion {
+  id: string;
+  title: string;
+  date: string;
+  repeatYearly: boolean;
+  enabled: boolean;
+  systemPrompt: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface IncomingLetter {
+  id: string;
+  occasionId: string;
+  occasionTitle: string;
+  dateKey: string;
+  title: string;
+  content: string;
+  status: IncomingLetterStatus;
+  generatedAt: number | null;
+  shownAt: number | null;
+  createdAt: number;
+  updatedAt: number;
+  errorMessage?: string;
+  toolInvocations?: ToolInvocation[];
+}
+
 export interface APIConfig {
   baseUrl: string;
   apiKey: string;
