@@ -1,6 +1,7 @@
 import React, { useMemo, useState, useRef } from 'react';
 import type { RefObject } from 'react';
 import { View, Text, StyleSheet, Pressable, Image, Alert, TextInput, Modal, Dimensions, ScrollView, ActivityIndicator, type TextStyle } from 'react-native';
+import { ScrollView as GestureScrollView } from 'react-native-gesture-handler';
 import Markdown from '@ronradtke/react-native-markdown-display';
 import { BlurView } from 'expo-blur';
 import { Message, type GeneratedPicture } from '../types';
@@ -50,19 +51,44 @@ function glassBlurIntensity(value: number): number {
   return Math.min(100, Math.round(20 + value * 0.7));
 }
 
+function withoutFontWeight(style?: TextStyle): TextStyle | undefined {
+  const flatStyle = StyleSheet.flatten(style);
+  if (!flatStyle) return undefined;
+  const { fontWeight: _fontWeight, ...rest } = flatStyle;
+  return rest;
+}
+
+function MarkdownTable({
+  children,
+  markdownStyles,
+}: {
+  children: React.ReactNode;
+  markdownStyles: any;
+}) {
+  return (
+    <View
+      style={markdownStyles.markdownTableViewport}
+      onTouchStart={(event) => event.stopPropagation()}
+    >
+      <GestureScrollView
+        horizontal
+        nestedScrollEnabled
+        showsHorizontalScrollIndicator
+        directionalLockEnabled
+        disallowInterruption
+        keyboardShouldPersistTaps="handled"
+        style={markdownStyles.markdownTableScroll}
+        contentContainerStyle={markdownStyles.markdownTableScrollContent}
+      >
+        <View style={[markdownStyles._VIEW_SAFE_table, markdownStyles.markdownTable]}>{children}</View>
+      </GestureScrollView>
+    </View>
+  );
+}
+
 const markdownRules = {
   table: (node: any, children: React.ReactNode, _parent: any, styles: any) => (
-    <ScrollView
-      key={node.key}
-      horizontal
-      nestedScrollEnabled
-      showsHorizontalScrollIndicator
-      directionalLockEnabled
-      style={styles.markdownTableScroll}
-      contentContainerStyle={styles.markdownTableScrollContent}
-    >
-      <View style={[styles._VIEW_SAFE_table, styles.markdownTable]}>{children}</View>
-    </ScrollView>
+    <MarkdownTable key={node.key} markdownStyles={styles}>{children}</MarkdownTable>
   ),
 };
 
@@ -1620,15 +1646,16 @@ const createThinkingMarkdownStyles = (colors: ThemeColors) => StyleSheet.create(
   fence: { backgroundColor: colors.codeBlock, borderRadius: 10, padding: 12, marginVertical: 8 },
   code_block: { color: colors.codeText, fontSize: 12, fontFamily: 'monospace' },
   link: { color: colors.primary },
-  markdownTableScroll: { alignSelf: 'stretch', width: '100%', maxWidth: '100%', minWidth: 0, flexShrink: 1, marginVertical: 8 },
+  markdownTableViewport: { alignSelf: 'stretch', width: '100%', maxWidth: '100%', minWidth: 0, overflow: 'hidden', marginVertical: 8 },
+  markdownTableScroll: { alignSelf: 'stretch', width: '100%', maxWidth: '100%', minWidth: 0, flexShrink: 1 },
   markdownTableScrollContent: { flexGrow: 0, alignItems: 'flex-start' },
   markdownTable: { alignSelf: 'flex-start', flexShrink: 0 },
   table: { alignSelf: 'flex-start', borderWidth: 1, borderColor: colors.border, borderRadius: 8, overflow: 'hidden', flexShrink: 0 },
   thead: { flexShrink: 0 },
   tbody: { flexShrink: 0 },
   tr: { flexDirection: 'row', alignSelf: 'flex-start', flexShrink: 0, borderBottomWidth: 1, borderColor: colors.border },
-  th: { minWidth: 112, flexShrink: 0, paddingVertical: 7, paddingHorizontal: 9, backgroundColor: colors.surface },
-  td: { minWidth: 112, flexShrink: 0, paddingVertical: 7, paddingHorizontal: 9 },
+  th: { width: 112, minWidth: 112, flexShrink: 0, paddingVertical: 7, paddingHorizontal: 9, backgroundColor: colors.surface },
+  td: { width: 112, minWidth: 112, flexShrink: 0, paddingVertical: 7, paddingHorizontal: 9 },
 });
 
 const createUserMarkdownStyles = (
@@ -1636,13 +1663,17 @@ const createUserMarkdownStyles = (
   fontSize = 16,
   textColor = colors.text,
   customTextStyle?: TextStyle
-) => StyleSheet.create({
+) => {
+  const customTextStyleWithoutFontWeight = withoutFontWeight(customTextStyle);
+
+  return StyleSheet.create({
   body: {
     fontSize,
     color: textColor,
     lineHeight: Math.round(fontSize * 1.38),
     fontFamily: fonts.serifBold,
-    ...customTextStyle,
+    fontWeight: 'normal',
+    ...customTextStyleWithoutFontWeight,
   },
   paragraph: {
     marginTop: 0,
@@ -1650,6 +1681,7 @@ const createUserMarkdownStyles = (
   },
   strong: {
     fontFamily: fonts.serifBold,
+    fontWeight: 'normal',
     color: textColor,
   },
   em: {
@@ -1676,7 +1708,8 @@ const createUserMarkdownStyles = (
   link: {
     color: colors.primary,
   },
-});
+  });
+};
 
 const createMarkdownStyles = (
   colors: ThemeColors,
@@ -1686,6 +1719,7 @@ const createMarkdownStyles = (
   strokeWidth = 0,
   customTextStyle?: TextStyle
 ) => {
+  const customTextStyleWithoutFontWeight = withoutFontWeight(customTextStyle);
   const strokeStyle = strokeWidth > 0
     ? {
         textShadowColor: strokeColor,
@@ -1695,31 +1729,32 @@ const createMarkdownStyles = (
     : {};
 
   return StyleSheet.create({
-  body: { width: '100%', fontSize, color: textColor, lineHeight: Math.round(fontSize * 1.5), fontFamily: fonts.serifBold, ...strokeStyle, ...customTextStyle },
+  body: { width: '100%', fontSize, color: textColor, lineHeight: Math.round(fontSize * 1.5), fontFamily: fonts.serifBold, fontWeight: 'normal', ...strokeStyle, ...customTextStyleWithoutFontWeight },
   code_inline: {
     backgroundColor: colors.surface, color: colors.primary,
     paddingHorizontal: 5, paddingVertical: 2, borderRadius: 4, fontSize: 14, fontFamily: 'monospace',
   },
   fence: { backgroundColor: colors.codeBlock, borderRadius: 10, padding: 14, marginVertical: 10 },
   code_block: { color: colors.codeText, fontSize: 13, fontFamily: 'monospace' },
-  heading1: { fontSize: 22, fontFamily: fonts.serifBold, marginVertical: 8, color: textColor, ...strokeStyle },
-  heading2: { fontSize: 18, fontFamily: fonts.serifBold, marginVertical: 6, color: textColor, ...strokeStyle },
-  heading3: { fontSize: 16, fontFamily: fonts.serifBold, marginVertical: 4, color: textColor, ...strokeStyle },
-  strong: { fontFamily: fonts.serifBold, ...strokeStyle },
+  heading1: { fontSize: 22, fontFamily: fonts.serifBold, fontWeight: 'normal', marginVertical: 8, color: textColor, ...strokeStyle },
+  heading2: { fontSize: 18, fontFamily: fonts.serifBold, fontWeight: 'normal', marginVertical: 6, color: textColor, ...strokeStyle },
+  heading3: { fontSize: 16, fontFamily: fonts.serifBold, fontWeight: 'normal', marginVertical: 4, color: textColor, ...strokeStyle },
+  strong: { fontFamily: fonts.serifBold, fontWeight: 'normal', ...strokeStyle },
   blockquote: {
     borderLeftWidth: 3, borderLeftColor: colors.primary, paddingLeft: 12, marginVertical: 8, opacity: 0.8,
   },
   list_item: { marginVertical: 2, ...strokeStyle },
   link: { color: colors.primary },
-  markdownTableScroll: { alignSelf: 'stretch', width: '100%', maxWidth: '100%', minWidth: 0, flexShrink: 1, marginVertical: 10 },
+  markdownTableViewport: { alignSelf: 'stretch', width: '100%', maxWidth: '100%', minWidth: 0, overflow: 'hidden', marginVertical: 10 },
+  markdownTableScroll: { alignSelf: 'stretch', width: '100%', maxWidth: '100%', minWidth: 0, flexShrink: 1 },
   markdownTableScrollContent: { flexGrow: 0, alignItems: 'flex-start' },
   markdownTable: { alignSelf: 'flex-start', flexShrink: 0 },
   table: { alignSelf: 'flex-start', borderWidth: 1, borderColor: colors.border, borderRadius: 8, overflow: 'hidden', flexShrink: 0 },
   thead: { flexShrink: 0 },
   tbody: { flexShrink: 0 },
   tr: { flexDirection: 'row', alignSelf: 'flex-start', flexShrink: 0, borderBottomWidth: 1, borderColor: colors.border },
-  th: { minWidth: 128, flexShrink: 0, paddingVertical: 8, paddingHorizontal: 10, backgroundColor: colors.surface, color: textColor, ...strokeStyle },
-  td: { minWidth: 128, flexShrink: 0, paddingVertical: 8, paddingHorizontal: 10, color: textColor, ...strokeStyle },
+  th: { width: 128, minWidth: 128, flexShrink: 0, paddingVertical: 8, paddingHorizontal: 10, backgroundColor: colors.surface, color: textColor, fontWeight: 'normal', ...strokeStyle },
+  td: { width: 128, minWidth: 128, flexShrink: 0, paddingVertical: 8, paddingHorizontal: 10, color: textColor, fontWeight: 'normal', ...strokeStyle },
   });
 };
 

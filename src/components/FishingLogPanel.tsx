@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { ToolInvocation } from '../types';
 import { useThemeColors, type ThemeColors } from '../theme/colors';
 import { fonts } from '../theme/fonts';
@@ -67,7 +67,12 @@ export function FishingLogPanel({ invocations }: FishingLogPanelProps) {
         </View>
       )}
 
-      <View style={styles.timeline}>
+      <ScrollView
+        style={styles.timelineScroll}
+        contentContainerStyle={styles.timeline}
+        nestedScrollEnabled
+        showsVerticalScrollIndicator
+      >
         {hiddenCount > 0 && <Text style={styles.hiddenCount}>已省略前 {hiddenCount} 步</Text>}
         {visibleEntries.map((entry) => (
           <View key={entry.key} style={styles.entryRow}>
@@ -77,14 +82,14 @@ export function FishingLogPanel({ invocations }: FishingLogPanelProps) {
                 {entry.title}{entry.status === 'running' ? ' · 执行中' : ''}
               </Text>
               {!!entry.detail && (
-                <Text style={styles.entryDetail} numberOfLines={3}>
+                <Text style={styles.entryDetail}>
                   {entry.detail}
                 </Text>
               )}
             </View>
           </View>
         ))}
-      </View>
+      </ScrollView>
 
       {entries.length > VISIBLE_ENTRY_COUNT && (
         <Pressable style={styles.toggleButton} onPress={() => setExpanded((value) => !value)}>
@@ -256,7 +261,7 @@ function formatCount(value: unknown, fallback: number): number {
 
 const createStyles = (colors: ThemeColors) => StyleSheet.create({
   panel: {
-    maxWidth: '92%',
+    width: '100%',
     alignSelf: 'flex-start',
     borderRadius: 8,
     borderWidth: 1,
@@ -327,8 +332,13 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     marginTop: 2,
     fontVariant: ['tabular-nums'],
   },
+  timelineScroll: {
+    height: 168,
+  },
   timeline: {
     gap: 8,
+    paddingRight: 8,
+    paddingBottom: 2,
   },
   hiddenCount: {
     color: colors.textTertiary,
