@@ -1,7 +1,7 @@
 export const fonts = {
-  regular: 'Sohne-Buch',
-  bold: 'Sohne-Halbfett',
-  mono: 'SohneMono-Buch',
+  regular: 'Sohne',
+  bold: 'Sohne-Bold',
+  mono: 'SohneMono',
   serif: 'TiemposText',
   serifBold: 'TiemposText-Bold',
 };
