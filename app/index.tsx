@@ -189,6 +189,7 @@ export default function ChatScreen() {
     isStreaming,
     error,
     addUserMessage,
+    addSystemMessage,
     loadOlderMessages,
     loadNewerMessages,
     loadConversationAroundMessage,
@@ -1097,6 +1098,7 @@ export default function ChatScreen() {
         visible={fishingPanelVisible}
         messages={messages}
         mcpToolConfig={mcpToolConfig}
+        onUserActionMessage={addSystemMessage}
         onClose={() => setFishingPanelVisible(false)}
       />
 

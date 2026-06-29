@@ -42,6 +42,40 @@ export interface FishingInspectResponse {
   run_id?: string;
 }
 
+export type FishingActionName =
+  | 'status'
+  | 'shop'
+  | 'buy'
+  | 'cast'
+  | 'dive'
+  | 'choose'
+  | 'surface'
+  | 'goto'
+  | 'inventory'
+  | 'sell'
+  | 'open'
+  | 'encyclopedia'
+  | 'look'
+  | 'batch';
+
+export interface FishingActionRequest {
+  action: FishingActionName;
+  choice?: number;
+  bait_id?: string;
+  times?: number;
+  stop_on?: Array<'new' | 'rare' | 'event'>;
+  qty?: number;
+  target?: string;
+  location_id?: string;
+  chest_uid?: string;
+  id?: string;
+  steps?: Array<Record<string, unknown>>;
+}
+
+export interface FishingActionResponse extends FishingInspectResponse {
+  log_entry?: FishingLogEntry | null;
+}
+
 export interface FishingServerConnection {
   server: McpServerConfig;
   baseUrl: string;
@@ -127,6 +161,34 @@ export async function inspectFishingCommand(
     );
   }
   return JSON.parse(text || '{}') as FishingInspectResponse;
+}
+
+export async function playFishingAction(
+  connection: FishingServerConnection,
+  sessionId: string,
+  request: FishingActionRequest
+): Promise<FishingActionResponse> {
+  const url = `${connection.baseUrl}/play_fishing`;
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  if (connection.authorization.trim()) {
+    headers.Authorization = connection.authorization.trim();
+  }
+  const response = await fetch(url, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ session_id: sessionId, ...request }),
+  });
+  const text = await response.text();
+  if (!response.ok) {
+    throw new FishingHttpError(
+      `钓鱼操作失败：HTTP ${response.status}${text ? ` - ${text.slice(0, 160)}` : ''}`,
+      response.status,
+      text
+    );
+  }
+  return JSON.parse(text || '{}') as FishingActionResponse;
 }
 
 export function inferFishingSessionId(messages: Message[], fallback = 'default'): string {

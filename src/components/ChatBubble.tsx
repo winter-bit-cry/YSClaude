@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useRef } from 'react';
 import type { RefObject } from 'react';
 import { View, Text, StyleSheet, Pressable, Image, Alert, TextInput, Modal, Dimensions, ScrollView, ActivityIndicator, type TextStyle } from 'react-native';
-import { ScrollView as GestureScrollView } from 'react-native-gesture-handler';
+import { NativeViewGestureHandler, ScrollView as GestureScrollView } from 'react-native-gesture-handler';
 import Markdown from '@ronradtke/react-native-markdown-display';
 import { BlurView } from 'expo-blur';
 import { Message, type GeneratedPicture, type ToolInvocation } from '../types';
@@ -69,18 +69,22 @@ function MarkdownTable({
       style={markdownStyles.markdownTableViewport}
       onTouchStart={(event) => event.stopPropagation()}
     >
-      <GestureScrollView
-        horizontal
-        nestedScrollEnabled
-        showsHorizontalScrollIndicator
-        directionalLockEnabled
-        disallowInterruption
-        keyboardShouldPersistTaps="handled"
-        style={markdownStyles.markdownTableScroll}
-        contentContainerStyle={markdownStyles.markdownTableScrollContent}
-      >
-        <View style={[markdownStyles._VIEW_SAFE_table, markdownStyles.markdownTable]}>{children}</View>
-      </GestureScrollView>
+      <NativeViewGestureHandler shouldActivateOnStart disallowInterruption>
+        <GestureScrollView
+          horizontal
+          nestedScrollEnabled
+          showsHorizontalScrollIndicator
+          directionalLockEnabled
+          disallowInterruption
+          keyboardShouldPersistTaps="handled"
+          scrollEventThrottle={16}
+          style={markdownStyles.markdownTableScroll}
+          contentContainerStyle={markdownStyles.markdownTableScrollContent}
+          onTouchStart={(event) => event.stopPropagation()}
+        >
+          <View style={[markdownStyles._VIEW_SAFE_table, markdownStyles.markdownTable]}>{children}</View>
+        </GestureScrollView>
+      </NativeViewGestureHandler>
     </View>
   );
 }
@@ -1774,9 +1778,9 @@ const createThinkingMarkdownStyles = (colors: ThemeColors) => StyleSheet.create(
   fence: { backgroundColor: colors.codeBlock, borderRadius: 10, padding: 12, marginVertical: 8 },
   code_block: { color: colors.codeText, fontSize: 12, fontFamily: 'monospace' },
   link: { color: colors.primary },
-  markdownTableViewport: { alignSelf: 'stretch', width: '100%', maxWidth: '100%', minWidth: 0, overflow: 'hidden', marginVertical: 8 },
-  markdownTableScroll: { alignSelf: 'stretch', width: '100%', maxWidth: '100%', minWidth: 0, flexShrink: 1 },
-  markdownTableScrollContent: { flexGrow: 0, alignItems: 'flex-start' },
+  markdownTableViewport: { alignSelf: 'stretch', width: '100%', maxWidth: '100%', minWidth: 0, overflow: 'hidden', marginVertical: 8, paddingVertical: 4 },
+  markdownTableScroll: { alignSelf: 'stretch', width: '100%', maxWidth: '100%', minWidth: 0, minHeight: 44, flexShrink: 1 },
+  markdownTableScrollContent: { flexGrow: 0, alignItems: 'center', paddingVertical: 2 },
   markdownTable: { alignSelf: 'flex-start', flexShrink: 0 },
   table: { alignSelf: 'flex-start', borderWidth: 1, borderColor: colors.border, borderRadius: 8, overflow: 'hidden', flexShrink: 0 },
   thead: { flexShrink: 0 },
@@ -1799,7 +1803,7 @@ const createUserMarkdownStyles = (
     fontSize,
     color: textColor,
     lineHeight: Math.round(fontSize * 1.38),
-    fontFamily: fonts.serifBold,
+    fontFamily: fonts.serif,
     fontWeight: 'normal',
     ...customTextStyleWithoutFontWeight,
   },
@@ -1857,7 +1861,7 @@ const createMarkdownStyles = (
     : {};
 
   return StyleSheet.create({
-  body: { width: '100%', fontSize, color: textColor, lineHeight: Math.round(fontSize * 1.5), fontFamily: fonts.serifBold, fontWeight: 'normal', ...strokeStyle, ...customTextStyleWithoutFontWeight },
+  body: { width: '100%', fontSize, color: textColor, lineHeight: Math.round(fontSize * 1.5), fontFamily: fonts.serif, fontWeight: 'normal', ...strokeStyle, ...customTextStyleWithoutFontWeight },
   code_inline: {
     backgroundColor: colors.surface, color: colors.primary,
     paddingHorizontal: 5, paddingVertical: 2, borderRadius: 4, fontSize: 14, fontFamily: 'monospace',
@@ -1867,15 +1871,15 @@ const createMarkdownStyles = (
   heading1: { fontSize: 22, fontFamily: fonts.serifBold, fontWeight: 'normal', marginVertical: 8, color: textColor, ...strokeStyle },
   heading2: { fontSize: 18, fontFamily: fonts.serifBold, fontWeight: 'normal', marginVertical: 6, color: textColor, ...strokeStyle },
   heading3: { fontSize: 16, fontFamily: fonts.serifBold, fontWeight: 'normal', marginVertical: 4, color: textColor, ...strokeStyle },
-  strong: { fontFamily: fonts.serifBold, fontWeight: 'normal', ...strokeStyle },
+  strong: { fontFamily: fonts.serifBold, fontWeight: 'normal', color: textColor, ...strokeStyle },
   blockquote: {
     borderLeftWidth: 3, borderLeftColor: colors.primary, paddingLeft: 12, marginVertical: 8, opacity: 0.8,
   },
   list_item: { marginVertical: 2, ...strokeStyle },
   link: { color: colors.primary },
-  markdownTableViewport: { alignSelf: 'stretch', width: '100%', maxWidth: '100%', minWidth: 0, overflow: 'hidden', marginVertical: 10 },
-  markdownTableScroll: { alignSelf: 'stretch', width: '100%', maxWidth: '100%', minWidth: 0, flexShrink: 1 },
-  markdownTableScrollContent: { flexGrow: 0, alignItems: 'flex-start' },
+  markdownTableViewport: { alignSelf: 'stretch', width: '100%', maxWidth: '100%', minWidth: 0, overflow: 'hidden', marginVertical: 10, paddingVertical: 4 },
+  markdownTableScroll: { alignSelf: 'stretch', width: '100%', maxWidth: '100%', minWidth: 0, minHeight: 44, flexShrink: 1 },
+  markdownTableScrollContent: { flexGrow: 0, alignItems: 'center', paddingVertical: 2 },
   markdownTable: { alignSelf: 'flex-start', flexShrink: 0 },
   table: { alignSelf: 'flex-start', borderWidth: 1, borderColor: colors.border, borderRadius: 8, overflow: 'hidden', flexShrink: 0 },
   thead: { flexShrink: 0 },

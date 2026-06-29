@@ -19,7 +19,9 @@ import {
   fetchFishingLog,
   inferFishingSessionId,
   inspectFishingCommand,
+  playFishingAction,
   resolveFishingServer,
+  type FishingActionRequest,
   type FishingLogEntry,
   type FishingState,
 } from '../services/fishingLog';
@@ -28,6 +30,7 @@ interface FishingFloatingPanelProps {
   visible: boolean;
   messages: Message[];
   mcpToolConfig?: McpToolConfig;
+  onUserActionMessage?: (content: string) => void | Promise<unknown>;
   onClose: () => void;
 }
 
@@ -48,10 +51,19 @@ interface FishingDetail {
   body: string;
 }
 
+interface FishingUserAction {
+  id: string;
+  label: string;
+  commandLabel: string;
+  request: FishingActionRequest;
+  nextTab?: FishingPanelTab;
+}
+
 export function FishingFloatingPanel({
   visible,
   messages,
   mcpToolConfig,
+  onUserActionMessage,
   onClose,
 }: FishingFloatingPanelProps) {
   const colors = useThemeColors();
@@ -69,6 +81,7 @@ export function FishingFloatingPanel({
   const [encyclopediaText, setEncyclopediaText] = useState('');
   const [detail, setDetail] = useState<FishingDetail | null>(null);
   const [inspectLoading, setInspectLoading] = useState<string | null>(null);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
   const connection = useMemo(() => resolveFishingServer(mcpToolConfig), [mcpToolConfig]);
   const sessionId = useMemo(() => inferFishingSessionId(messages), [messages]);
   const localEntries = useMemo(() => buildLocalFishingEntries(messages), [messages]);
@@ -150,6 +163,47 @@ export function FishingFloatingPanel({
     }
   };
 
+  const runUserAction = async (action: FishingUserAction) => {
+    if (!connection) {
+      setDetail({ title: action.label, body: '未找到已启用的 Fishing MCP 服务。' });
+      return;
+    }
+    setActionLoading(action.id);
+    setError(null);
+    try {
+      const payload = await playFishingAction(connection, sessionId, action.request);
+      const body = stripStateLine(payload.result);
+      setDetail({ title: `用户操作：${action.label}`, body });
+      setTab(action.nextTab || 'log');
+      if (payload.state) setServerState(payload.state);
+      if (payload.run_id) setRunId(payload.run_id);
+      await onUserActionMessage?.(formatUserActionSystemMessage(action, payload.result, sessionId));
+      if (action.request.action === 'inventory') {
+        setInventoryText(payload.result);
+      } else {
+        setInventoryText('');
+      }
+      if (action.request.action === 'encyclopedia') {
+        setEncyclopediaText(payload.result);
+      } else if (action.request.action !== 'status' && action.request.action !== 'shop') {
+        setEncyclopediaText('');
+      }
+      await refresh();
+    } catch (err: any) {
+      const body = err?.message || '钓鱼操作失败';
+      setDetail({ title: `用户操作：${action.label}`, body });
+      await onUserActionMessage?.([
+        '[钓鱼游戏用户操作失败]',
+        `Session: ${sessionId}`,
+        `操作: ${action.commandLabel}`,
+        '',
+        body,
+      ].join('\n'));
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
   useEffect(() => {
     if (!visible) return;
     refresh().catch(() => undefined);
@@ -164,6 +218,7 @@ export function FishingFloatingPanel({
     [serverEntries, localEntries]
   );
   const latestState = serverState || [...entries].reverse().find((entry) => entry.state)?.state || null;
+  const userActions = useMemo(() => buildUserActions(latestState), [latestState]);
   const inventoryItems = useMemo(
     () => buildInventoryItems(inventoryText, latestState),
     [inventoryText, latestState]
@@ -233,6 +288,23 @@ export function FishingFloatingPanel({
 
       {!!runId && <Text style={styles.metaText} numberOfLines={1}>run: {runId}</Text>}
       {!!error && <Text style={[styles.errorText, error.includes('本地工具调用记录') && styles.warningText]}>{error}</Text>}
+
+      <View style={styles.actionStrip}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.actionList}>
+          {userActions.map((action) => (
+            <Pressable
+              key={action.id}
+              style={[styles.actionButton, actionLoading === action.id && styles.actionButtonDisabled]}
+              onPress={() => runUserAction(action).catch(() => undefined)}
+              disabled={!!actionLoading}
+            >
+              <Text style={styles.actionButtonText} numberOfLines={1}>
+                {actionLoading === action.id ? '执行中' : action.label}
+              </Text>
+            </Pressable>
+          ))}
+        </ScrollView>
+      </View>
 
       <View style={styles.tabs}>
         {(['log', 'inventory', 'encyclopedia'] as FishingPanelTab[]).map((item) => (
@@ -335,6 +407,105 @@ function formatPoints(state?: FishingState | null): string {
 
 function formatMaybeNumber(value: unknown): string {
   return typeof value === 'number' && Number.isFinite(value) ? String(value) : '-';
+}
+
+function buildUserActions(state: FishingState | null): FishingUserAction[] {
+  const actions: FishingUserAction[] = [
+    {
+      id: 'status',
+      label: '状态',
+      commandLabel: 'status',
+      request: { action: 'status' },
+    },
+    {
+      id: 'shop',
+      label: '商店',
+      commandLabel: 'shop',
+      request: { action: 'shop' },
+    },
+    {
+      id: 'inventory',
+      label: '背包',
+      commandLabel: 'inventory',
+      request: { action: 'inventory' },
+      nextTab: 'inventory',
+    },
+    {
+      id: 'encyclopedia',
+      label: '图鉴',
+      commandLabel: 'encyclopedia',
+      request: { action: 'encyclopedia' },
+      nextTab: 'encyclopedia',
+    },
+    {
+      id: 'buy-worm',
+      label: '买饵×5',
+      commandLabel: 'buy basic_worm 5',
+      request: { action: 'buy', bait_id: 'basic_worm', qty: 5 },
+    },
+    {
+      id: 'cast',
+      label: '抛竿',
+      commandLabel: 'cast',
+      request: { action: 'cast' },
+    },
+    {
+      id: 'cast-5',
+      label: '连钓5',
+      commandLabel: 'cast 5 stop=new,rare,event',
+      request: { action: 'cast', times: 5, stop_on: ['new', 'rare', 'event'] },
+    },
+    {
+      id: 'sell-all',
+      label: '卖鱼',
+      commandLabel: 'sell all',
+      request: { action: 'sell', target: 'all' },
+      nextTab: 'inventory',
+    },
+  ];
+
+  if (state?.oxygen && state.oxygen > 0) {
+    actions.push({
+      id: 'dive',
+      label: '潜水',
+      commandLabel: 'dive',
+      request: { action: 'dive' },
+    });
+    actions.push({
+      id: 'dive-3',
+      label: '连潜3',
+      commandLabel: 'dive 3 stop=new,rare,event',
+      request: { action: 'dive', times: 3, stop_on: ['new', 'rare', 'event'] },
+    });
+  } else {
+    actions.push({
+      id: 'buy-oxygen',
+      label: '买氧气',
+      commandLabel: 'buy oxygen 1',
+      request: { action: 'buy', bait_id: 'oxygen', qty: 1 },
+    });
+  }
+
+  actions.push({
+    id: 'surface',
+    label: '上岸',
+    commandLabel: 'surface',
+    request: { action: 'surface' },
+  });
+
+  return actions;
+}
+
+function formatUserActionSystemMessage(action: FishingUserAction, result: string, sessionId: string): string {
+  const body = stripStateLine(result) || result.trim();
+  return [
+    '[钓鱼游戏用户操作]',
+    `Session: ${sessionId}`,
+    `操作: ${action.commandLabel}`,
+    '',
+    '结果:',
+    body,
+  ].join('\n');
 }
 
 function tabLabel(tab: FishingPanelTab): string {
@@ -606,6 +777,33 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   },
   warningText: {
     color: colors.textTertiary,
+  },
+  actionStrip: {
+    paddingHorizontal: 12,
+    paddingTop: 8,
+  },
+  actionList: {
+    gap: 6,
+    paddingRight: 4,
+  },
+  actionButton: {
+    minWidth: 62,
+    height: 32,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    backgroundColor: colors.inputBackground,
+    borderWidth: 1,
+    borderColor: colors.border,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  actionButtonDisabled: {
+    opacity: 0.6,
+  },
+  actionButtonText: {
+    color: colors.text,
+    fontSize: 12,
+    fontWeight: '900',
   },
   tabs: {
     flexDirection: 'row',
