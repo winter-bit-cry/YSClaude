@@ -1,32 +1,66 @@
+import { NativeModules, Platform } from 'react-native';
 import type { RunCommandConfig } from '../../stores/settings';
 import { ToolDefinition, ToolModule } from './types';
 
-const DEFAULT_TIMEOUT_MS = 30000;
+const DEFAULT_TIMEOUT_MS = 60000;
 const MIN_TIMEOUT_MS = 1000;
-const MAX_TIMEOUT_MS = 300000;
-const DEFAULT_MAX_OUTPUT_CHARS = 12000;
+const MAX_TIMEOUT_MS = 3600000;
+const DEFAULT_MAX_OUTPUT_CHARS = 20000;
 const MAX_COMMAND_CHARS = 8000;
 
-const RUN_COMMAND_TOOL: ToolDefinition = {
+const RemoteSshCommand = NativeModules.RemoteSshCommand as
+  | {
+      connect: (config: Record<string, unknown>) => Promise<Record<string, unknown>>;
+      command: (config: Record<string, unknown>) => Promise<Record<string, unknown>>;
+      status: () => Promise<Record<string, unknown>>;
+      close: () => Promise<Record<string, unknown>>;
+    }
+  | undefined;
+
+const SSH_CONNECT_TOOL: ToolDefinition = {
   type: 'function',
   function: {
-    name: 'run_command',
+    name: 'ssh_connect',
     description:
-      '在用户配置的远程服务器上执行 shell 命令。只在用户明确要求操作远程服务器、检查服务、查看日志、部署或运行命令时使用。执行会影响真实服务器；删除、覆盖、关机、重启、改权限、安装软件、发布上线等高风险操作必须先得到用户明确指示。',
+      '连接用户在 Tool 设置中配置的专用 AI SSH 服务器，建立一个持久化 SSH transport。开始操作远程服务器前先调用；如果 session 已存在会直接复用，不要为每个命令重复连接。',
+    parameters: {
+      type: 'object',
+      properties: {},
+      required: [],
+    },
+  },
+};
+
+const SSH_STATUS_TOOL: ToolDefinition = {
+  type: 'function',
+  function: {
+    name: 'ssh_status',
+    description:
+      '探测当前持久化 SSH transport 是否仍然可用。需要确认 session 状态时使用；不要为了每条命令都调用 ssh_connect。',
+    parameters: {
+      type: 'object',
+      properties: {},
+      required: [],
+    },
+  },
+};
+
+const SSH_COMMAND_TOOL: ToolDefinition = {
+  type: 'function',
+  function: {
+    name: 'ssh_command',
+    description:
+      '通过当前持久化 SSH transport 执行命令。必须先调用 ssh_connect。工具会尽量保留 cd 后的目录和 export 的环境变量；不要依赖 alias、shell 函数、交互式程序或前台长期进程状态。',
     parameters: {
       type: 'object',
       properties: {
         command: {
           type: 'string',
-          description: '要在远程服务器 shell 中执行的完整命令。',
-        },
-        cwd: {
-          type: 'string',
-          description: '可选工作目录。省略时使用 Tool 设置中的默认工作目录，或由服务器端决定。',
+          description: '要在当前 SSH shell 中执行的完整命令。',
         },
         timeout_ms: {
           type: 'number',
-          description: '可选超时时间，单位毫秒。默认使用 Tool 设置中的超时时间。',
+          description: '可选超时时间，单位毫秒。命令长时间不结束时会返回部分输出；前台进程可能仍占用当前 shell。',
         },
       },
       required: ['command'],
@@ -34,28 +68,77 @@ const RUN_COMMAND_TOOL: ToolDefinition = {
   },
 };
 
-export const runCommandTool: ToolModule = {
-  id: 'run-command',
-  labels: {
-    run_command: '远程命令',
-  },
-  getDefinitions: (config) => (config.runCommand?.enabled ? [RUN_COMMAND_TOOL] : []),
-  execute: async (toolName, args, context) => {
-    if (toolName !== 'run_command') return undefined;
-    return await executeRunCommand(args, context.runCommandConfig);
+const SSH_CLOSE_TOOL: ToolDefinition = {
+  type: 'function',
+  function: {
+    name: 'ssh_close',
+    description:
+      '关闭当前持久化 SSH transport。只有用户明确要求关闭连接、重置远程命令状态，或当前 session 已不可恢复时才调用；普通任务完成后不要自动关闭。',
+    parameters: {
+      type: 'object',
+      properties: {
+        confirm: {
+          type: 'string',
+          description: '必须填写 close_current_ssh_session，表示明确要关闭当前持久 SSH session。',
+        },
+      },
+      required: ['confirm'],
+    },
   },
 };
 
-async function executeRunCommand(args: Record<string, any>, config: RunCommandConfig): Promise<string> {
-  if (!config?.enabled) {
-    throw new Error('远程命令工具未启用，请先在「Tool 设置」中打开');
-  }
+export const runCommandTool: ToolModule = {
+  id: 'run-command',
+  labels: {
+    ssh_connect: 'SSH 连接',
+    ssh_status: 'SSH 状态',
+    ssh_command: 'SSH 命令',
+    ssh_close: 'SSH 关闭',
+    run_command: '远程命令',
+  },
+  getDefinitions: (config) =>
+    config.runCommand?.enabled ? [SSH_CONNECT_TOOL, SSH_STATUS_TOOL, SSH_COMMAND_TOOL, SSH_CLOSE_TOOL] : [],
+  execute: async (toolName, args, context) => {
+    if (toolName === 'ssh_connect') {
+      return await executeSshConnect(args, context.runCommandConfig);
+    }
+    if (toolName === 'ssh_status') {
+      return await executeSshStatus(context.runCommandConfig);
+    }
+    if (toolName === 'ssh_command') {
+      return await executeSshCommand(args, context.runCommandConfig);
+    }
+    if (toolName === 'ssh_close') {
+      return await executeSshClose(args, context.runCommandConfig);
+    }
+    if (toolName === 'run_command') {
+      return await executeLegacyRunCommand(args, context.runCommandConfig);
+    }
+    return undefined;
+  },
+};
 
-  const endpointUrl = String(config.endpointUrl || '').trim();
-  if (!/^https?:\/\//i.test(endpointUrl)) {
-    throw new Error('远程命令服务地址必须以 http:// 或 https:// 开头');
-  }
+async function executeSshConnect(args: Record<string, any>, config: RunCommandConfig): Promise<string> {
+  ensureSshConfig(config);
+  const maxOutputChars = normalizeMaxOutputChars(config.maxOutputChars);
+  const result = await ensureRemoteSshCommand().connect({
+    ...buildConnectionPayload(config),
+    reconnect: false,
+    cwd: config.defaultCwd || undefined,
+    timeoutMs: normalizeTimeoutMs(args?.timeout_ms, config.timeoutMs),
+    maxOutputChars,
+  });
+  return formatSshResponse('SSH session 连接结果：', result, maxOutputChars);
+}
 
+async function executeSshStatus(config: RunCommandConfig): Promise<string> {
+  ensureSshConfig(config);
+  const result = await ensureRemoteSshCommand().status();
+  return formatSshResponse('SSH session 状态：', result, normalizeMaxOutputChars(config.maxOutputChars));
+}
+
+async function executeSshCommand(args: Record<string, any>, config: RunCommandConfig): Promise<string> {
+  ensureSshConfig(config);
   const command = String(args?.command || '').trim();
   if (!command) {
     throw new Error('command 不能为空');
@@ -66,46 +149,70 @@ async function executeRunCommand(args: Record<string, any>, config: RunCommandCo
 
   const timeoutMs = normalizeTimeoutMs(args?.timeout_ms, config.timeoutMs);
   const maxOutputChars = normalizeMaxOutputChars(config.maxOutputChars);
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs + 1000);
+  const result = await ensureRemoteSshCommand().command({
+    ...buildConnectionPayload(config),
+    autoReconnect: true,
+    cwd: config.defaultCwd || undefined,
+    command,
+    timeoutMs,
+    maxOutputChars,
+  });
+  return formatSshResponse('SSH session 命令结果：', result, maxOutputChars);
+}
 
-  try {
-    const resp = await fetch(endpointUrl.replace(/\/$/, ''), {
-      method: 'POST',
-      headers: buildHeaders(config),
-      body: JSON.stringify({
-        command,
-        cwd: typeof args?.cwd === 'string' && args.cwd.trim() ? args.cwd.trim() : config.defaultCwd || undefined,
-        timeout_ms: timeoutMs,
-      }),
-      signal: controller.signal,
-    });
+async function executeSshClose(args: Record<string, any>, config: RunCommandConfig): Promise<string> {
+  ensureSshConfig(config);
+  if (String(args?.confirm || '') !== 'close_current_ssh_session') {
+    throw new Error('关闭 SSH session 需要 confirm=close_current_ssh_session');
+  }
+  const result = await ensureRemoteSshCommand().close();
+  return formatSshResponse('SSH session 关闭结果：', result, normalizeMaxOutputChars(config.maxOutputChars));
+}
 
-    const text = await resp.text();
-    if (!resp.ok) {
-      throw new Error(`远程命令服务失败: HTTP ${resp.status} - ${text.slice(0, 500)}`);
-    }
+async function executeLegacyRunCommand(args: Record<string, any>, config: RunCommandConfig): Promise<string> {
+  await executeSshConnect({}, config);
+  return await executeSshCommand(args, config);
+}
 
-    return formatRunCommandResponse(text, maxOutputChars);
-  } catch (error: any) {
-    if (error?.name === 'AbortError') {
-      throw new Error(`远程命令执行超时: ${timeoutMs}ms`);
-    }
-    throw error;
-  } finally {
-    clearTimeout(timeoutId);
+function ensureSshConfig(config: RunCommandConfig): void {
+  if (!config?.enabled) {
+    throw new Error('远程命令工具未启用，请先在「Tool 设置」中打开');
+  }
+  if (Platform.OS !== 'android') {
+    throw new Error('SSH 远程命令当前仅支持 Android development build');
+  }
+
+  const sshHost = String(config.sshHost || '').trim();
+  const sshUsername = String(config.sshUsername || '').trim();
+  if (!sshHost) {
+    throw new Error('请先在「Tool 设置」中填写 SSH 主机');
+  }
+  if (!sshUsername) {
+    throw new Error('请先在「Tool 设置」中填写 SSH 用户名');
+  }
+  if (!String(config.sshPassword || '').trim() && !String(config.sshPrivateKey || '').trim()) {
+    throw new Error('请至少配置 SSH 密码或私钥');
   }
 }
 
-function buildHeaders(config: RunCommandConfig): Record<string, string> {
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-  };
-  const token = String(config.accessToken || '').trim();
-  if (token) {
-    headers.Authorization = token.toLowerCase().startsWith('bearer ') ? token : `Bearer ${token}`;
+function ensureRemoteSshCommand(): NonNullable<typeof RemoteSshCommand> {
+  if (!RemoteSshCommand) {
+    throw new Error('SSH 原生模块未加载，请重新运行 npx expo run:android 安装包含原生模块的新包');
   }
-  return headers;
+  return RemoteSshCommand;
+}
+
+function buildConnectionPayload(config: RunCommandConfig): Record<string, unknown> {
+  return {
+    host: String(config.sshHost || '').trim(),
+    port: normalizePort(config.sshPort),
+    username: String(config.sshUsername || '').trim(),
+    password: config.sshPassword || undefined,
+    privateKey: config.sshPrivateKey || undefined,
+    passphrase: config.sshPassphrase || undefined,
+    strictHostKeyChecking: !!config.strictHostKeyChecking,
+    knownHosts: config.knownHosts || undefined,
+  };
 }
 
 function normalizeTimeoutMs(input: unknown, fallback: number): number {
@@ -116,35 +223,50 @@ function normalizeTimeoutMs(input: unknown, fallback: number): number {
 
 function normalizeMaxOutputChars(input: number): number {
   if (!Number.isFinite(input) || input <= 0) return DEFAULT_MAX_OUTPUT_CHARS;
-  return Math.min(100000, Math.max(1000, Math.round(input)));
+  return Math.min(500000, Math.max(1000, Math.round(input)));
 }
 
-function formatRunCommandResponse(text: string, maxOutputChars: number): string {
-  let data: any = null;
-  try {
-    data = JSON.parse(text);
-  } catch {
-    return truncateOutput(text || '命令已执行，服务未返回输出。', maxOutputChars);
-  }
+function normalizePort(input: number): number {
+  if (!Number.isFinite(input)) return 22;
+  return Math.min(65535, Math.max(1, Math.round(input)));
+}
 
+function formatSshResponse(title: string, data: any, maxOutputChars: number): string {
   const exitCode = data?.exit_code ?? data?.exitCode ?? data?.code;
   const stdout = normalizeOutput(data?.stdout ?? data?.output);
   const stderr = normalizeOutput(data?.stderr ?? data?.error);
-  const signal = normalizeOutput(data?.signal);
-  const timedOut = data?.timed_out ?? data?.timedOut;
   const durationMs = data?.duration_ms ?? data?.durationMs;
+  const host = normalizeOutput(data?.host);
+  const username = normalizeOutput(data?.username);
+  const status = normalizeOutput(data?.status);
+  const sessionId = normalizeOutput(data?.session_id ?? data?.sessionId);
+  const sessionConnected = data?.session_connected ?? data?.sessionConnected;
+  const timedOut = data?.timed_out ?? data?.timedOut;
+  const cwd = normalizeOutput(data?.cwd);
+  const retriedAfterReconnect = data?.retried_after_reconnect ?? data?.retriedAfterReconnect;
+  const reconnectReason = normalizeOutput(data?.reconnect_reason ?? data?.reconnectReason);
+  const lastError = normalizeOutput(data?.last_error ?? data?.lastError);
 
   const lines = [
-    '远程命令执行结果：',
+    title,
+    status ? `status: ${status}` : '',
+    sessionId ? `session_id: ${sessionId}` : '',
+    host ? `host: ${username ? `${username}@` : ''}${host}${data?.port ? `:${data.port}` : ''}` : '',
+    cwd ? `cwd: ${cwd}` : '',
+    typeof sessionConnected !== 'undefined' ? `session_connected: ${String(!!sessionConnected)}` : '',
+    typeof retriedAfterReconnect !== 'undefined'
+      ? `retried_after_reconnect: ${String(!!retriedAfterReconnect)}`
+      : '',
+    reconnectReason ? `reconnect_reason: ${reconnectReason}` : '',
+    lastError ? `last_error: ${lastError}` : '',
     typeof exitCode !== 'undefined' ? `exit_code: ${String(exitCode)}` : '',
     typeof timedOut !== 'undefined' ? `timed_out: ${String(!!timedOut)}` : '',
     typeof durationMs !== 'undefined' ? `duration_ms: ${String(durationMs)}` : '',
-    signal ? `signal: ${signal}` : '',
     stdout ? `\n[stdout]\n${stdout}` : '',
     stderr ? `\n[stderr]\n${stderr}` : '',
   ].filter(Boolean);
 
-  return truncateOutput(lines.join('\n') || '命令已执行，服务未返回输出。', maxOutputChars);
+  return truncateOutput(lines.join('\n') || 'SSH 操作已完成，未返回输出。', maxOutputChars);
 }
 
 function normalizeOutput(value: unknown): string {

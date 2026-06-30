@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TextInput, Pressable,
-  ActivityIndicator, Alert, Modal, FlatList, Switch, Image,
+  ActivityIndicator, Alert, Modal, FlatList, Switch, Image, NativeModules, Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
@@ -3696,12 +3696,18 @@ function ToolConfigTab({ showToast, keyboardBottomInset }: SettingsTabProps) {
   const [dailySourceLanguage, setDailySourceLanguage] = useState('zh');
 
   const [rcEnabled, setRcEnabled] = useState(!!runCommandConfig?.enabled);
-  const [rcEndpointUrl, setRcEndpointUrl] = useState(runCommandConfig?.endpointUrl || '');
-  const [rcAccessToken, setRcAccessToken] = useState(runCommandConfig?.accessToken || '');
+  const [rcSshHost, setRcSshHost] = useState(runCommandConfig?.sshHost || '');
+  const [rcSshPort, setRcSshPort] = useState(String(runCommandConfig?.sshPort || 22));
+  const [rcSshUsername, setRcSshUsername] = useState(runCommandConfig?.sshUsername || '');
+  const [rcSshPassword, setRcSshPassword] = useState(runCommandConfig?.sshPassword || '');
+  const [rcSshPrivateKey, setRcSshPrivateKey] = useState(runCommandConfig?.sshPrivateKey || '');
+  const [rcSshPassphrase, setRcSshPassphrase] = useState(runCommandConfig?.sshPassphrase || '');
+  const [rcStrictHostKeyChecking, setRcStrictHostKeyChecking] = useState(!!runCommandConfig?.strictHostKeyChecking);
+  const [rcKnownHosts, setRcKnownHosts] = useState(runCommandConfig?.knownHosts || '');
   const [rcDefaultCwd, setRcDefaultCwd] = useState(runCommandConfig?.defaultCwd || '');
-  const [rcTimeoutMs, setRcTimeoutMs] = useState(String(runCommandConfig?.timeoutMs || 30000));
-  const [rcMaxOutputChars, setRcMaxOutputChars] = useState(String(runCommandConfig?.maxOutputChars || 12000));
-  const [rcMaxCalls, setRcMaxCalls] = useState(String(runCommandConfig?.maxToolCalls || 4));
+  const [rcTimeoutMs, setRcTimeoutMs] = useState(String(runCommandConfig?.timeoutMs || 60000));
+  const [rcMaxOutputChars, setRcMaxOutputChars] = useState(String(runCommandConfig?.maxOutputChars || 20000));
+  const [rcMaxCalls, setRcMaxCalls] = useState(String(runCommandConfig?.maxToolCalls || 20));
   const [rcTesting, setRcTesting] = useState(false);
 
   const [qqEnabled, setQqEnabled] = useState(!!qqBotConfig?.enabled);
@@ -3984,63 +3990,94 @@ function ToolConfigTab({ showToast, keyboardBottomInset }: SettingsTabProps) {
   }
 
   function buildRunCommandConfigDraft() {
+    const sshPort = parseInt(rcSshPort, 10);
     const timeoutMs = parseInt(rcTimeoutMs, 10);
     const maxOutputChars = parseInt(rcMaxOutputChars, 10);
     const maxToolCalls = parseInt(rcMaxCalls, 10);
     return {
       enabled: rcEnabled,
-      endpointUrl: rcEndpointUrl.trim(),
-      accessToken: rcAccessToken.trim(),
+      sshHost: rcSshHost.trim(),
+      sshPort: isNaN(sshPort) ? 22 : Math.min(65535, Math.max(1, sshPort)),
+      sshUsername: rcSshUsername.trim(),
+      sshPassword: rcSshPassword,
+      sshPrivateKey: rcSshPrivateKey.trim(),
+      sshPassphrase: rcSshPassphrase,
+      strictHostKeyChecking: rcStrictHostKeyChecking,
+      knownHosts: rcKnownHosts.trim(),
       defaultCwd: rcDefaultCwd.trim(),
-      timeoutMs: isNaN(timeoutMs) || timeoutMs <= 0 ? 30000 : Math.min(300000, Math.max(1000, timeoutMs)),
-      maxOutputChars: isNaN(maxOutputChars) || maxOutputChars <= 0 ? 12000 : Math.min(100000, Math.max(1000, maxOutputChars)),
-      maxToolCalls: isNaN(maxToolCalls) || maxToolCalls <= 0 ? 4 : maxToolCalls,
+      timeoutMs: isNaN(timeoutMs) || timeoutMs <= 0 ? 60000 : Math.min(3600000, Math.max(1000, timeoutMs)),
+      maxOutputChars: isNaN(maxOutputChars) || maxOutputChars <= 0 ? 20000 : Math.min(500000, Math.max(1000, maxOutputChars)),
+      maxToolCalls: isNaN(maxToolCalls) || maxToolCalls <= 0 ? 20 : maxToolCalls,
     };
   }
 
   function handleSaveRunCommand() {
     const config = buildRunCommandConfigDraft();
-    if (config.enabled && !/^https?:\/\//i.test(config.endpointUrl)) {
-      Alert.alert('提示', '启用远程命令时请填写以 http:// 或 https:// 开头的服务地址');
+    if (config.enabled && !config.sshHost) {
+      Alert.alert('提示', '启用远程命令时请填写 SSH 主机');
+      return false;
+    }
+    if (config.enabled && !config.sshUsername) {
+      Alert.alert('提示', '启用远程命令时请填写 SSH 用户名');
+      return false;
+    }
+    if (config.enabled && !config.sshPassword && !config.sshPrivateKey) {
+      Alert.alert('提示', '请至少填写 SSH 密码或私钥');
       return false;
     }
     setRunCommandConfig(config);
-    showToast(config.enabled ? '远程命令工具已保存' : '远程命令工具已关闭');
+    showToast(config.enabled ? 'SSH 远程命令已保存' : '远程命令工具已关闭');
     return true;
   }
 
   async function handleTestRunCommand() {
     const config = buildRunCommandConfigDraft();
-    if (!/^https?:\/\//i.test(config.endpointUrl)) {
-      Alert.alert('提示', '请先填写以 http:// 或 https:// 开头的服务地址');
+    if (Platform.OS !== 'android') {
+      Alert.alert('暂不支持', 'SSH 远程命令当前仅支持 Android development build');
+      return;
+    }
+    const remoteSshCommand = NativeModules.RemoteSshCommand as
+      | {
+          connect: (payload: Record<string, unknown>) => Promise<Record<string, unknown>>;
+          command: (payload: Record<string, unknown>) => Promise<Record<string, unknown>>;
+          close: () => Promise<Record<string, unknown>>;
+        }
+      | undefined;
+    if (!remoteSshCommand) {
+      Alert.alert('原生模块未加载', '请重新运行 npx expo run:android 安装包含 SSH 原生模块的新包');
+      return;
+    }
+    if (!config.sshHost || !config.sshUsername || (!config.sshPassword && !config.sshPrivateKey)) {
+      Alert.alert('提示', '请先填写 SSH 主机、用户名，以及密码或私钥');
       return;
     }
     setRcTesting(true);
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), Math.min(config.timeoutMs, 30000) + 1000);
     try {
-      const resp = await fetch(config.endpointUrl.replace(/\/$/, ''), {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(config.accessToken
-            ? { Authorization: config.accessToken.toLowerCase().startsWith('bearer ') ? config.accessToken : `Bearer ${config.accessToken}` }
-            : {}),
-        },
-        body: JSON.stringify({
-          command: 'echo ysclaude-run-command-ok',
-          cwd: config.defaultCwd || undefined,
-          timeout_ms: Math.min(config.timeoutMs, 30000),
-        }),
-        signal: controller.signal,
+      await remoteSshCommand.connect({
+        host: config.sshHost,
+        port: config.sshPort,
+        username: config.sshUsername,
+        password: config.sshPassword || undefined,
+        privateKey: config.sshPrivateKey || undefined,
+        passphrase: config.sshPassphrase || undefined,
+        strictHostKeyChecking: config.strictHostKeyChecking,
+        knownHosts: config.knownHosts || undefined,
+        cwd: config.defaultCwd || undefined,
+        timeoutMs: Math.min(config.timeoutMs, 30000),
+        maxOutputChars: 4000,
       });
-      const text = await resp.text();
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${text.slice(0, 200)}`);
-      showToast(text.includes('ysclaude-run-command-ok') ? '远程命令服务正常' : '服务已响应，请确认返回格式');
+      const result = await remoteSshCommand.command({
+        command: 'echo ysclaude-run-command-ok',
+        timeoutMs: Math.min(config.timeoutMs, 30000),
+        maxOutputChars: 4000,
+      });
+      await remoteSshCommand.close();
+      const stdout = String(result?.stdout || '');
+      const stderr = String(result?.stderr || '');
+      showToast(stdout.includes('ysclaude-run-command-ok') ? 'SSH 连接正常' : `SSH 已响应: ${stderr || stdout || '无输出'}`);
     } catch (error: any) {
-      Alert.alert('连接失败', error?.name === 'AbortError' ? '测试超时' : error?.message || '无法连接远程命令服务');
+      Alert.alert('SSH 连接失败', error?.message || '无法连接远程服务器');
     } finally {
-      clearTimeout(timeoutId);
       setRcTesting(false);
     }
   }
@@ -4965,7 +5002,7 @@ function ToolConfigTab({ showToast, keyboardBottomInset }: SettingsTabProps) {
     { key: 'webPageReader', name: '网页读取', intro: '读取链接中的网页正文，可配置渲染服务兜底。', enabled: wprEnabled, onValueChange: setWprEnabled, meta: '1 个工具' },
     { key: 'hotboard', name: '热榜查询', intro: '从已选择的平台列表中查询热门话题。', enabled: hbEnabled, onValueChange: setHbEnabled, meta: hbPlatformTypes.length + ' 个平台' },
     { key: 'dailyPaperSources', name: '日报来源', intro: '配置每日日报生成时读取的 RSS 新闻来源。', enabled: dailyUseDefaultSources || dailyCustomSources.some((source) => source.enabled), onValueChange: setDailyUseDefaultSources, meta: (dailyUseDefaultSources ? 6 : 0) + dailyCustomSources.filter((source) => source.enabled).length + ' 个来源' },
-    { key: 'runCommand', name: '远程命令', intro: '通过你配置的远程命令服务执行 shell 命令。', enabled: rcEnabled, onValueChange: setRcEnabled, meta: '最多 ' + (rcMaxCalls || '4') + ' 次' },
+    { key: 'runCommand', name: '远程命令', intro: '通过 SSH 连接专用 AI 服务器执行 shell 命令。', enabled: rcEnabled, onValueChange: setRcEnabled, meta: '最多 ' + (rcMaxCalls || '20') + ' 次' },
     { key: 'qqBot', name: 'QQ 机器人', intro: '把 QQ 官方机器人消息接入独立后端，由 YSClaude 生成回复。', enabled: qqEnabled, onValueChange: setQqEnabled, meta: qqBackendStatus === '尚未检测' ? '官方 Bot' : qqBackendStatus },
     { key: 'webInteraction', name: '网页交互', intro: '允许 AI 打开、观察并操作应用内网页面板。', enabled: wiEnabled, onValueChange: setWiEnabled, meta: '最多 ' + (wiMaxCalls || '8') + ' 次' },
     { key: 'shizukuFile', name: 'Shizuku 文件', intro: '读写你明确授权的 Shizuku 路径内文件。', enabled: shizukuEnabled, onValueChange: setShizukuEnabled, meta: shizukuRoots.length + ' 个路径' },
@@ -5264,17 +5301,27 @@ function ToolConfigTab({ showToast, keyboardBottomInset }: SettingsTabProps) {
       case 'runCommand':
         return (
           <>
-            <Text style={styles.toolModalDescription}>AI 会把命令发送到你配置的远程命令服务，由服务器端执行 shell 并返回 stdout/stderr。</Text>
+            <Text style={styles.toolModalDescription}>AI 会通过 SSH 直连这台专用服务器执行 shell 命令，并返回 stdout/stderr。服务器侧不做命令白名单，适合给 AI 独立隔离的工作机。</Text>
             <View style={styles.switchRow}><Text style={styles.label}>启用远程命令</Text><Switch value={rcEnabled} onValueChange={setRcEnabled} trackColor={{ true: colors.primary }} /></View>
-            <View style={styles.field}><Text style={styles.label}>服务地址</Text><TextInput style={styles.input} value={rcEndpointUrl} onChangeText={setRcEndpointUrl} placeholder="https://your-server.example.com/run-command" placeholderTextColor={colors.textTertiary} autoCapitalize="none" /></View>
-            <View style={styles.field}><Text style={styles.label}>访问令牌</Text><TextInput style={styles.input} value={rcAccessToken} onChangeText={setRcAccessToken} placeholder="Bearer token 或纯 token" placeholderTextColor={colors.textTertiary} secureTextEntry autoCapitalize="none" /></View>
-            <View style={styles.field}><Text style={styles.label}>默认工作目录</Text><TextInput style={styles.input} value={rcDefaultCwd} onChangeText={setRcDefaultCwd} placeholder="/home/ubuntu/app" placeholderTextColor={colors.textTertiary} autoCapitalize="none" /></View>
             <View style={styles.toolNumberRow}>
-              <View style={styles.toolNumberField}><Text style={styles.label}>超时 ms</Text><TextInput style={styles.input} value={rcTimeoutMs} onChangeText={setRcTimeoutMs} keyboardType="number-pad" placeholder="30000" placeholderTextColor={colors.textTertiary} /></View>
-              <View style={styles.toolNumberField}><Text style={styles.label}>输出上限</Text><TextInput style={styles.input} value={rcMaxOutputChars} onChangeText={setRcMaxOutputChars} keyboardType="number-pad" placeholder="12000" placeholderTextColor={colors.textTertiary} /></View>
+              <View style={styles.toolNumberField}><Text style={styles.label}>SSH 主机</Text><TextInput style={styles.input} value={rcSshHost} onChangeText={setRcSshHost} placeholder="ai-server.example.com" placeholderTextColor={colors.textTertiary} autoCapitalize="none" /></View>
+              <View style={styles.toolNumberField}><Text style={styles.label}>端口</Text><TextInput style={styles.input} value={rcSshPort} onChangeText={setRcSshPort} keyboardType="number-pad" placeholder="22" placeholderTextColor={colors.textTertiary} /></View>
             </View>
-            <View style={styles.field}><Text style={styles.label}>每轮最大调用次数</Text><TextInput style={styles.input} value={rcMaxCalls} onChangeText={setRcMaxCalls} keyboardType="number-pad" placeholder="4" placeholderTextColor={colors.textTertiary} /></View>
-            <Text style={styles.hint}>服务需接受 POST JSON：command、cwd、timeout_ms；建议只允许 HTTPS、强 Token、服务器侧目录/命令白名单。</Text>
+            <View style={styles.field}><Text style={styles.label}>用户名</Text><TextInput style={styles.input} value={rcSshUsername} onChangeText={setRcSshUsername} placeholder="ubuntu" placeholderTextColor={colors.textTertiary} autoCapitalize="none" /></View>
+            <View style={styles.field}><Text style={styles.label}>密码</Text><TextInput style={styles.input} value={rcSshPassword} onChangeText={setRcSshPassword} placeholder="可留空，优先使用私钥" placeholderTextColor={colors.textTertiary} secureTextEntry autoCapitalize="none" /></View>
+            <View style={styles.field}><Text style={styles.label}>私钥</Text><TextInput style={[styles.input, styles.multilineInput]} value={rcSshPrivateKey} onChangeText={setRcSshPrivateKey} placeholder={'-----BEGIN OPENSSH PRIVATE KEY-----\n...'} placeholderTextColor={colors.textTertiary} autoCapitalize="none" multiline textAlignVertical="top" /></View>
+            <View style={styles.field}><Text style={styles.label}>私钥口令</Text><TextInput style={styles.input} value={rcSshPassphrase} onChangeText={setRcSshPassphrase} placeholder="无口令可留空" placeholderTextColor={colors.textTertiary} secureTextEntry autoCapitalize="none" /></View>
+            <View style={styles.field}><Text style={styles.label}>默认工作目录</Text><TextInput style={styles.input} value={rcDefaultCwd} onChangeText={setRcDefaultCwd} placeholder="/home/ubuntu/app" placeholderTextColor={colors.textTertiary} autoCapitalize="none" /></View>
+            <View style={styles.switchRow}><Text style={styles.label}>严格校验主机密钥</Text><Switch value={rcStrictHostKeyChecking} onValueChange={setRcStrictHostKeyChecking} trackColor={{ true: colors.primary }} /></View>
+            {rcStrictHostKeyChecking && (
+              <View style={styles.field}><Text style={styles.label}>known_hosts</Text><TextInput style={[styles.input, styles.multilineInput]} value={rcKnownHosts} onChangeText={setRcKnownHosts} placeholder="example.com ssh-ed25519 AAAA..." placeholderTextColor={colors.textTertiary} autoCapitalize="none" multiline textAlignVertical="top" /></View>
+            )}
+            <View style={styles.toolNumberRow}>
+              <View style={styles.toolNumberField}><Text style={styles.label}>超时 ms</Text><TextInput style={styles.input} value={rcTimeoutMs} onChangeText={setRcTimeoutMs} keyboardType="number-pad" placeholder="60000" placeholderTextColor={colors.textTertiary} /></View>
+              <View style={styles.toolNumberField}><Text style={styles.label}>输出上限</Text><TextInput style={styles.input} value={rcMaxOutputChars} onChangeText={setRcMaxOutputChars} keyboardType="number-pad" placeholder="20000" placeholderTextColor={colors.textTertiary} /></View>
+            </View>
+            <View style={styles.field}><Text style={styles.label}>每轮最大调用次数</Text><TextInput style={styles.input} value={rcMaxCalls} onChangeText={setRcMaxCalls} keyboardType="number-pad" placeholder="20" placeholderTextColor={colors.textTertiary} /></View>
+            <Text style={styles.hint}>建议使用独立低权限或容器化服务器；关闭严格校验时会自动信任首次连接的主机密钥。</Text>
             <Pressable style={styles.testButton} onPress={handleTestRunCommand} disabled={rcTesting}>{rcTesting ? <ActivityIndicator size="small" color={colors.primary} /> : <Text style={styles.testButtonText}>测试连接</Text>}</Pressable>
           </>
         );

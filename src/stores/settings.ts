@@ -116,8 +116,14 @@ export interface HotboardConfig {
 
 export interface RunCommandConfig {
   enabled: boolean;
-  endpointUrl: string;
-  accessToken: string;
+  sshHost: string;
+  sshPort: number;
+  sshUsername: string;
+  sshPassword: string;
+  sshPrivateKey: string;
+  sshPassphrase: string;
+  strictHostKeyChecking: boolean;
+  knownHosts: string;
   defaultCwd: string;
   timeoutMs: number;
   maxOutputChars: number;
@@ -687,12 +693,18 @@ export const useSettingsStore = create<SettingsState>()(
       },
       runCommandConfig: {
         enabled: false,
-        endpointUrl: '',
-        accessToken: '',
+        sshHost: '',
+        sshPort: 22,
+        sshUsername: '',
+        sshPassword: '',
+        sshPrivateKey: '',
+        sshPassphrase: '',
+        strictHostKeyChecking: false,
+        knownHosts: '',
         defaultCwd: '',
-        timeoutMs: 30000,
-        maxOutputChars: 12000,
-        maxToolCalls: 4,
+        timeoutMs: 60000,
+        maxOutputChars: 20000,
+        maxToolCalls: 20,
       },
       qqBotConfig: {
         enabled: false,
@@ -857,12 +869,18 @@ export const useSettingsStore = create<SettingsState>()(
           runCommandConfig: {
             ...(state.runCommandConfig || {
               enabled: false,
-              endpointUrl: '',
-              accessToken: '',
+              sshHost: '',
+              sshPort: 22,
+              sshUsername: '',
+              sshPassword: '',
+              sshPrivateKey: '',
+              sshPassphrase: '',
+              strictHostKeyChecking: false,
+              knownHosts: '',
               defaultCwd: '',
-              timeoutMs: 30000,
-              maxOutputChars: 12000,
-              maxToolCalls: 4,
+              timeoutMs: 60000,
+              maxOutputChars: 20000,
+              maxToolCalls: 20,
             }),
             ...config,
           },

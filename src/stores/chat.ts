@@ -1033,7 +1033,10 @@ async function runToolLoop(
     webCruiseEnabled ||
     !!settings.webInteractionConfig?.enabled;
   const runCommandEnabled =
-    !!settings.runCommandConfig?.enabled && !!settings.runCommandConfig?.endpointUrl?.trim();
+    !!settings.runCommandConfig?.enabled &&
+    !!settings.runCommandConfig?.sshHost?.trim() &&
+    !!settings.runCommandConfig?.sshUsername?.trim() &&
+    (!!settings.runCommandConfig?.sshPassword || !!settings.runCommandConfig?.sshPrivateKey);
   const androidAccessibilityControlEnabled =
     messagesContainText(requestMessages, ANDROID_ACCESSIBILITY_CONTROL_MARKER);
 
@@ -1064,7 +1067,7 @@ async function runToolLoop(
     webInteractionEnabled ? settings.webInteractionConfig?.maxToolCalls || 8 : 0,
     settings.shizukuFileConfig?.enabled ? settings.shizukuFileConfig.maxToolCalls || 6 : 0,
     settings.mcpToolConfig?.enabled ? settings.mcpToolConfig.maxToolCalls || 6 : 0,
-    runCommandEnabled ? settings.runCommandConfig.maxToolCalls || 4 : 0,
+    runCommandEnabled ? settings.runCommandConfig.maxToolCalls || 20 : 0,
     webCruiseEnabled ? 10 : 0,
     androidAccessibilityControlEnabled ? 10 : 0
   );
