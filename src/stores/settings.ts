@@ -125,6 +125,7 @@ export interface RunCommandConfig {
   strictHostKeyChecking: boolean;
   knownHosts: string;
   defaultCwd: string;
+  customPrompt: string;
   timeoutMs: number;
   maxOutputChars: number;
   maxToolCalls: number;
@@ -702,6 +703,7 @@ export const useSettingsStore = create<SettingsState>()(
         strictHostKeyChecking: false,
         knownHosts: '',
         defaultCwd: '',
+        customPrompt: '',
         timeoutMs: 60000,
         maxOutputChars: 20000,
         maxToolCalls: 20,
@@ -878,6 +880,7 @@ export const useSettingsStore = create<SettingsState>()(
               strictHostKeyChecking: false,
               knownHosts: '',
               defaultCwd: '',
+              customPrompt: '',
               timeoutMs: 60000,
               maxOutputChars: 20000,
               maxToolCalls: 20,

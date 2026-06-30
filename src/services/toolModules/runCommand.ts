@@ -7,6 +7,7 @@ const MIN_TIMEOUT_MS = 1000;
 const MAX_TIMEOUT_MS = 3600000;
 const DEFAULT_MAX_OUTPUT_CHARS = 20000;
 const MAX_COMMAND_CHARS = 8000;
+const MAX_CUSTOM_PROMPT_CHARS = 4000;
 
 const RemoteSshCommand = NativeModules.RemoteSshCommand as
   | {
@@ -17,7 +18,7 @@ const RemoteSshCommand = NativeModules.RemoteSshCommand as
     }
   | undefined;
 
-const SSH_CONNECT_TOOL: ToolDefinition = {
+const SSH_CONNECT_TOOL_BASE: ToolDefinition = {
   type: 'function',
   function: {
     name: 'ssh_connect',
@@ -31,7 +32,7 @@ const SSH_CONNECT_TOOL: ToolDefinition = {
   },
 };
 
-const SSH_STATUS_TOOL: ToolDefinition = {
+const SSH_STATUS_TOOL_BASE: ToolDefinition = {
   type: 'function',
   function: {
     name: 'ssh_status',
@@ -45,7 +46,7 @@ const SSH_STATUS_TOOL: ToolDefinition = {
   },
 };
 
-const SSH_COMMAND_TOOL: ToolDefinition = {
+const SSH_COMMAND_TOOL_BASE: ToolDefinition = {
   type: 'function',
   function: {
     name: 'ssh_command',
@@ -68,7 +69,7 @@ const SSH_COMMAND_TOOL: ToolDefinition = {
   },
 };
 
-const SSH_CLOSE_TOOL: ToolDefinition = {
+const SSH_CLOSE_TOOL_BASE: ToolDefinition = {
   type: 'function',
   function: {
     name: 'ssh_close',
@@ -87,6 +88,8 @@ const SSH_CLOSE_TOOL: ToolDefinition = {
   },
 };
 
+const SSH_CUSTOM_PROMPT_HEADER = '用户为这台服务器配置的 AI 操作提示词：';
+
 export const runCommandTool: ToolModule = {
   id: 'run-command',
   labels: {
@@ -97,7 +100,7 @@ export const runCommandTool: ToolModule = {
     run_command: '远程命令',
   },
   getDefinitions: (config) =>
-    config.runCommand?.enabled ? [SSH_CONNECT_TOOL, SSH_STATUS_TOOL, SSH_COMMAND_TOOL, SSH_CLOSE_TOOL] : [],
+    config.runCommand?.enabled ? buildSshToolDefinitions(config.runCommand) : [],
   execute: async (toolName, args, context) => {
     if (toolName === 'ssh_connect') {
       return await executeSshConnect(args, context.runCommandConfig);
@@ -117,6 +120,21 @@ export const runCommandTool: ToolModule = {
     return undefined;
   },
 };
+
+function buildSshToolDefinitions(config: RunCommandConfig): ToolDefinition[] {
+  const customPrompt = normalizeToolPrompt(config.customPrompt);
+  if (!customPrompt) {
+    return [SSH_CONNECT_TOOL_BASE, SSH_STATUS_TOOL_BASE, SSH_COMMAND_TOOL_BASE, SSH_CLOSE_TOOL_BASE];
+  }
+
+  return [SSH_CONNECT_TOOL_BASE, SSH_STATUS_TOOL_BASE, SSH_COMMAND_TOOL_BASE, SSH_CLOSE_TOOL_BASE].map((tool) => ({
+    ...tool,
+    function: {
+      ...tool.function,
+      description: `${tool.function.description}\n\n${SSH_CUSTOM_PROMPT_HEADER}\n${customPrompt}`,
+    },
+  }));
+}
 
 async function executeSshConnect(args: Record<string, any>, config: RunCommandConfig): Promise<string> {
   ensureSshConfig(config);
@@ -229,6 +247,17 @@ function normalizeMaxOutputChars(input: number): number {
 function normalizePort(input: number): number {
   if (!Number.isFinite(input)) return 22;
   return Math.min(65535, Math.max(1, Math.round(input)));
+}
+
+function normalizeToolPrompt(input: unknown): string {
+  const prompt = String(input || '')
+    .replace(/\r\n/g, '\n')
+    .split('\n')
+    .map((line) => line.trimEnd())
+    .join('\n')
+    .trim();
+  if (prompt.length <= MAX_CUSTOM_PROMPT_CHARS) return prompt;
+  return `${prompt.slice(0, MAX_CUSTOM_PROMPT_CHARS)}\n\n[提示词已截断，最多 ${MAX_CUSTOM_PROMPT_CHARS} 个字符]`;
 }
 
 function formatSshResponse(title: string, data: any, maxOutputChars: number): string {

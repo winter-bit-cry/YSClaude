@@ -3705,6 +3705,7 @@ function ToolConfigTab({ showToast, keyboardBottomInset }: SettingsTabProps) {
   const [rcStrictHostKeyChecking, setRcStrictHostKeyChecking] = useState(!!runCommandConfig?.strictHostKeyChecking);
   const [rcKnownHosts, setRcKnownHosts] = useState(runCommandConfig?.knownHosts || '');
   const [rcDefaultCwd, setRcDefaultCwd] = useState(runCommandConfig?.defaultCwd || '');
+  const [rcCustomPrompt, setRcCustomPrompt] = useState(runCommandConfig?.customPrompt || '');
   const [rcTimeoutMs, setRcTimeoutMs] = useState(String(runCommandConfig?.timeoutMs || 60000));
   const [rcMaxOutputChars, setRcMaxOutputChars] = useState(String(runCommandConfig?.maxOutputChars || 20000));
   const [rcMaxCalls, setRcMaxCalls] = useState(String(runCommandConfig?.maxToolCalls || 20));
@@ -4005,6 +4006,7 @@ function ToolConfigTab({ showToast, keyboardBottomInset }: SettingsTabProps) {
       strictHostKeyChecking: rcStrictHostKeyChecking,
       knownHosts: rcKnownHosts.trim(),
       defaultCwd: rcDefaultCwd.trim(),
+      customPrompt: rcCustomPrompt.trim(),
       timeoutMs: isNaN(timeoutMs) || timeoutMs <= 0 ? 60000 : Math.min(3600000, Math.max(1000, timeoutMs)),
       maxOutputChars: isNaN(maxOutputChars) || maxOutputChars <= 0 ? 20000 : Math.min(500000, Math.max(1000, maxOutputChars)),
       maxToolCalls: isNaN(maxToolCalls) || maxToolCalls <= 0 ? 20 : maxToolCalls,
@@ -5312,6 +5314,7 @@ function ToolConfigTab({ showToast, keyboardBottomInset }: SettingsTabProps) {
             <View style={styles.field}><Text style={styles.label}>私钥</Text><TextInput style={[styles.input, styles.multilineInput]} value={rcSshPrivateKey} onChangeText={setRcSshPrivateKey} placeholder={'-----BEGIN OPENSSH PRIVATE KEY-----\n...'} placeholderTextColor={colors.textTertiary} autoCapitalize="none" multiline textAlignVertical="top" /></View>
             <View style={styles.field}><Text style={styles.label}>私钥口令</Text><TextInput style={styles.input} value={rcSshPassphrase} onChangeText={setRcSshPassphrase} placeholder="无口令可留空" placeholderTextColor={colors.textTertiary} secureTextEntry autoCapitalize="none" /></View>
             <View style={styles.field}><Text style={styles.label}>默认工作目录</Text><TextInput style={styles.input} value={rcDefaultCwd} onChangeText={setRcDefaultCwd} placeholder="/home/ubuntu/app" placeholderTextColor={colors.textTertiary} autoCapitalize="none" /></View>
+            <View style={styles.field}><Text style={styles.label}>AI 操作提示词</Text><TextInput style={[styles.input, styles.multilineInput]} value={rcCustomPrompt} onChangeText={setRcCustomPrompt} placeholder={'例如：进入项目后先阅读 CLAUDE.md；安装或启动服务前检查 package.json；完成后把运行方式、端口和注意事项维护到 CLAUDE.md。'} placeholderTextColor={colors.textTertiary} autoCapitalize="none" multiline textAlignVertical="top" /></View>
             <View style={styles.switchRow}><Text style={styles.label}>严格校验主机密钥</Text><Switch value={rcStrictHostKeyChecking} onValueChange={setRcStrictHostKeyChecking} trackColor={{ true: colors.primary }} /></View>
             {rcStrictHostKeyChecking && (
               <View style={styles.field}><Text style={styles.label}>known_hosts</Text><TextInput style={[styles.input, styles.multilineInput]} value={rcKnownHosts} onChangeText={setRcKnownHosts} placeholder="example.com ssh-ed25519 AAAA..." placeholderTextColor={colors.textTertiary} autoCapitalize="none" multiline textAlignVertical="top" /></View>
