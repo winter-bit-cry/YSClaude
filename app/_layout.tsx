@@ -24,6 +24,7 @@ import {
 import { handleFloatingBallToolAction } from '../src/services/floatingToolActions';
 import { startDesktopLyricSync, stopDesktopLyricSync } from '../src/services/desktopLyrics';
 import { startFocusAppStateListener } from '../src/services/focusAppState';
+import { startPromptCacheRemoteSnapshotFlushListener } from '../src/services/promptCacheKeepalive';
 
 
 let colors = lightColors;
@@ -109,6 +110,11 @@ export default function RootLayout() {
 
   useEffect(() => {
     const unsub = startFocusAppStateListener();
+    return unsub;
+  }, []);
+
+  useEffect(() => {
+    const unsub = startPromptCacheRemoteSnapshotFlushListener();
     return unsub;
   }, []);
 

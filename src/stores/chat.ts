@@ -5,7 +5,8 @@ import { File } from 'expo-file-system';
 import { Alert } from 'react-native';
 import { ChatMessage, streamChat, streamChatCompletion } from '../services/api';
 import { deleteGeneratedImageFile, generateOpenAIImage } from '../services/imageGeneration';
-import { notifyReplyReady } from '../services/notifications';
+import { cancelPromptCacheReminder, notifyReplyReady, schedulePromptCacheReminder } from '../services/notifications';
+import { disablePromptCacheRemoteKeepalive, syncPromptCacheRemoteSnapshot } from '../services/promptCacheKeepalive';
 import { useSettingsStore, type PromptCacheCompatibility, type PromptCacheTtl, type RunCommandConfig, type StablePromptRole, type ThinkingCompatibility, type ThinkingEffort } from './settings';
 import { getToolDefinitions, executeTool, getToolLabel, ToolExecutionResult } from '../services/tools';
 import { observeActiveWebView } from '../services/webviewController';
@@ -68,6 +69,7 @@ import {
 } from '../db/operations';
 
 const MESSAGE_PAGE_SIZE = 20;
+const PROMPT_CACHE_REMINDER_DELAY_MS = 55 * 60 * 1000;
 const FLOATING_STREAM_MAX_CHARS = 180;
 const FLOATING_STREAM_HARD_BOUNDARIES = '。！？!?；;\n';
 const FLOATING_STREAM_SOFT_BOUNDARIES = '，,、';
@@ -448,6 +450,7 @@ interface ChatState {
   pendingScrollMessageId: string | null;
   openToBottomRequestId: number;
   isStreaming: boolean;
+  isPromptCacheKeepaliveRunning: boolean;
   error: string | null;
 
   sendMessage: (content: string, imageUri?: string, imageGenerationReferenceUris?: string[]) => Promise<void>;
@@ -456,6 +459,7 @@ interface ChatState {
   addDailyPaperToLatestConversation: (paper: DailyPaper) => Promise<string>;
   addSystemMessage: (content: string) => Promise<Message | null>;
   enableWebCruise: () => Promise<void>;
+  keepPromptCacheAlive: () => Promise<void>;
   triggerResponse: () => Promise<void>;
   markMessagesForAutoHideAfterResponse: (ids: string[]) => void;
   stopStreaming: () => void;
@@ -988,6 +992,79 @@ function prependRuntimeContextToFirstMessage(messages: ChatMessage[], runtimeCon
   ];
 }
 
+function handlePromptCacheKeepaliveAfterSuccess(
+  conversationId: string,
+  promptCacheEnabled: boolean,
+  promptCacheTtl: PromptCacheTtl,
+  request?: Parameters<typeof syncPromptCacheRemoteSnapshot>[0]['request']
+): void {
+  const config = useSettingsStore.getState().promptCacheConfig;
+  const shouldKeepAlive = promptCacheEnabled && promptCacheTtl === '1h';
+
+  if (config.keepaliveMode === 'remote') {
+    if (shouldKeepAlive && request) {
+      syncPromptCacheRemoteSnapshot({ conversationId, request }).catch((error) => {
+        console.warn('[PromptCache] 远程保活快照同步失败:', error);
+      });
+    } else {
+      disablePromptCacheRemoteKeepalive(conversationId).catch(() => undefined);
+    }
+    return;
+  }
+
+  if (shouldKeepAlive) {
+    schedulePromptCacheReminder({
+      conversationId,
+      triggerAt: Date.now() + PROMPT_CACHE_REMINDER_DELAY_MS,
+    }).catch(() => undefined);
+  } else {
+    cancelPromptCacheReminder(conversationId).catch(() => undefined);
+  }
+}
+
+async function buildStableSystemPrompt(
+  settings: ReturnType<typeof useSettingsStore.getState>
+): Promise<string> {
+  const stableSystemSections = [
+    settings.systemPrompt.trim() || 'You are a helpful assistant.',
+  ];
+  const runCommandRuntimeContext = buildRunCommandRuntimeContext(settings.runCommandConfig);
+  if (runCommandRuntimeContext) {
+    stableSystemSections.push(runCommandRuntimeContext);
+  }
+
+  try {
+    const favoriteDiaries = await getFavoriteDiaries();
+    if (favoriteDiaries.length > 0) {
+      const memoryContent = favoriteDiaries
+        .map((d) => `${d.title}\n${d.content}`)
+        .join('\n\n---\n\n');
+      stableSystemSections.push(`以下是你的近期日记：\n\n${memoryContent}`);
+    }
+  } catch (err) {
+    console.warn('[Chat] 读取收藏日记失败:', err);
+  }
+
+  const stickerInstruction = buildStickerSystemInstruction(settings.stickerConfig?.assistantStickers);
+  if (stickerInstruction) {
+    stableSystemSections.push(stickerInstruction);
+  }
+  const pictureInstruction = buildPictureSystemInstruction(!!settings.imageGenerationConfig?.enabled);
+  if (pictureInstruction) {
+    stableSystemSections.push(pictureInstruction);
+  }
+  const enabledFaceReferenceCount = (settings.imageGenerationConfig?.faceReferences || [])
+    .filter((reference) => reference.enabled !== false && !!reference.uri)
+    .length;
+  if (settings.imageGenerationConfig?.enabled && enabledFaceReferenceCount > 0) {
+    stableSystemSections.push(
+      `生图配置已启用 ${enabledFaceReferenceCount} 张锁脸参考图。需要生成或修改人物图片时，直接使用 [Pic:图片描述]；这些参考图只会传给生图 API，不会作为聊天识图附件发送。`
+    );
+  }
+
+  return stableSystemSections.join('\n\n---\n\n');
+}
+
 function findPendingInputStartIndex(
   filteredMessages: Message[],
   boundaryMessageId: string | null | undefined
@@ -1064,6 +1141,117 @@ function showTokenWarningIfNeeded(
     'Token 预警',
     `本次 API 调用共使用 ${formatTokenCount(totalTokens)} tokens，已超过你设置的 ${formatTokenCount(threshold)}。\n\n建议压缩总结对话，或在「对话设置」里隐藏旧消息后继续。`
   );
+}
+
+async function buildPromptCacheKeepaliveRequest(
+  conversationId: string,
+  hiddenRanges: HiddenRange[]
+): Promise<{
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+  messages: ChatMessage[];
+  temperature?: number;
+  generateThinking?: boolean;
+  thinkingEffort: ThinkingEffort;
+  thinkingCompatibility: ThinkingCompatibility;
+  returnNativeThinking?: boolean;
+  sessionId: string;
+  promptCache: {
+    enabled: boolean;
+    ttl: PromptCacheTtl;
+    compatibility?: PromptCacheCompatibility;
+  };
+}> {
+  const settings = useSettingsStore.getState();
+  if (!settings._hydrated) {
+    throw new Error('设置尚未加载完成');
+  }
+  const config = settings.apiConfigs[settings.activeConfigIndex];
+  if (!config || !config.baseUrl || !config.apiKey) {
+    throw new Error('请先在设置中配置 API');
+  }
+  if (!settings.promptCacheConfig?.enabled) {
+    throw new Error('请先在设置中开启 Prompt 缓存');
+  }
+
+  const allMessages = await getMessagesByConversation(conversationId);
+  const hiddenMessageIds = new Set(await getHiddenMessageIds(conversationId));
+  const filtered: Message[] = [];
+  let floorNumber = 0;
+  for (const message of allMessages) {
+    if (message.role !== 'user' && message.role !== 'assistant') continue;
+    floorNumber += 1;
+    if (hiddenMessageIds.has(message.id)) continue;
+    const hiddenByRange = hiddenRanges.some(
+      (range) => floorNumber >= range.from && floorNumber <= range.to
+    );
+    if (!hiddenByRange) {
+      filtered.push(message);
+    }
+  }
+
+  const apiMessages = await Promise.all(filtered.map(async (m, index) => {
+    const prev = index > 0 ? filtered[index - 1] : null;
+    const needMarker = !prev || m.createdAt - prev.createdAt >= TIME_GAP_THRESHOLD_MS;
+    let msgContent = formatDailyPaperCardForAi(m.content);
+    if (settings.stripThinking) {
+      msgContent = msgContent.replace(/<thinking>[\s\S]*?<\/thinking>/gi, '').trim();
+    }
+    const referenceImageUris = normalizeReferenceImageUris(m.imageGenerationReferenceUris);
+    if (m.role === 'user' && referenceImageUris && referenceImageUris.length > 0) {
+      msgContent = appendImageGenerationReferenceNotice(msgContent, referenceImageUris.length);
+    }
+    const textContent = needMarker
+      ? `[时间 ${formatTimeMarker(m.createdAt)}]\n${msgContent}`
+      : msgContent;
+
+    if (m.imageUri) {
+      const dataUrl = await readImageAsDataUrl(m.imageUri);
+      if (dataUrl) {
+        return { role: m.role, content: buildVisionContent(textContent, dataUrl) };
+      }
+    }
+    return { role: m.role, content: textContent };
+  }));
+
+  const fullSystemPrompt = await buildStableSystemPrompt(settings);
+  const promptCacheTtl: PromptCacheTtl = settings.promptCacheConfig?.ttl === '1h' ? '1h' : '5m';
+  const promptCacheCompatibility = config.promptCacheCompatibility || 'standard';
+  const suffixMessages: ChatMessage[] = [{
+    role: 'user',
+    content: '这是一次 Prompt 缓存保活请求。请不要输出任何内容。',
+  }];
+
+  return {
+    baseUrl: config.baseUrl,
+    apiKey: config.apiKey,
+    model: config.model,
+    messages: buildRequestMessages(
+      fullSystemPrompt,
+      settings.stablePromptRole || 'system',
+      apiMessages,
+      suffixMessages,
+      true,
+      promptCacheTtl
+    ),
+    temperature: config.temperature,
+    generateThinking: config.generateThinking,
+    thinkingEffort: config.thinkingEffort || 'high',
+    thinkingCompatibility: config.thinkingCompatibility || 'standard',
+    returnNativeThinking: config.returnNativeThinking,
+    sessionId: conversationId,
+    promptCache: {
+      enabled: true,
+      ttl: promptCacheTtl,
+      compatibility: promptCacheCompatibility,
+    },
+  };
+}
+
+function shouldRetryKeepaliveWithOneToken(error: unknown): boolean {
+  const text = String((error as any)?.message || error || '').toLowerCase();
+  return text.includes('max_tokens') || text.includes('max tokens') || text.includes('greater than 0');
 }
 
 /**
@@ -1462,43 +1650,7 @@ async function streamAssistantResponse(
     }
   }
 
-  const stableSystemSections = [
-    settings.systemPrompt.trim() || 'You are a helpful assistant.',
-  ];
-  const runCommandRuntimeContext = buildRunCommandRuntimeContext(settings.runCommandConfig);
-  if (runCommandRuntimeContext) {
-    stableSystemSections.push(runCommandRuntimeContext);
-  }
-
-  try {
-    const favoriteDiaries = await getFavoriteDiaries();
-    if (favoriteDiaries.length > 0) {
-      const memoryContent = favoriteDiaries
-        .map((d) => `${d.title}\n${d.content}`)
-        .join('\n\n---\n\n');
-      stableSystemSections.push(`以下是你的近期日记：\n\n${memoryContent}`);
-    }
-  } catch (err) {
-    console.warn('[Chat] 读取收藏日记失败:', err);
-  }
-
-  const stickerInstruction = buildStickerSystemInstruction(settings.stickerConfig?.assistantStickers);
-  if (stickerInstruction) {
-    stableSystemSections.push(stickerInstruction);
-  }
-  const pictureInstruction = buildPictureSystemInstruction(!!settings.imageGenerationConfig?.enabled);
-  if (pictureInstruction) {
-    stableSystemSections.push(pictureInstruction);
-  }
-  const enabledFaceReferenceCount = (settings.imageGenerationConfig?.faceReferences || [])
-    .filter((reference) => reference.enabled !== false && !!reference.uri)
-    .length;
-  if (settings.imageGenerationConfig?.enabled && enabledFaceReferenceCount > 0) {
-    stableSystemSections.push(
-      `生图配置已启用 ${enabledFaceReferenceCount} 张锁脸参考图。需要生成或修改人物图片时，直接使用 [Pic:图片描述]；这些参考图只会传给生图 API，不会作为聊天识图附件发送。`
-    );
-  }
-  const fullSystemPrompt = stableSystemSections.join('\n\n---\n\n');
+  const fullSystemPrompt = await buildStableSystemPrompt(settings);
   const promptCacheEnabled = !!settings.promptCacheConfig?.enabled;
   const promptCacheTtl: PromptCacheTtl = settings.promptCacheConfig?.ttl === '1h' ? '1h' : '5m';
   const promptCacheCompatibility = config.promptCacheCompatibility || 'standard';
@@ -1667,6 +1819,24 @@ async function streamAssistantResponse(
       );
       responseTotalTokens = usage?.totalTokens;
     }
+    handlePromptCacheKeepaliveAfterSuccess(
+      conversationId,
+      promptCacheEnabled,
+      promptCacheTtl,
+      {
+        baseUrl: config.baseUrl,
+        apiKey: config.apiKey,
+        model: config.model,
+        messages: outgoingMessages,
+        temperature: config.temperature,
+        generateThinking: config.generateThinking,
+        thinkingEffort,
+        thinkingCompatibility,
+        returnNativeThinking: config.returnNativeThinking,
+        sessionId: sessionId || conversationId,
+        promptCache: promptCacheRequest,
+      }
+    );
 
     const finalMessages = get().messages;
     const lastMsg = finalMessages[finalMessages.length - 1];
@@ -1736,6 +1906,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   pendingScrollMessageId: null,
   openToBottomRequestId: 0,
   isStreaming: false,
+  isPromptCacheKeepaliveRunning: false,
   error: null,
 
   // 仅把用户消息加入列表并持久化，不触发 AI 回复。
@@ -1984,6 +2155,49 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
     await insertMessage(conversationId, systemMessage);
     await updateConversation(conversationId, { updatedAt: Date.now() });
+  },
+
+  keepPromptCacheAlive: async () => {
+    const { conversationId, hiddenRanges, isPromptCacheKeepaliveRunning, isStreaming } = get();
+    if (!conversationId) {
+      throw new Error('当前没有可保活的对话');
+    }
+    if (isStreaming) {
+      throw new Error('Claude 正在回复，稍后再保活');
+    }
+    if (isPromptCacheKeepaliveRunning) {
+      return;
+    }
+
+    set({ isPromptCacheKeepaliveRunning: true });
+    try {
+      const request = await buildPromptCacheKeepaliveRequest(conversationId, hiddenRanges);
+      const runKeepalive = (maxTokens: number) => streamChat(
+        {
+          ...request,
+          maxTokens,
+          usageContext: {
+            feature: 'chat',
+            requestKind: 'prompt-cache-keepalive',
+            conversationId,
+          },
+        },
+        () => undefined
+      );
+
+      try {
+        await runKeepalive(0);
+      } catch (error) {
+        if (!shouldRetryKeepaliveWithOneToken(error)) {
+          throw error;
+        }
+        await runKeepalive(1);
+      }
+
+      handlePromptCacheKeepaliveAfterSuccess(conversationId, true, request.promptCache.ttl, request);
+    } finally {
+      set({ isPromptCacheKeepaliveRunning: false });
+    }
   },
 
   // 仅触发 AI 回复（针对当前历史消息），不新增用户消息。

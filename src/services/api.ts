@@ -356,7 +356,7 @@ export async function chatCompletion(
     messages,
     stream: false,
   };
-  if (maxTokens) {
+  if (typeof maxTokens === 'number') {
     body.max_tokens = maxTokens;
   }
   if (typeof temperature === 'number') {
@@ -434,7 +434,7 @@ export async function streamChatCompletion(
     stream: true,
     stream_options: { include_usage: true },
   };
-  if (maxTokens) {
+  if (typeof maxTokens === 'number') {
     body.max_tokens = maxTokens;
   }
   if (typeof temperature === 'number') {
@@ -621,7 +621,7 @@ export async function streamChat(
     stream: true,
     stream_options: { include_usage: true },
   };
-  if (maxTokens) {
+  if (typeof maxTokens === 'number') {
     body.max_tokens = maxTokens;
   }
   if (typeof temperature === 'number') {

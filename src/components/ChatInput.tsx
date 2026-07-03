@@ -81,6 +81,8 @@ interface Props {
   onSend: (text: string, imageUri?: string, imageGenerationReferenceUris?: string[]) => void | Promise<void>;
   onTriggerResponse: () => void | Promise<void>;
   onEnableWebCruise?: () => void | Promise<void>;
+  onKeepPromptCacheAlive?: () => void | Promise<void>;
+  isPromptCacheKeepaliveRunning?: boolean;
   onOpenFishingPanel?: () => void;
   disabled?: boolean;
   isStreaming?: boolean;
@@ -93,6 +95,8 @@ export function ChatInput({
   onSend,
   onTriggerResponse,
   onEnableWebCruise,
+  onKeepPromptCacheAlive,
+  isPromptCacheKeepaliveRunning,
   onOpenFishingPanel,
   disabled,
   isStreaming,
@@ -225,6 +229,12 @@ export function ChatInput({
     if (disabled || isStreaming) return;
     setOptionsMenuVisible(false);
     await onEnableWebCruise?.();
+  };
+
+  const handleKeepPromptCacheAlive = async () => {
+    if (disabled || isStreaming || isPromptCacheKeepaliveRunning) return;
+    setOptionsMenuVisible(false);
+    await onKeepPromptCacheAlive?.();
   };
 
   const handleOpenMcpPanel = () => {
@@ -660,6 +670,16 @@ export function ChatInput({
           <View style={styles.optionsPanel} onStartShouldSetResponder={() => true}>
             <Pressable style={styles.optionItem} onPress={() => void handleEnableWebCruise()}>
               <Text style={styles.optionText}>AI网页巡游</Text>
+            </Pressable>
+            <View style={styles.optionDivider} />
+            <Pressable
+              style={[styles.optionItem, isPromptCacheKeepaliveRunning && styles.optionItemDisabled]}
+              onPress={() => void handleKeepPromptCacheAlive()}
+              disabled={!!isPromptCacheKeepaliveRunning}
+            >
+              <Text style={[styles.optionText, isPromptCacheKeepaliveRunning && styles.optionTextDisabled]}>
+                {isPromptCacheKeepaliveRunning ? '缓存保活中...' : '缓存保活'}
+              </Text>
             </Pressable>
             <View style={styles.optionDivider} />
             <Pressable style={styles.optionItem} onPress={handleOpenMcpPanel}>
@@ -1208,10 +1228,16 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
   },
+  optionItemDisabled: {
+    opacity: 0.55,
+  },
   optionText: {
     fontSize: 15,
     color: colors.text,
     fontWeight: '500',
+  },
+  optionTextDisabled: {
+    color: colors.textTertiary,
   },
   optionDivider: {
     height: StyleSheet.hairlineWidth,

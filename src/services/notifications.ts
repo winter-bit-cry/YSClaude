@@ -28,6 +28,8 @@ export function isAppBackgrounded(): boolean {
 // ─── 初始化（handler + Android 渠道）──────────────────────────
 const NOTIFICATION_SOUND = 'messagealert.mp3';
 const CHANNEL_ID = 'chat-replies-message-alert-v2';
+const PROMPT_CACHE_CHANNEL_ID = 'prompt-cache-reminders-v1';
+const PROMPT_CACHE_NOTIFICATION_KIND = 'prompt-cache-reminder';
 let initialized = false;
 
 /**
@@ -39,7 +41,18 @@ export async function initNotifications(): Promise<void> {
 
   // handler：决定应用前台时收到通知如何处理（本流程下一般在后台，但 API 要求设置）
   Notifications.setNotificationHandler({
-    handleNotification: async () => {
+    handleNotification: async (notification) => {
+      const kind = notification.request.content.data?.kind;
+      if (kind === PROMPT_CACHE_NOTIFICATION_KIND) {
+        return {
+          shouldShowAlert: true,
+          shouldShowBanner: true,
+          shouldShowList: true,
+          shouldPlaySound: true,
+          shouldSetBadge: false,
+        };
+      }
+
       const shouldShow = isAppBackgrounded();
       return {
         shouldShowAlert: shouldShow,
@@ -54,6 +67,12 @@ export async function initNotifications(): Promise<void> {
   if (Platform.OS === 'android') {
     await Notifications.setNotificationChannelAsync(CHANNEL_ID, {
       name: '聊天回复',
+      importance: Notifications.AndroidImportance.HIGH,
+      sound: NOTIFICATION_SOUND,
+      vibrationPattern: [0, 250, 250, 250],
+    });
+    await Notifications.setNotificationChannelAsync(PROMPT_CACHE_CHANNEL_ID, {
+      name: 'Prompt 缓存提醒',
       importance: Notifications.AndroidImportance.HIGH,
       sound: NOTIFICATION_SOUND,
       vibrationPattern: [0, 250, 250, 250],
@@ -136,5 +155,117 @@ export async function notifyReplyReady(
     });
   } catch {
     // 静默忽略：通知失败绝不能影响聊天
+  }
+}
+
+export async function cancelPromptCacheReminder(conversationId: string): Promise<void> {
+  try {
+    const requests = await Notifications.getAllScheduledNotificationsAsync();
+    await Promise.all(
+      requests
+        .filter((request) =>
+          request.content.data?.kind === PROMPT_CACHE_NOTIFICATION_KIND &&
+          request.content.data?.conversationId === conversationId
+        )
+        .map((request) => Notifications.cancelScheduledNotificationAsync(request.identifier))
+    );
+  } catch {
+    // 静默忽略：取消失败时仍允许后续重新安排。
+  }
+}
+
+export async function cancelAllPromptCacheReminders(): Promise<void> {
+  try {
+    const requests = await Notifications.getAllScheduledNotificationsAsync();
+    await Promise.all(
+      requests
+        .filter((request) => request.content.data?.kind === PROMPT_CACHE_NOTIFICATION_KIND)
+        .map((request) => Notifications.cancelScheduledNotificationAsync(request.identifier))
+    );
+  } catch {
+    // 静默忽略：通知失败不能影响设置保存。
+  }
+}
+
+function minutesOfDay(timestamp: number): number {
+  const date = new Date(timestamp);
+  return date.getHours() * 60 + date.getMinutes();
+}
+
+function isInQuietHours(timestamp: number, startMinutes: number, endMinutes: number): boolean {
+  if (startMinutes === endMinutes) return false;
+  const current = minutesOfDay(timestamp);
+  if (startMinutes < endMinutes) {
+    return current >= startMinutes && current < endMinutes;
+  }
+  return current >= startMinutes || current < endMinutes;
+}
+
+function resolvePromptCacheReminderTime(triggerAt: number): number | null {
+  const config = useSettingsStore.getState().promptCacheConfig;
+  if (!config?.reminderEnabled) return null;
+
+  const safeTriggerAt = Math.max(triggerAt, Date.now() + 1000);
+  if (
+    !config.quietHoursEnabled ||
+    !isInQuietHours(safeTriggerAt, config.quietStartMinutes, config.quietEndMinutes)
+  ) {
+    return safeTriggerAt;
+  }
+
+  return null;
+}
+
+export async function schedulePromptCacheReminder({
+  conversationId,
+  triggerAt,
+}: {
+  conversationId: string;
+  triggerAt: number;
+}): Promise<boolean> {
+  try {
+    await cancelPromptCacheReminder(conversationId);
+    const resolvedTriggerAt = resolvePromptCacheReminderTime(triggerAt);
+    if (!resolvedTriggerAt) return false;
+    if (!(await ensurePermission())) return false;
+
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: 'Claude 缓存快过期了',
+        body: '回到应用后，可以在左下角加号里点“缓存保活”。',
+        sound: NOTIFICATION_SOUND,
+        data: {
+          kind: PROMPT_CACHE_NOTIFICATION_KIND,
+          conversationId,
+          triggerAt: resolvedTriggerAt,
+          originalTriggerAt: triggerAt,
+        },
+      },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.DATE,
+        date: new Date(resolvedTriggerAt),
+        channelId: Platform.OS === 'android' ? PROMPT_CACHE_CHANNEL_ID : undefined,
+      },
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function rescheduleAllPromptCacheReminders(): Promise<void> {
+  try {
+    const requests = await Notifications.getAllScheduledNotificationsAsync();
+    const reminders = requests.filter((request) => request.content.data?.kind === PROMPT_CACHE_NOTIFICATION_KIND);
+    await Promise.all(reminders.map((request) => Notifications.cancelScheduledNotificationAsync(request.identifier)));
+
+    for (const request of reminders) {
+      const conversationId = request.content.data?.conversationId;
+      const originalTriggerAt = request.content.data?.originalTriggerAt || request.content.data?.triggerAt;
+      if (typeof conversationId !== 'string' || typeof originalTriggerAt !== 'number') continue;
+      await schedulePromptCacheReminder({ conversationId, triggerAt: originalTriggerAt });
+    }
+  } catch {
+    // 静默忽略：提醒重排失败不影响设置保存。
   }
 }

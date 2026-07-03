@@ -45,6 +45,13 @@ import {
 } from '../src/services/floatingBall';
 import { createAndShareBackup, pickBackupFile, restoreBackup, type PickedBackup } from '../src/services/backup';
 import { generateImmediateIncomingLetter } from '../src/services/incomingLetters';
+import { cancelAllPromptCacheReminders, rescheduleAllPromptCacheReminders } from '../src/services/notifications';
+import {
+  checkPromptCacheRemoteServer,
+  disablePromptCacheRemoteKeepalive,
+  getPromptCacheRemoteSnapshotStatus,
+  subscribePromptCacheRemoteSnapshotStatus,
+} from '../src/services/promptCacheKeepalive';
 import { useKeyboardHeight } from '../src/hooks/useKeyboardHeight';
 import { buildStickerDefinitions, normalizeStickerName } from '../src/utils/stickers';
 import { mergeRanges } from '../src/utils/ranges';
@@ -78,6 +85,31 @@ const QQ_BOT_BACKEND_TIMEOUT_MS = 60000;
 const QQ_BOT_CONFIG_PAYLOAD_MAX_BYTES = 8 * 1024 * 1024;
 const QQ_BOT_STICKER_BATCH_MAX_BYTES = 900 * 1024;
 const QQ_BOT_STICKER_BATCH_MAX_COUNT = 5;
+
+function formatClockMinutes(minutes: number): string {
+  const normalized = Math.min(1439, Math.max(0, Math.round(minutes)));
+  const hour = Math.floor(normalized / 60);
+  const minute = normalized % 60;
+  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+}
+
+function parseClockMinutes(value: string): number | null {
+  const match = value.trim().match(/^(\d{1,2})[:：](\d{1,2})$/);
+  if (!match) return null;
+  const hour = parseInt(match[1], 10);
+  const minute = parseInt(match[2], 10);
+  if (
+    !Number.isFinite(hour) ||
+    !Number.isFinite(minute) ||
+    hour < 0 ||
+    hour > 23 ||
+    minute < 0 ||
+    minute > 59
+  ) {
+    return null;
+  }
+  return hour * 60 + minute;
+}
 const CHAT_INPUT_ICON_ITEMS: Array<{ key: ChatInputIconKey; label: string }> = [
   { key: 'options', label: '左侧菜单' },
   { key: 'sticker', label: '贴纸' },
@@ -111,6 +143,10 @@ const PROMPT_CACHE_TTL_OPTIONS: Array<{ value: PromptCacheTtl; label: string }> 
   { value: '5m', label: '5min' },
   { value: '1h', label: '1h' },
 ];
+const PROMPT_CACHE_KEEPALIVE_MODE_OPTIONS = [
+  { value: 'local', label: '本地提醒' },
+  { value: 'remote', label: '远程保活' },
+] as const;
 const PROMPT_CACHE_COMPATIBILITY_OPTIONS: Array<{ value: PromptCacheCompatibility; label: string }> = [
   { value: 'standard', label: '标准' },
   { value: 'openrouter', label: 'OpenRouter' },
@@ -3079,11 +3115,33 @@ function ChatSettingsTab({ showToast, keyboardBottomInset }: SettingsTabProps) {
   const [importingMyphone, setImportingMyphone] = useState(false);
   const [pickingFaceReferences, setPickingFaceReferences] = useState(false);
   const promptCacheTtl: PromptCacheTtl = promptCacheConfig?.ttl === '1h' ? '1h' : '5m';
+  const [quietStartText, setQuietStartText] = useState(formatClockMinutes(promptCacheConfig?.quietStartMinutes ?? 23 * 60));
+  const [quietEndText, setQuietEndText] = useState(formatClockMinutes(promptCacheConfig?.quietEndMinutes ?? 7 * 60));
+  const [remoteServerUrlText, setRemoteServerUrlText] = useState(promptCacheConfig?.remoteServerUrl || '');
+  const [remoteAuthTokenText, setRemoteAuthTokenText] = useState(promptCacheConfig?.remoteAuthToken || '');
+  const [checkingRemoteKeepalive, setCheckingRemoteKeepalive] = useState(false);
+  const [remoteSnapshotStatus, setRemoteSnapshotStatus] = useState(() => getPromptCacheRemoteSnapshotStatus());
   const [hiddenDiagnosticMessages, setHiddenDiagnosticMessages] = useState<ChatDiagnosticsMessage[]>([]);
 
   useEffect(() => {
     setImagePromptText(imageGenerationPrompt || '');
   }, [imageGenerationPrompt]);
+
+  useEffect(() => {
+    setQuietStartText(formatClockMinutes(promptCacheConfig?.quietStartMinutes ?? 23 * 60));
+    setQuietEndText(formatClockMinutes(promptCacheConfig?.quietEndMinutes ?? 7 * 60));
+  }, [promptCacheConfig?.quietEndMinutes, promptCacheConfig?.quietStartMinutes]);
+
+  useEffect(() => {
+    setRemoteServerUrlText(promptCacheConfig?.remoteServerUrl || '');
+    setRemoteAuthTokenText(promptCacheConfig?.remoteAuthToken || '');
+  }, [promptCacheConfig?.remoteAuthToken, promptCacheConfig?.remoteServerUrl]);
+
+  useEffect(() => {
+    return subscribePromptCacheRemoteSnapshotStatus(() => {
+      setRemoteSnapshotStatus(getPromptCacheRemoteSnapshotStatus());
+    });
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -3210,6 +3268,25 @@ function ChatSettingsTab({ showToast, keyboardBottomInset }: SettingsTabProps) {
     return '工具';
   }
 
+  function formatRemoteSnapshotState() {
+    if (remoteSnapshotStatus.state === 'pending') return '待同步';
+    if (remoteSnapshotStatus.state === 'synced') return '已同步';
+    return '暂无快照';
+  }
+
+  function formatRemoteSnapshotTime() {
+    if (remoteSnapshotStatus.nextSyncAt) {
+      return `预计同步 ${formatFullTime(remoteSnapshotStatus.nextSyncAt)}`;
+    }
+    if (remoteSnapshotStatus.syncedAt) {
+      return `最近同步 ${formatFullTime(remoteSnapshotStatus.syncedAt)}`;
+    }
+    if (remoteSnapshotStatus.queuedAt) {
+      return `入队时间 ${formatFullTime(remoteSnapshotStatus.queuedAt)}`;
+    }
+    return '等待 1h cache 命中后的成功请求';
+  }
+
   function snippet(text: string) {
     const t = text.replace(/\s+/g, ' ').trim();
     return t.length > 60 ? t.slice(0, 60) + '…' : t;
@@ -3245,6 +3322,54 @@ function ChatSettingsTab({ showToast, keyboardBottomInset }: SettingsTabProps) {
     }
     setTokenWarningThreshold(num);
     showToast(`Token 预警 ${num}`);
+  }
+
+  function handleSavePromptCacheQuietHours() {
+    const startMinutes = parseClockMinutes(quietStartText);
+    const endMinutes = parseClockMinutes(quietEndText);
+    if (startMinutes === null || endMinutes === null) {
+      Alert.alert('提示', '请输入 HH:mm 格式的时间，例如 23:00');
+      setQuietStartText(formatClockMinutes(promptCacheConfig?.quietStartMinutes ?? 23 * 60));
+      setQuietEndText(formatClockMinutes(promptCacheConfig?.quietEndMinutes ?? 7 * 60));
+      return;
+    }
+    if (startMinutes === endMinutes) {
+      Alert.alert('提示', '开始和结束时间不能相同');
+      return;
+    }
+    setPromptCacheConfig({
+      quietStartMinutes: startMinutes,
+      quietEndMinutes: endMinutes,
+    });
+    rescheduleAllPromptCacheReminders().catch(() => undefined);
+    setQuietStartText(formatClockMinutes(startMinutes));
+    setQuietEndText(formatClockMinutes(endMinutes));
+    showToast('缓存提醒勿扰时段已保存');
+  }
+
+  function handleSaveRemoteKeepaliveConfig() {
+    setPromptCacheConfig({
+      remoteServerUrl: remoteServerUrlText.trim(),
+      remoteAuthToken: remoteAuthTokenText.trim(),
+    });
+    showToast('远程保活配置已保存');
+  }
+
+  async function handleCheckRemoteKeepaliveServer() {
+    if (checkingRemoteKeepalive) return;
+    setPromptCacheConfig({
+      remoteServerUrl: remoteServerUrlText.trim(),
+      remoteAuthToken: remoteAuthTokenText.trim(),
+    });
+    setCheckingRemoteKeepalive(true);
+    try {
+      const ok = await checkPromptCacheRemoteServer();
+      showToast(ok ? '远程保活服务连接正常' : '远程保活服务无响应');
+    } catch (error: any) {
+      showToast(error?.message || '远程保活服务连接失败');
+    } finally {
+      setCheckingRemoteKeepalive(false);
+    }
   }
 
   async function handleImportMyphone() {
@@ -3610,6 +3735,11 @@ function ChatSettingsTab({ showToast, keyboardBottomInset }: SettingsTabProps) {
           value={!!promptCacheConfig?.enabled}
           onValueChange={(value) => {
             setPromptCacheConfig({ enabled: value });
+            if (value) {
+              rescheduleAllPromptCacheReminders().catch(() => undefined);
+            } else {
+              cancelAllPromptCacheReminders().catch(() => undefined);
+            }
             showToast(value ? 'Prompt 缓存已开启' : 'Prompt 缓存已关闭');
           }}
           trackColor={{ true: colors.primary }}
@@ -3623,6 +3753,11 @@ function ChatSettingsTab({ showToast, keyboardBottomInset }: SettingsTabProps) {
             style={[styles.segmentedButton, promptCacheTtl === item.value && styles.segmentedButtonActive]}
             onPress={() => {
               setPromptCacheConfig({ ttl: item.value });
+              if (item.value === '1h') {
+                rescheduleAllPromptCacheReminders().catch(() => undefined);
+              } else {
+                cancelAllPromptCacheReminders().catch(() => undefined);
+              }
               showToast(`Prompt 缓存时间已设为 ${item.label}`);
             }}
           >
@@ -3633,6 +3768,164 @@ function ChatSettingsTab({ showToast, keyboardBottomInset }: SettingsTabProps) {
         ))}
       </View>
       <Text style={styles.hint}>5min 使用 Claude 默认短缓存；1h 会在 cache_control 中附加 ttl。</Text>
+
+      <Text style={styles.label}>保活方式</Text>
+      <View style={styles.segmentedRow}>
+        {PROMPT_CACHE_KEEPALIVE_MODE_OPTIONS.map((item) => (
+          <Pressable
+            key={item.value}
+            style={[styles.segmentedButton, (promptCacheConfig?.keepaliveMode || 'local') === item.value && styles.segmentedButtonActive]}
+            onPress={() => {
+              if (item.value === 'remote') {
+                setPromptCacheConfig({ keepaliveMode: item.value });
+                cancelAllPromptCacheReminders().catch(() => undefined);
+              } else {
+                if (conversationId) {
+                  disablePromptCacheRemoteKeepalive(conversationId).catch(() => undefined);
+                }
+                setPromptCacheConfig({ keepaliveMode: item.value });
+                rescheduleAllPromptCacheReminders().catch(() => undefined);
+              }
+              showToast(`保活方式已设为 ${item.label}`);
+            }}
+          >
+            <Text style={[styles.segmentedText, (promptCacheConfig?.keepaliveMode || 'local') === item.value && styles.segmentedTextActive]}>
+              {item.label}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+
+      {(promptCacheConfig?.keepaliveMode || 'local') === 'local' ? (
+        <View style={styles.switchRow}>
+          <View style={styles.switchText}>
+            <Text style={styles.label}>缓存保活系统通知</Text>
+            <Text style={styles.hint}>开启后，1h 缓存命中或保活成功后会安排 55 分钟后的系统通知。</Text>
+          </View>
+          <Switch
+            value={promptCacheConfig?.reminderEnabled !== false}
+            onValueChange={(value) => {
+              setPromptCacheConfig({ reminderEnabled: value });
+              if (value) {
+                rescheduleAllPromptCacheReminders().catch(() => undefined);
+              } else {
+                cancelAllPromptCacheReminders().catch(() => undefined);
+              }
+              showToast(value ? '缓存保活提醒已开启' : '缓存保活提醒已关闭');
+            }}
+            trackColor={{ true: colors.primary }}
+          />
+        </View>
+      ) : (
+        <View style={styles.remoteKeepalivePanel}>
+          <Text style={styles.hint}>远程服务会保存最后一次成功使用 1h cache 的请求快照，并按 55 分钟自动调用保活。自托管时会在服务端保存 API Key 和对话快照。</Text>
+          <Text style={styles.label}>服务地址</Text>
+          <TextInput
+            style={styles.input}
+            value={remoteServerUrlText}
+            onChangeText={setRemoteServerUrlText}
+            onBlur={handleSaveRemoteKeepaliveConfig}
+            placeholder="http://你的服务器:8789"
+            placeholderTextColor={colors.textTertiary}
+            autoCapitalize="none"
+          />
+          <Text style={styles.label}>访问令牌</Text>
+          <TextInput
+            style={styles.input}
+            value={remoteAuthTokenText}
+            onChangeText={setRemoteAuthTokenText}
+            onBlur={handleSaveRemoteKeepaliveConfig}
+            placeholder="KEEPALIVE_AUTH_TOKEN"
+            placeholderTextColor={colors.textTertiary}
+            secureTextEntry
+            autoCapitalize="none"
+          />
+          <Pressable
+            style={[styles.importButton, checkingRemoteKeepalive && styles.importButtonDisabled]}
+            onPress={handleCheckRemoteKeepaliveServer}
+            disabled={checkingRemoteKeepalive}
+          >
+            {checkingRemoteKeepalive ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <Text style={styles.importButtonText}>测试远程服务</Text>
+            )}
+          </Pressable>
+          <View style={styles.remoteSnapshotStatus}>
+            <View style={styles.remoteSnapshotHeader}>
+              <Text style={styles.previewHint}>当前快照</Text>
+              <Text
+                style={[
+                  styles.remoteSnapshotState,
+                  remoteSnapshotStatus.state === 'pending' && styles.remoteSnapshotStatePending,
+                  remoteSnapshotStatus.state === 'synced' && styles.remoteSnapshotStateSynced,
+                ]}
+              >
+                {formatRemoteSnapshotState()}
+              </Text>
+            </View>
+            <Text style={styles.remoteSnapshotMeta}>
+              队列 {remoteSnapshotStatus.queueCount}/5
+              {remoteSnapshotStatus.model ? ` · ${remoteSnapshotStatus.model}` : ''}
+              {remoteSnapshotStatus.messageCount > 0 ? ` · ${remoteSnapshotStatus.messageCount} 条消息` : ''}
+            </Text>
+            {remoteSnapshotStatus.lastMessageTail ? (
+              <Text style={styles.remoteSnapshotText} numberOfLines={3}>
+                {remoteSnapshotStatus.lastMessageRole ? `${roleLabel(remoteSnapshotStatus.lastMessageRole)}：` : ''}
+                {remoteSnapshotStatus.lastMessageTail}
+              </Text>
+            ) : (
+              <Text style={styles.remoteSnapshotText}>暂无待展示的消息片段</Text>
+            )}
+            <Text style={styles.hint}>{formatRemoteSnapshotTime()}</Text>
+          </View>
+        </View>
+      )}
+
+      <View style={styles.switchRow}>
+        <View style={styles.switchText}>
+          <Text style={styles.label}>非保活时段</Text>
+          <Text style={styles.hint}>提醒点或远程保活点落在该时段内时，取消本轮保活。</Text>
+        </View>
+        <Switch
+          value={!!promptCacheConfig?.quietHoursEnabled}
+          onValueChange={(value) => {
+            setPromptCacheConfig({ quietHoursEnabled: value });
+            rescheduleAllPromptCacheReminders().catch(() => undefined);
+            showToast(value ? '缓存提醒勿扰已开启' : '缓存提醒勿扰已关闭');
+          }}
+          trackColor={{ true: colors.primary }}
+        />
+      </View>
+
+      {!!promptCacheConfig?.quietHoursEnabled && (
+        <View style={styles.promptCacheQuietPanel}>
+          <View style={styles.promptCacheQuietField}>
+            <Text style={styles.label}>开始</Text>
+            <TextInput
+              style={styles.input}
+              value={quietStartText}
+              onChangeText={setQuietStartText}
+              onBlur={handleSavePromptCacheQuietHours}
+              keyboardType="numbers-and-punctuation"
+              placeholder="23:00"
+              placeholderTextColor={colors.textTertiary}
+            />
+          </View>
+          <View style={styles.promptCacheQuietField}>
+            <Text style={styles.label}>结束</Text>
+            <TextInput
+              style={styles.input}
+              value={quietEndText}
+              onChangeText={setQuietEndText}
+              onBlur={handleSavePromptCacheQuietHours}
+              keyboardType="numbers-and-punctuation"
+              placeholder="07:00"
+              placeholderTextColor={colors.textTertiary}
+            />
+          </View>
+        </View>
+      )}
 
       <Text style={styles.sectionTitle}>生理信息</Text>
       <Text style={styles.hint}>开启后，仅在预计生理期前两天或经期内，把本地记录推算出的简短提醒附带给 AI。默认关闭。</Text>
@@ -7501,6 +7794,56 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   },
   segmentedTextActive: {
     color: colors.primary,
+  },
+  promptCacheQuietPanel: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 14,
+  },
+  promptCacheQuietField: {
+    flex: 1,
+    minWidth: 0,
+  },
+  remoteKeepalivePanel: {
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: 14,
+    gap: 8,
+  },
+  remoteSnapshotStatus: {
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    paddingTop: 12,
+    marginTop: 2,
+    gap: 6,
+  },
+  remoteSnapshotHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 10,
+  },
+  remoteSnapshotState: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.textTertiary,
+  },
+  remoteSnapshotStatePending: {
+    color: colors.primary,
+  },
+  remoteSnapshotStateSynced: {
+    color: colors.success,
+  },
+  remoteSnapshotMeta: {
+    fontSize: 12,
+    color: colors.textSecondary,
+  },
+  remoteSnapshotText: {
+    fontSize: 13,
+    lineHeight: 19,
+    color: colors.text,
   },
   importButton: {
     minHeight: 46,

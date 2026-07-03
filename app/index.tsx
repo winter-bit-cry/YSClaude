@@ -187,6 +187,7 @@ export default function ChatScreen() {
     pendingScrollMessageId,
     openToBottomRequestId,
     isStreaming,
+    isPromptCacheKeepaliveRunning,
     error,
     addUserMessage,
     addSystemMessage,
@@ -195,6 +196,7 @@ export default function ChatScreen() {
     loadConversationAroundMessage,
     clearPendingScrollMessage,
     enableWebCruise,
+    keepPromptCacheAlive,
     triggerResponse,
     stopStreaming,
   } = useChatStore();
@@ -471,6 +473,15 @@ export default function ChatScreen() {
     }
     await enableWebCruise();
   }, [enableWebCruise, hotboardConfig, showToast]);
+
+  const handleKeepPromptCacheAlive = useCallback(async () => {
+    try {
+      await keepPromptCacheAlive();
+      showToast('缓存保活完成');
+    } catch (error: any) {
+      showToast(error?.message || '缓存保活失败');
+    }
+  }, [keepPromptCacheAlive, showToast]);
 
   const finishInitialPositioning = useCallback(() => {
     if (initialPositioningTimerRef.current !== null) {
@@ -1086,6 +1097,8 @@ export default function ChatScreen() {
           }}
           onTriggerResponse={triggerResponse}
           onEnableWebCruise={handleEnableWebCruise}
+          onKeepPromptCacheAlive={handleKeepPromptCacheAlive}
+          isPromptCacheKeepaliveRunning={isPromptCacheKeepaliveRunning}
           onOpenFishingPanel={() => setFishingPanelVisible(true)}
           disabled={isStreaming}
           isStreaming={isStreaming}

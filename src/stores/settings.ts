@@ -300,6 +300,13 @@ export interface PeriodConfig {
 export interface PromptCacheConfig {
   enabled: boolean;
   ttl: PromptCacheTtl;
+  keepaliveMode: 'local' | 'remote';
+  reminderEnabled: boolean;
+  quietHoursEnabled: boolean;
+  quietStartMinutes: number;
+  quietEndMinutes: number;
+  remoteServerUrl: string;
+  remoteAuthToken: string;
 }
 
 export interface ImageGenerationFaceReference {
@@ -469,9 +476,20 @@ function normalizeIncomingLetterConfig(config?: Partial<IncomingLetterConfig>): 
 }
 
 function normalizePromptCacheConfig(config?: Partial<PromptCacheConfig>): PromptCacheConfig {
+  const clampMinutes = (value: unknown, fallback: number) => {
+    const numeric = typeof value === 'number' && Number.isFinite(value) ? Math.round(value) : fallback;
+    return Math.min(1439, Math.max(0, numeric));
+  };
   return {
     enabled: config?.enabled ?? false,
     ttl: config?.ttl === '1h' ? '1h' : '5m',
+    keepaliveMode: config?.keepaliveMode === 'remote' ? 'remote' : 'local',
+    reminderEnabled: config?.reminderEnabled ?? true,
+    quietHoursEnabled: config?.quietHoursEnabled ?? false,
+    quietStartMinutes: clampMinutes(config?.quietStartMinutes, 23 * 60),
+    quietEndMinutes: clampMinutes(config?.quietEndMinutes, 7 * 60),
+    remoteServerUrl: config?.remoteServerUrl || '',
+    remoteAuthToken: config?.remoteAuthToken || '',
   };
 }
 
@@ -822,6 +840,13 @@ export const useSettingsStore = create<SettingsState>()(
       promptCacheConfig: {
         enabled: false,
         ttl: '5m',
+        keepaliveMode: 'local',
+        reminderEnabled: true,
+        quietHoursEnabled: false,
+        quietStartMinutes: 23 * 60,
+        quietEndMinutes: 7 * 60,
+        remoteServerUrl: '',
+        remoteAuthToken: '',
       },
       imageGenerationConfig: {
         enabled: false,
