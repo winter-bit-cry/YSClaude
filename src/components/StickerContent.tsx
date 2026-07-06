@@ -31,6 +31,15 @@ type ContentChunk =
 
 const RICH_TOKEN_PATTERN = /\[(Sticker|Pic):([^\]\r\n]+)\]/g;
 
+function hasMarkdownSyntax(text: string): boolean {
+  return (
+    /(^|\n)\s*(```|~~~)/.test(text) ||
+    /(^|\n)\s{0,3}(#{1,6}\s|>\s|[-*+]\s|\d+\.\s)/.test(text) ||
+    /\[[^\]\n]+\]\([^)]+\)/.test(text) ||
+    /(`[^`\n]+`|\*\*[^*\n]+\*\*|__[^_\n]+__|\*[^*\n]+\*|_[^_\n]+_)/.test(text)
+  );
+}
+
 function splitRichContent(
   content: string,
   stickers: StickerDefinition[],
@@ -173,7 +182,7 @@ export function StickerContent({
         if (chunk.text.length === 0) return null;
 
         if (isUser) {
-          if (markdownStyle) {
+          if (markdownStyle && hasMarkdownSyntax(chunk.text)) {
             return (
               <View key={`text-${index}`} style={styles.userMarkdownFrame}>
                 <Markdown style={markdownStyle} rules={markdownRules}>
@@ -205,6 +214,8 @@ export function StickerContent({
 const createStyles = (colors: ThemeColors) => StyleSheet.create({
   container: {
     gap: 6,
+    maxWidth: '100%',
+    minWidth: 0,
   },
   userContainer: {
     alignItems: 'flex-end',
@@ -226,6 +237,9 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     flexShrink: 1,
   },
   userText: {
+    maxWidth: '100%',
+    minWidth: 0,
+    flexShrink: 1,
     fontSize: 16,
     color: colors.text,
     lineHeight: 22,

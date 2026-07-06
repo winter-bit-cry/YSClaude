@@ -187,6 +187,10 @@ function withAlpha(color: string, alpha: number): string {
   return boundedAlpha === 0 ? 'rgba(0, 0, 0, 0)' : normalized;
 }
 
+function getNumericHeight(value: unknown, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
 function formatRemoteSnapshotState(status: PromptCacheRemoteSnapshotStatus): string {
   if (status.state === 'syncing') return '同步中';
   if (status.state === 'pending') return '待同步';
@@ -265,6 +269,11 @@ export default function ChatScreen() {
   const topBarCssStyle = cssStyle('.top-bar', '.chat-top-bar');
   const topBarBackgroundCssStyle = imageCssStyle('.top-bar-background', '.chat-top-bar-background');
   const topBarFadeCssStyle = cssStyle('.top-bar-fade', '.chat-top-bar-fade');
+  const topBarHeight = getNumericHeight(topBarCssStyle?.height, MESSAGE_TOP_GAP);
+  const messageTopFadeStyle = useMemo(
+    () => ({ height: topBarHeight }),
+    [topBarHeight]
+  );
   const topBarFadeColor = typeof topBarFadeCssStyle?.backgroundColor === 'string'
     ? topBarFadeCssStyle.backgroundColor
     : colors.background;
@@ -1074,9 +1083,10 @@ export default function ChatScreen() {
   const messageContentStyle = useMemo(
     () => [
       styles.messageContent,
+      { paddingTop: topBarHeight },
       { paddingBottom: inputBarHeight + MESSAGE_BOTTOM_GAP },
     ],
-    [inputBarHeight]
+    [inputBarHeight, topBarHeight]
   );
 
   const floorMap = useMemo(() => {
@@ -1477,7 +1487,7 @@ export default function ChatScreen() {
                 <LinearGradient
                   colors={['rgba(0,0,0,0)', 'rgba(0,0,0,1)']}
                   locations={[0, 1]}
-                  style={styles.messageMaskFade}
+                  style={[styles.messageMaskFade, messageTopFadeStyle]}
                 />
                 <View style={styles.messageMaskSolid} />
               </View>

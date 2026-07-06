@@ -1651,22 +1651,22 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   },
   userSideAvatarSlot: {
     marginTop: 2,
+    marginLeft: 8,
   },
   assistantSideAvatarSlot: {
     marginTop: 2,
+    marginRight: 8,
   },
   userSideMessageRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     justifyContent: 'flex-end',
-    gap: 8,
     maxWidth: '100%',
     alignSelf: 'flex-end',
   },
   assistantSideMessageRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: 8,
     maxWidth: '100%',
     alignSelf: 'flex-start',
   },

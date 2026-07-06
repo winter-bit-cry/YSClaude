@@ -40,7 +40,7 @@
 | `.top-bar-settings-icon` | 设置图标 |
 | `.top-bar-clawd-icon` | 中间 Clawd 图标 |
 
-顶栏默认高度是 `96`，左右按钮组和中间按钮默认都固定在 `top: 48`。如果只想加高顶栏背景区域，改 `.top-bar { height: ... }`；如果想移动按钮位置，改 `.top-bar-left`、`.top-bar-right`、`.top-bar-center` 的 `top`。
+顶栏默认高度是 `96`，左右按钮组和中间按钮默认都固定在 `top: 48`。如果只想加高顶栏背景区域，改 `.top-bar { height: ... }`；消息列表顶部留白和文字渐隐高度会跟随这个数值。如果想移动按钮位置，改 `.top-bar-left`、`.top-bar-right`、`.top-bar-center` 的 `top`。
 
 `.top-bar-background` 可以用 `opacity` 调整自定义背景图透明度；`.top-bar-fade` 的 `background-color` 会作为顶栏渐隐遮罩颜色，例如 `#ffffff` 会生成白色到透明的渐变遮罩。
 
