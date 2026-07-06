@@ -75,6 +75,7 @@ async function initTables(database: SQLite.SQLiteDatabase) {
     );
 
     CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id);
+    CREATE INDEX IF NOT EXISTS idx_messages_conversation_created_id ON messages(conversation_id, created_at, id);
     CREATE INDEX IF NOT EXISTS idx_conversations_updated ON conversations(updated_at DESC);
 
     CREATE TABLE IF NOT EXISTS diaries (
@@ -584,6 +585,15 @@ async function runMigrations(database: SQLite.SQLiteDatabase) {
       CREATE INDEX IF NOT EXISTS idx_incoming_letters_status ON incoming_letters(status);
 
       PRAGMA user_version = 18;
+    `);
+  }
+
+  if (version < 19) {
+    await database.execAsync(`
+      CREATE INDEX IF NOT EXISTS idx_messages_conversation_created_id
+        ON messages(conversation_id, created_at, id);
+
+      PRAGMA user_version = 19;
     `);
   }
 }
