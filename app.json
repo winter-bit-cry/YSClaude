@@ -28,8 +28,7 @@
         "android.permission.READ_MEDIA_IMAGES",
         "android.permission.WRITE_CALENDAR"
       ],
-      "package": "com.ysclaude.app",
-      "googleServicesFile": "./google-services.json"
+      "package": "com.ysclaude.app"
     },
     "web": {
       "favicon": "./assets/favicon.png",
