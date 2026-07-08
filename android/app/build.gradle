@@ -2,13 +2,6 @@ apply plugin: "com.android.application"
 apply plugin: "org.jetbrains.kotlin.android"
 apply plugin: "com.facebook.react"
 
-// FCM: 仅当 google-services.json 存在时启用（避免未配置 Firebase 时构建失败）
-if (file('google-services.json').exists()) {
-  apply plugin: 'com.google.gms.google-services'
-} else {
-  logger.warn('google-services.json not found; FCM push disabled for this build')
-}
-
 def projectRoot = rootDir.getAbsoluteFile().getParentFile().getAbsolutePath()
 
 /**
