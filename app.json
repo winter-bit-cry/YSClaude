@@ -86,11 +86,7 @@
       ]
     ],
     "extra": {
-      "router": {},
-      "eas": {
-        "projectId": "3660e22f-35ac-4218-bf72-6a6489d0faee"
-      }
-    },
-    "owner": "linwang_004"
+      "router": {}
+    }
   }
 }
