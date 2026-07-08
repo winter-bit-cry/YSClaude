@@ -14,10 +14,12 @@ expo-env.d.ts
 android/app/release/
 *.orig.*
 *.jks
+*.keystore
 *.p8
 *.p12
 *.key
 *.mobileprovision
+google-services.json
 
 # Fonts
 *.otf
