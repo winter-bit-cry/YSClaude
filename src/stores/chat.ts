@@ -1977,7 +1977,7 @@ async function streamAssistantResponse(
   runtimeSections.push(`当前时间：${formatCurrentTime()}`);
 
   const runtimeContext = [
-    '以下是本轮运行时上下文和应用附加信息：',
+    '以下是附加信息：',
     ...runtimeSections,
   ].join('\n\n---\n\n');
 

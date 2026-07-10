@@ -8,7 +8,8 @@ const SNAPSHOT_SYNC_QUEUE_LIMIT = 5;
 const SNAPSHOT_PREVIEW_TAIL_CHARS = 90;
 const APP_KEEPALIVE_SUFFIX = '这是一次 Prompt 缓存保活请求。请不要输出任何内容。';
 const SERVER_KEEPALIVE_PING = '[Server keepalive ping] Keep the prompt cache warm. Do not answer this message.';
-const RUNTIME_CONTEXT_PREFIX = '以下是本轮运行时上下文和应用附加信息：';
+const RUNTIME_CONTEXT_PREFIX = '以下是附加信息：';
+const LEGACY_RUNTIME_CONTEXT_PREFIX = '以下是本轮运行时上下文和应用附加信息：';
 const USER_LATEST_INPUT_MARKER = '用户最新输入：';
 
 export interface PromptCacheRemoteSnapshot {
@@ -297,7 +298,7 @@ function extractMessageText(content: ChatMessage['content']): string {
 
 function stripRuntimeLatestInputWrapper(content: ChatMessage['content']): ChatMessage['content'] {
   if (typeof content === 'string') {
-    if (!content.includes(RUNTIME_CONTEXT_PREFIX)) return content;
+    if (!content.includes(RUNTIME_CONTEXT_PREFIX) && !content.includes(LEGACY_RUNTIME_CONTEXT_PREFIX)) return content;
     const markerIndex = content.indexOf(USER_LATEST_INPUT_MARKER);
     if (markerIndex < 0) return content;
     return content.slice(markerIndex + USER_LATEST_INPUT_MARKER.length).replace(/^\s+/, '') || content;
@@ -306,7 +307,7 @@ function stripRuntimeLatestInputWrapper(content: ChatMessage['content']): ChatMe
   if (!Array.isArray(content) || content.length === 0) return content;
   const first = content[0];
   if (!first || typeof first !== 'object' || typeof first.text !== 'string') return content;
-  if (!first.text.includes(RUNTIME_CONTEXT_PREFIX)) return content;
+  if (!first.text.includes(RUNTIME_CONTEXT_PREFIX) && !first.text.includes(LEGACY_RUNTIME_CONTEXT_PREFIX)) return content;
 
   const markerIndex = first.text.indexOf(USER_LATEST_INPUT_MARKER);
   if (markerIndex < 0) return content;
