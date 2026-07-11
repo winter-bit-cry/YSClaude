@@ -750,8 +750,9 @@ export default function ChatScreen() {
       initialPositioningTimerRef.current = null;
       isInitialPositioningRef.current = false;
       setIsInitialPositioning(false);
+      scheduleScrollToEnd(32, true);
     }, 40);
-  }, [scrollToEnd]);
+  }, [scheduleScrollToEnd, scrollToEnd]);
 
   const beginInitialPositioning = useCallback(() => {
     if (scrollFrameRef.current !== null) {

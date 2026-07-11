@@ -122,7 +122,11 @@ export default function RootLayout() {
         <Stack.Screen name="index" />
         <Stack.Screen
           name="history"
-          options={{ animation: 'slide_from_left', presentation: 'modal' }}
+          options={{
+            animation: 'slide_from_left',
+            presentation: 'transparentModal',
+            contentStyle: { backgroundColor: 'transparent' },
+          }}
         />
         <Stack.Screen
           name="settings"

@@ -80,6 +80,27 @@ async function initTables(database: SQLite.SQLiteDatabase) {
     CREATE INDEX IF NOT EXISTS idx_messages_conversation_created_id ON messages(conversation_id, created_at, id);
     CREATE INDEX IF NOT EXISTS idx_conversations_updated ON conversations(updated_at DESC);
 
+    CREATE TABLE IF NOT EXISTS chat_groups (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL DEFAULT '',
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS chat_group_members (
+      group_id TEXT NOT NULL,
+      conversation_id TEXT NOT NULL,
+      added_at INTEGER NOT NULL,
+      PRIMARY KEY (group_id, conversation_id),
+      FOREIGN KEY (group_id) REFERENCES chat_groups(id) ON DELETE CASCADE,
+      FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_chat_group_members_group
+      ON chat_group_members(group_id, added_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_chat_group_members_conversation
+      ON chat_group_members(conversation_id);
+
     CREATE TABLE IF NOT EXISTS diaries (
       id TEXT PRIMARY KEY,
       title TEXT NOT NULL DEFAULT '',
@@ -683,6 +704,33 @@ async function runMigrations(database: SQLite.SQLiteDatabase) {
   }
   if (version < 22) {
     await database.execAsync('PRAGMA user_version = 22;');
+  }
+
+  if (version < 23) {
+    await database.execAsync(`
+      CREATE TABLE IF NOT EXISTS chat_groups (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL DEFAULT '',
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS chat_group_members (
+        group_id TEXT NOT NULL,
+        conversation_id TEXT NOT NULL,
+        added_at INTEGER NOT NULL,
+        PRIMARY KEY (group_id, conversation_id),
+        FOREIGN KEY (group_id) REFERENCES chat_groups(id) ON DELETE CASCADE,
+        FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_chat_group_members_group
+        ON chat_group_members(group_id, added_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_chat_group_members_conversation
+        ON chat_group_members(conversation_id);
+
+      PRAGMA user_version = 23;
+    `);
   }
 }
 

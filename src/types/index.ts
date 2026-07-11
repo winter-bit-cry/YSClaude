@@ -99,6 +99,19 @@ export interface Conversation {
   hiddenMessageIds?: string[];
 }
 
+export interface ChatGroup {
+  id: string;
+  name: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface ChatGroupConversation {
+  groupId: string;
+  conversationId: string;
+  addedAt: number;
+}
+
 export type ConversationArtifactKind =
   | 'text'
   | 'markdown'

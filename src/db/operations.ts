@@ -29,6 +29,7 @@ import {
   ApiUsageSummary,
   IncomingLetter,
   IncomingLetterStatus,
+  ChatGroup,
   ConversationArtifact,
   ConversationArtifactKind,
   ConversationArtifactVersion,
@@ -142,6 +143,32 @@ interface ConversationArtifactVersionRow {
   size: number;
 }
 
+interface ChatGroupRow {
+  id: string;
+  name: string;
+  created_at: number;
+  updated_at: number;
+}
+
+interface ConversationRow {
+  id: string;
+  title: string;
+  system_prompt: string;
+  model: string;
+  created_at: number;
+  updated_at: number;
+  hidden_ranges: string | null;
+  hidden_message_ids: string | null;
+}
+
+export interface ChatGroupWithConversations extends ChatGroup {
+  conversations: Conversation[];
+}
+
+export interface ConversationArtifactListItem extends ConversationArtifact {
+  conversationTitle: string;
+}
+
 export interface ChatDiagnosticsConversation {
   id: string;
   title: string;
@@ -234,6 +261,7 @@ export async function updateConversation(id: string, updates: Partial<Pick<Conve
 
 export async function deleteConversation(id: string): Promise<void> {
   const db = await getDatabase();
+  await db.runAsync('DELETE FROM chat_group_members WHERE conversation_id = ?', [id]);
   await db.runAsync('DELETE FROM conversation_artifact_versions WHERE artifact_id IN (SELECT id FROM conversation_artifacts WHERE conversation_id = ?)', [id]);
   await db.runAsync('DELETE FROM conversation_artifacts WHERE conversation_id = ?', [id]);
   await db.runAsync('DELETE FROM messages WHERE conversation_id = ?', [id]);
@@ -242,26 +270,127 @@ export async function deleteConversation(id: string): Promise<void> {
 
 export async function getAllConversations(): Promise<Conversation[]> {
   const db = await getDatabase();
+  const rows = await db.getAllAsync<ConversationRow>('SELECT * FROM conversations ORDER BY created_at DESC');
+
+  return rows.map(mapConversationRow);
+}
+
+export async function createChatGroup(group: ChatGroup): Promise<void> {
+  const db = await getDatabase();
+  await db.runAsync(
+    `INSERT INTO chat_groups (id, name, created_at, updated_at)
+     VALUES (?, ?, ?, ?)`,
+    [group.id, group.name, group.createdAt, group.updatedAt]
+  );
+}
+
+export async function updateChatGroup(
+  id: string,
+  updates: Partial<Pick<ChatGroup, 'name' | 'updatedAt'>>
+): Promise<void> {
+  const db = await getDatabase();
+  const sets: string[] = [];
+  const values: any[] = [];
+
+  if (updates.name !== undefined) {
+    sets.push('name = ?');
+    values.push(updates.name);
+  }
+  if (updates.updatedAt !== undefined) {
+    sets.push('updated_at = ?');
+    values.push(updates.updatedAt);
+  }
+
+  if (sets.length === 0) return;
+  values.push(id);
+  await db.runAsync(`UPDATE chat_groups SET ${sets.join(', ')} WHERE id = ?`, values);
+}
+
+export async function deleteChatGroup(id: string): Promise<void> {
+  const db = await getDatabase();
+  await db.runAsync('DELETE FROM chat_group_members WHERE group_id = ?', [id]);
+  await db.runAsync('DELETE FROM chat_groups WHERE id = ?', [id]);
+}
+
+export async function addConversationToChatGroup(
+  groupId: string,
+  conversationId: string,
+  addedAt = Date.now()
+): Promise<void> {
+  const db = await getDatabase();
+  await db.runAsync(
+    `INSERT OR REPLACE INTO chat_group_members (group_id, conversation_id, added_at)
+     VALUES (?, ?, ?)`,
+    [groupId, conversationId, addedAt]
+  );
+  await db.runAsync('UPDATE chat_groups SET updated_at = ? WHERE id = ?', [addedAt, groupId]);
+}
+
+export async function removeConversationFromChatGroup(
+  groupId: string,
+  conversationId: string
+): Promise<void> {
+  const db = await getDatabase();
+  const now = Date.now();
+  await db.runAsync(
+    'DELETE FROM chat_group_members WHERE group_id = ? AND conversation_id = ?',
+    [groupId, conversationId]
+  );
+  await db.runAsync('UPDATE chat_groups SET updated_at = ? WHERE id = ?', [now, groupId]);
+}
+
+export async function getChatGroupsWithConversations(): Promise<ChatGroupWithConversations[]> {
+  const db = await getDatabase();
+  const groupRows = await db.getAllAsync<ChatGroupRow>(
+    'SELECT * FROM chat_groups ORDER BY updated_at DESC, created_at DESC'
+  );
+  const groups = groupRows.map(mapChatGroupRow);
+  if (groups.length === 0) return [];
+
   const rows = await db.getAllAsync<{
-    id: string;
-    title: string;
-    system_prompt: string;
-    model: string;
+    group_id: string;
+    conversation_id: string;
+    title: string | null;
+    system_prompt: string | null;
+    model: string | null;
     created_at: number;
     updated_at: number;
     hidden_ranges: string | null;
     hidden_message_ids: string | null;
-  }>('SELECT * FROM conversations ORDER BY created_at DESC');
+  }>(
+    `SELECT
+        gm.group_id,
+        c.id as conversation_id,
+        c.title,
+        c.system_prompt,
+        c.model,
+        c.created_at,
+        c.updated_at,
+        c.hidden_ranges,
+        c.hidden_message_ids
+       FROM chat_group_members gm
+       JOIN conversations c ON c.id = gm.conversation_id
+      ORDER BY gm.added_at DESC`
+  );
 
-  return rows.map((row) => ({
-    id: row.id,
-    title: row.title,
-    systemPrompt: row.system_prompt,
-    model: row.model,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-    hiddenRanges: parseHiddenRanges(row.hidden_ranges),
-    hiddenMessageIds: parseStringArray(row.hidden_message_ids),
+  const conversationsByGroup = new Map<string, Conversation[]>();
+  groups.forEach((group) => conversationsByGroup.set(group.id, []));
+  rows.forEach((row) => {
+    conversationsByGroup.get(row.group_id)?.push(mapConversationRow({
+      id: row.conversation_id,
+      title: row.title || '',
+      system_prompt: row.system_prompt || '',
+      model: row.model || '',
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+      hidden_ranges: row.hidden_ranges,
+      hidden_message_ids: row.hidden_message_ids,
+    }));
+  });
+
+  return groups.map((group) => ({
+    ...group,
+    conversations: conversationsByGroup.get(group.id) || [],
   }));
 }
 
@@ -290,6 +419,28 @@ function parseStringArray(raw: string | null | undefined): string[] {
   } catch {
     return [];
   }
+}
+
+function mapConversationRow(row: ConversationRow): Conversation {
+  return {
+    id: row.id,
+    title: row.title,
+    systemPrompt: row.system_prompt,
+    model: row.model,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    hiddenRanges: parseHiddenRanges(row.hidden_ranges),
+    hiddenMessageIds: parseStringArray(row.hidden_message_ids),
+  };
+}
+
+function mapChatGroupRow(row: ChatGroupRow): ChatGroup {
+  return {
+    id: row.id,
+    name: row.name,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
 }
 
 export async function getHiddenRanges(conversationId: string): Promise<HiddenRange[]> {
@@ -704,6 +855,22 @@ export async function getConversationArtifacts(conversationId: string): Promise<
     [conversationId]
   );
   return rows.map(mapConversationArtifactRow);
+}
+
+export async function getAllConversationArtifacts(): Promise<ConversationArtifactListItem[]> {
+  const db = await getDatabase();
+  const rows = await db.getAllAsync<ConversationArtifactRow & { conversation_title: string | null }>(
+    `SELECT
+        a.*,
+        c.title as conversation_title
+       FROM conversation_artifacts a
+       LEFT JOIN conversations c ON c.id = a.conversation_id
+      ORDER BY a.updated_at DESC, a.created_at DESC`
+  );
+  return rows.map((row) => ({
+    ...mapConversationArtifactRow(row),
+    conversationTitle: row.conversation_title || '',
+  }));
 }
 
 export async function getConversationArtifact(

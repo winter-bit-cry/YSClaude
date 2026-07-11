@@ -2358,6 +2358,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     set((state) => ({
       messages: [...state.messages, userMessage],
       error: null,
+      openToBottomRequestId: state.openToBottomRequestId + 1,
     }));
 
     await insertMessage(conversationId, userMessage);
