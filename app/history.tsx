@@ -475,7 +475,7 @@ export default function HistoryScreen() {
   function renderMenu() {
     const recent = conversations.slice(0, 5);
     return (
-      <View style={[styles.menuPane, { paddingTop: insets.top + 54, paddingBottom: insets.bottom + 24 }]}>
+      <View style={[styles.menuPane, { paddingTop: insets.top + 32, paddingBottom: insets.bottom + 24 }]}>
         <View style={styles.menuTop}>
           <Image source={CLAUDE_WORDMARK} style={styles.brandImage} resizeMode="contain" />
           <View style={styles.menuList}>
@@ -1099,7 +1099,7 @@ const createStyles = (
   container: { flex: 1, backgroundColor: 'transparent' },
   dimLayer: {
     ...StyleSheet.absoluteFill,
-    backgroundColor: 'rgba(20,20,19,0.34)',
+    backgroundColor: 'transparent',
   },
   drawer: {
     flex: 1,
@@ -1114,13 +1114,12 @@ const createStyles = (
     paddingHorizontal: 24,
   },
   menuTop: {
-    flex: 1,
     justifyContent: 'flex-start',
   },
   brandImage: {
-    width: 144,
-    height: 42,
-    marginBottom: 18,
+    width: 176,
+    height: 52,
+    marginBottom: 14,
   },
   menuList: {
     gap: 10,
@@ -1141,7 +1140,7 @@ const createStyles = (
   menuItemText: {
     flex: 1,
     fontSize: 20,
-    fontWeight: '500',
+    fontWeight: '400',
     color: colors.textSecondary,
   },
   menuItemAccent: {
@@ -1149,10 +1148,11 @@ const createStyles = (
   },
   menuItemActive: {
     color: colors.text,
-    fontWeight: '800',
+    fontWeight: '400',
   },
   recentsSection: {
     flex: 1,
+    marginTop: 28,
   },
   recentsDivider: {
     height: StyleSheet.hairlineWidth,
@@ -1161,9 +1161,9 @@ const createStyles = (
   },
   recentsTitle: {
     fontSize: 20,
-    fontWeight: '800',
+    fontWeight: '400',
     color: colors.textTertiary,
-    marginBottom: 14,
+    marginBottom: 10,
   },
   recentsList: {
     gap: 14,

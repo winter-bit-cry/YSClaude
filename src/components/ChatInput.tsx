@@ -2021,7 +2021,7 @@ const createStyles = (
     color: colors.textSecondary,
   },
   optionsPanel: {
-    minHeight: 212,
+    height: STICKER_PANEL_HEIGHT,
     paddingHorizontal: 8,
     paddingTop: 14,
     paddingBottom: 8,
