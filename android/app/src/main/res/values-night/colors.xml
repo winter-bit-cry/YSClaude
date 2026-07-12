@@ -1,1 +1,8 @@
-<resources/>
+<resources>
+  <color name="widget_card_bg">#000000</color>
+  <color name="widget_text">#E7E9EA</color>
+  <color name="widget_muted">#71767B</color>
+  <color name="widget_border">#2F3336</color>
+  <color name="widget_accent">#1D9BF0</color>
+  <color name="widget_liked">#F91880</color>
+</resources>

@@ -25,6 +25,7 @@ import { startFocusAppStateListener } from '../src/services/focusAppState';
 import { startPromptCacheRemoteSnapshotFlushListener } from '../src/services/promptCacheKeepalive';
 import { useChatStore } from '../src/stores/chat';
 import { cleanupExpiredVoiceFiles } from '../src/services/voiceFiles';
+import { syncTodayWidget } from '../src/services/todayWidget';
 
 
 SplashScreen.preventAutoHideAsync();
@@ -43,6 +44,13 @@ export default function RootLayout() {
   );
   const floatingBallAssetAutoSwitchEnabled = useSettingsStore((state) => !!state.floatingBallConfig.assetAutoSwitchEnabled);
   const floatingBallAssetAutoSwitchIntervalSeconds = useSettingsStore((state) => state.floatingBallConfig.assetAutoSwitchIntervalSeconds || 8);
+  const todayWidgetConfigKey = useSettingsStore((state) => JSON.stringify(state.todayWidgetConfig));
+  const widgetAppearanceKey = useSettingsStore((state) =>
+    [
+      state.appearanceConfig?.userDisplayName || '',
+      state.appearanceConfig?.userAvatarImageUri || '',
+    ].join('|')
+  );
 
   useEffect(() => {
     SplashScreen.hideAsync();
@@ -105,6 +113,7 @@ export default function RootLayout() {
     const syncRemoteInbox = () => {
       useChatStore.getState().syncPromptCacheRemoteInbox().catch(() => undefined);
       cleanupExpiredVoiceFiles().catch(() => undefined);
+      syncTodayWidget().catch(() => undefined);
     };
     syncRemoteInbox();
     const sub = AppState.addEventListener('change', (nextState) => {
@@ -113,7 +122,7 @@ export default function RootLayout() {
       }
     });
     return () => sub.remove();
-  }, [settingsHydrated]);
+  }, [settingsHydrated, todayWidgetConfigKey, widgetAppearanceKey]);
 
   return (
     <GestureHandlerRootView style={styles.gestureRoot}>

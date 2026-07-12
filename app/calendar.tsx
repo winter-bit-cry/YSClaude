@@ -51,6 +51,7 @@ import {
   findPeriodRecordForDate,
   getDateKeysInRange,
 } from '../src/utils/periods';
+import { syncTodayWidget } from '../src/services/todayWidget';
 
 let colors = lightColors;
 
@@ -479,7 +480,10 @@ export default function CalendarScreen() {
       setCreateVisible(false);
       setEditingTodo(null);
       await refreshTodos(selectedDateKey);
-      if (selectedDateKey === todayKey) await refreshTodayPreviewTodos();
+      if (selectedDateKey === todayKey) {
+        await refreshTodayPreviewTodos();
+        syncTodayWidget().catch(() => undefined);
+      }
     } finally {
       busyRef.current = false;
     }
@@ -492,7 +496,10 @@ export default function CalendarScreen() {
       updatedAt: now,
     });
     await refreshTodos(selectedDateKey);
-    if (selectedDateKey === todayKey) await refreshTodayPreviewTodos();
+    if (selectedDateKey === todayKey) {
+      await refreshTodayPreviewTodos();
+      syncTodayWidget().catch(() => undefined);
+    }
   }, [refreshTodayPreviewTodos, refreshTodos, selectedDateKey, todayKey]);
 
   const deleteEditingTodo = useCallback(() => {
@@ -508,7 +515,10 @@ export default function CalendarScreen() {
               setCreateVisible(false);
               setEditingTodo(null);
               await refreshTodos(selectedDateKey);
-              if (selectedDateKey === todayKey) await refreshTodayPreviewTodos();
+              if (selectedDateKey === todayKey) {
+                await refreshTodayPreviewTodos();
+                syncTodayWidget().catch(() => undefined);
+              }
             })
             .catch(() => undefined);
         },

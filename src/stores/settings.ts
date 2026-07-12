@@ -232,6 +232,13 @@ export interface CalendarAiSyncConfig {
   sendTodayTodosToAI: boolean;
 }
 
+export interface TodayWidgetConfig {
+  displayName: string;
+  handle: string;
+  avatarUri?: string;
+  quote: string;
+}
+
 export interface LocationShareConfig {
   enabled: boolean;
   provider: 'tencent';
@@ -484,6 +491,15 @@ function normalizeFloatingBallConfig(config?: FloatingBallConfig): FloatingBallC
   };
 }
 
+function normalizeTodayWidgetConfig(config?: Partial<TodayWidgetConfig>): TodayWidgetConfig {
+  return {
+    displayName: config?.displayName?.trim() || '',
+    handle: config?.handle?.replace(/^@+/, '').trim() || '',
+    avatarUri: config?.avatarUri || undefined,
+    quote: config?.quote?.trim() || '',
+  };
+}
+
 function normalizeImageGenerationConfig(config?: Partial<ImageGenerationConfig>): ImageGenerationConfig {
   return {
     enabled: config?.enabled ?? false,
@@ -710,6 +726,7 @@ interface SettingsState {
   qqBotConfig: QQBotConfig;
   nativeToolConfig: NativeToolConfig;
   calendarAiSyncConfig: CalendarAiSyncConfig;
+  todayWidgetConfig: TodayWidgetConfig;
   locationShareConfig: LocationShareConfig;
   mcpToolConfig: McpToolConfig;
   toolSettingsUiConfig: ToolSettingsUiConfig;
@@ -745,6 +762,7 @@ interface SettingsState {
   setQqBotConfig: (config: Partial<QQBotConfig>) => void;
   setNativeToolConfig: (config: Partial<NativeToolConfig>) => void;
   setCalendarAiSyncConfig: (config: Partial<CalendarAiSyncConfig>) => void;
+  setTodayWidgetConfig: (config: Partial<TodayWidgetConfig>) => void;
   setLocationShareConfig: (config: Partial<LocationShareConfig>) => void;
   setMcpToolConfig: (config: Partial<McpToolConfig>) => void;
   setToolSettingsUiConfig: (config: Partial<ToolSettingsUiConfig>) => void;
@@ -895,6 +913,12 @@ export const useSettingsStore = create<SettingsState>()(
       },
       calendarAiSyncConfig: {
         sendTodayTodosToAI: false,
+      },
+      todayWidgetConfig: {
+        displayName: '',
+        handle: '',
+        avatarUri: undefined,
+        quote: '',
       },
       locationShareConfig: {
         enabled: false,
@@ -1055,6 +1079,13 @@ export const useSettingsStore = create<SettingsState>()(
             ...(state.calendarAiSyncConfig || { sendTodayTodosToAI: false }),
             ...config,
           },
+        })),
+      setTodayWidgetConfig: (config) =>
+        set((state) => ({
+          todayWidgetConfig: normalizeTodayWidgetConfig({
+            ...state.todayWidgetConfig,
+            ...config,
+          }),
         })),
       setLocationShareConfig: (config) =>
         set((state) => ({
@@ -1374,6 +1405,7 @@ export const useSettingsStore = create<SettingsState>()(
         qqBotConfig: state.qqBotConfig,
         nativeToolConfig: state.nativeToolConfig,
         calendarAiSyncConfig: state.calendarAiSyncConfig,
+        todayWidgetConfig: state.todayWidgetConfig,
         locationShareConfig: state.locationShareConfig,
         mcpToolConfig: state.mcpToolConfig,
         toolSettingsUiConfig: state.toolSettingsUiConfig,
@@ -1402,6 +1434,7 @@ export const useSettingsStore = create<SettingsState>()(
           calendarAiSyncConfig: {
             sendTodayTodosToAI: state?.calendarAiSyncConfig?.sendTodayTodosToAI ?? false,
           },
+          todayWidgetConfig: normalizeTodayWidgetConfig(state?.todayWidgetConfig),
           promptCacheConfig: normalizePromptCacheConfig(state?.promptCacheConfig),
           ttsConfig: normalizeTTSConfig(state?.ttsConfig),
           sttConfig: normalizeSTTConfig(state?.sttConfig),

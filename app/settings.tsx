@@ -14,6 +14,7 @@ import { APIConfigTab } from '../src/screens/settings/APIConfigTab';
 import { ChatSettingsTab } from '../src/screens/settings/ChatSettingsTab';
 import { DiaryTab } from '../src/screens/settings/DiaryTab';
 import { ToolConfigTab } from '../src/screens/settings/ToolConfigTab';
+import { TodayWidgetTab } from '../src/screens/settings/TodayWidgetTab';
 
 import { useKeyboardHeight } from '../src/hooks/useKeyboardHeight';
 
@@ -21,6 +22,7 @@ import { useKeyboardHeight } from '../src/hooks/useKeyboardHeight';
 let colors = settingsPageColors;
 const TABS = ['API 配置', '对话设置', '语音配置', '工具设置', '日记', '来信', '悬浮球', '表情包', '欢迎页', '美化'] as const;
 
+const SETTINGS_TABS = [...TABS.slice(0, 7), '小组件', ...TABS.slice(7)] as const;
 
 export default function SettingsScreen() {
   colors = useSettingsPageColors();
@@ -67,7 +69,7 @@ export default function SettingsScreen() {
 
       {/* Tab Bar */}
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabBar} contentContainerStyle={styles.tabBarContent}>
-        {TABS.map((tab, i) => (
+        {SETTINGS_TABS.map((tab, i) => (
           <Pressable
             key={tab}
             style={[styles.tab, i === activeTab && styles.tabActive]}
@@ -87,9 +89,10 @@ export default function SettingsScreen() {
       {activeTab === 4 && <DiaryTab showToast={showToast} keyboardBottomInset={keyboardHeight} />}
       {activeTab === 5 && <IncomingLetterTab showToast={showToast} keyboardBottomInset={keyboardHeight} />}
       {activeTab === 6 && <FloatingBallTab showToast={showToast} keyboardBottomInset={keyboardHeight} />}
-      {activeTab === 7 && <StickerTab showToast={showToast} keyboardBottomInset={keyboardHeight} />}
-      {activeTab === 8 && <WelcomePageTab showToast={showToast} keyboardBottomInset={keyboardHeight} />}
-      {activeTab === 9 && <AppearanceTab showToast={showToast} keyboardBottomInset={keyboardHeight} />}
+      {activeTab === 7 && <TodayWidgetTab showToast={showToast} keyboardBottomInset={keyboardHeight} />}
+      {activeTab === 8 && <StickerTab showToast={showToast} keyboardBottomInset={keyboardHeight} />}
+      {activeTab === 9 && <WelcomePageTab showToast={showToast} keyboardBottomInset={keyboardHeight} />}
+      {activeTab === 10 && <AppearanceTab showToast={showToast} keyboardBottomInset={keyboardHeight} />}
 
       {toastMessage && (
         <View pointerEvents="none" style={styles.toast}>

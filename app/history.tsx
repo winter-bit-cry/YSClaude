@@ -85,8 +85,6 @@ const MENU_ITEMS: Array<{
   { key: 'letters', label: 'Letters', icon: require('../assets/letters.png') },
 ];
 
-const CLAUDE_WORDMARK = require('../assets/Claude.png');
-
 export default function HistoryScreen() {
   colors = useThemeColors();
   const insets = useSafeAreaInsets();
@@ -326,6 +324,14 @@ export default function HistoryScreen() {
     setEditTitle(conv.title);
   }
 
+  function handleRecentLongPress(conv: Conversation) {
+    Alert.alert(conv.title || 'Untitled', undefined, [
+      { text: 'Rename', onPress: () => handleLongPress(conv) },
+      { text: 'Delete', style: 'destructive', onPress: () => handleDelete(conv) },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  }
+
   async function handleSaveTitle() {
     if (!editingConv) return;
     await updateConversation(editingConv.id, { title: editTitle.trim(), updatedAt: Date.now() });
@@ -498,7 +504,7 @@ export default function HistoryScreen() {
     return (
       <View style={[styles.menuPane, { paddingTop: insets.top + 32, paddingBottom: insets.bottom + 24 }]}>
         <View style={styles.menuTop}>
-          <Image source={CLAUDE_WORDMARK} style={styles.brandImage} resizeMode="contain" />
+          <Text style={styles.brandText}>Claude</Text>
           <View style={styles.menuList}>
             {MENU_ITEMS.map((item) => {
               const active = item.key !== 'new' && section === item.key;
@@ -540,7 +546,12 @@ export default function HistoryScreen() {
           <Text style={styles.recentsTitle}>Recents</Text>
           <View style={styles.recentsList}>
             {recent.map((item) => (
-              <Pressable key={item.id} onPress={() => handleOpen(item)} style={styles.recentItem}>
+              <Pressable
+                key={item.id}
+                onPress={() => handleOpen(item)}
+                onLongPress={() => handleRecentLongPress(item)}
+                style={styles.recentItem}
+              >
                 <Text style={styles.recentText} numberOfLines={1}>
                   {item.title || 'Untitled'}
                 </Text>
@@ -1137,7 +1148,7 @@ const createStyles = (
   container: { flex: 1, backgroundColor: 'transparent' },
   dimLayer: {
     ...StyleSheet.absoluteFill,
-    backgroundColor: 'transparent',
+    backgroundColor: 'rgba(0, 0, 0, 0.28)',
   },
   drawer: {
     flex: 1,
@@ -1154,9 +1165,11 @@ const createStyles = (
   menuTop: {
     justifyContent: 'flex-start',
   },
-  brandImage: {
-    width: 176,
-    height: 52,
+  brandText: {
+    fontSize: 34,
+    lineHeight: 52,
+    fontWeight: '700',
+    color: colors.text,
     marginBottom: 14,
   },
   menuList: {

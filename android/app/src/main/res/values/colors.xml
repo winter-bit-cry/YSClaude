@@ -3,4 +3,10 @@
   <color name="iconBackground">#ffffff</color>
   <color name="colorPrimary">#023c69</color>
   <color name="notification_icon_color">#ffffff</color>
+  <color name="widget_card_bg">#FFFFFF</color>
+  <color name="widget_text">#0F1419</color>
+  <color name="widget_muted">#536471</color>
+  <color name="widget_border">#EFF3F4</color>
+  <color name="widget_accent">#1D9BF0</color>
+  <color name="widget_liked">#F91880</color>
 </resources>

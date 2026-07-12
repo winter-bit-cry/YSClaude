@@ -11,7 +11,8 @@ class AndroidSystemToolsPackage : ReactPackage {
       AndroidSystemToolsModule(reactContext),
       RemoteSshCommandModule(reactContext),
       AndroidFilePickerModule(reactContext),
-      FloatingBallModule(reactContext)
+      FloatingBallModule(reactContext),
+      TodayTodoWidgetModule(reactContext)
     )
   }
 
