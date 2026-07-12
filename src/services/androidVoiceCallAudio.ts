@@ -32,6 +32,8 @@ interface VoiceCallAudioModule {
   clearSpeaker(): Promise<boolean>;
   stopSpeaker(): Promise<boolean>;
   stopAll(): Promise<boolean>;
+  startIncomingRingtone(): Promise<boolean>;
+  stopIncomingRingtone(): Promise<boolean>;
 }
 
 const nativeModule = NativeModules.VoiceCallAudio as VoiceCallAudioModule | undefined;
@@ -81,6 +83,14 @@ export async function stopVoiceCallSpeaker(): Promise<void> {
 
 export async function stopVoiceCallAudio(): Promise<void> {
   await requireVoiceCallAudio().stopAll();
+}
+
+export async function startIncomingCallRingtone(): Promise<void> {
+  await requireVoiceCallAudio().startIncomingRingtone();
+}
+
+export async function stopIncomingCallRingtone(): Promise<void> {
+  await requireVoiceCallAudio().stopIncomingRingtone();
 }
 
 export function addVoiceCallAudioChunkListener(

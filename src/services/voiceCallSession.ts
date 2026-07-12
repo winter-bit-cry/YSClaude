@@ -69,6 +69,8 @@ const NativeWebSocket = WebSocket as any;
 const VOICE_CALL_START_SYSTEM_MESSAGE = '开启语音通话，以下内容为通话记录';
 const VOICE_CALL_RUNTIME_INSTRUCTION =
   '当前正在与用户进行实时语音通话。请把接下来的回复当作会被 TTS 朗读出来的口语回复：优先简洁、自然、可直接念出；避免 Markdown 表格、长列表、复杂括号说明和不适合朗读的格式；如果内容较长，请先给结论，再分段说明。';
+export const VOICE_CALL_ASSISTANT_INITIATED_INSTRUCTION =
+  '用户已接听你主动发起的语音通话。你现在必须先开口，用自然口语直接开始这通电话；不要等待用户先说话，不要说明你调用了工具。';
 const VOICE_CALL_END_SYSTEM_MESSAGE = '语音通话结束';
 
 export function isAndroidVoiceCallAvailable(): boolean {
@@ -133,6 +135,40 @@ export class AndroidVoiceCallSession {
 
   getSnapshot(): VoiceCallSnapshot {
     return this.snapshot;
+  }
+
+  async startAssistantInitiatedTurn(
+    instruction = VOICE_CALL_ASSISTANT_INITIATED_INSTRUCTION
+  ): Promise<void> {
+    if (!this.snapshot.active || this.stopping) return;
+    await waitForChatIdle();
+    if (!this.snapshot.active || this.stopping) return;
+
+    this.update({
+      status: 'thinking',
+      partialTranscript: '',
+      speakingText: '',
+    });
+    this.startAssistantTtsBridge();
+    try {
+      await useChatStore.getState().triggerResponse({
+        skipStickerInstruction: true,
+        additionalRuntimeSections: [
+          VOICE_CALL_RUNTIME_INSTRUCTION,
+          instruction,
+        ],
+      });
+      this.flushPendingTtsText(true);
+      this.finishMiniMax();
+      if (useChatStore.getState().error) {
+        throw new Error(useChatStore.getState().error || 'AI 主动语音开场失败');
+      }
+      if (this.snapshot.active && this.snapshot.status !== 'error') {
+        this.update({ status: 'listening' });
+      }
+    } catch (error: any) {
+      this.fail(error?.message || 'AI 主动语音开场失败');
+    }
   }
 
   async start(): Promise<void> {
@@ -905,6 +941,22 @@ function buildDeepgramLiveUrl(baseUrl: string, model: string, language: string):
   const normalizedLanguage = language.trim();
   url.searchParams.set('language', normalizedLanguage || 'multi');
   return url.toString();
+}
+
+function waitForChatIdle(): Promise<void> {
+  if (!useChatStore.getState().isStreaming) return Promise.resolve();
+  return new Promise((resolve) => {
+    const unsubscribe = useChatStore.subscribe((state) => {
+      if (!state.isStreaming) {
+        unsubscribe();
+        resolve();
+      }
+    });
+    if (!useChatStore.getState().isStreaming) {
+      unsubscribe();
+      resolve();
+    }
+  });
 }
 
 function buildDeepgramAuthorizationHeader(apiKey: string): string {

@@ -5,6 +5,7 @@ import { memoryVaultTool, uploadDiary } from './toolModules/memoryVault';
 import { nativeDeviceTool } from './toolModules/nativeDevice';
 import { runCommandTool } from './toolModules/runCommand';
 import { sshArtifactTransferTool } from './toolModules/sshArtifactTransfer';
+import { voiceCallTool } from './toolModules/voiceCall';
 import { webSearchTool } from './toolModules/webSearch';
 import { webViewTool } from './toolModules/webView';
 import {
@@ -28,6 +29,7 @@ const TOOL_MODULES: ToolModule[] = [
   webViewTool,
   conversationArtifactsTool,
   nativeDeviceTool,
+  voiceCallTool,
 ];
 
 const TOOL_LABELS: Record<string, string> = TOOL_MODULES.reduce(

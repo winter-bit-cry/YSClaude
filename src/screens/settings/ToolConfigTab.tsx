@@ -264,6 +264,7 @@ export function ToolConfigTab({ showToast, keyboardBottomInset }: SettingsTabPro
   const [batteryStatusEnabled, setBatteryStatusEnabled] = useState(!!nativeToolConfig?.batteryStatusEnabled);
   const [appUsageStatsEnabled, setAppUsageStatsEnabled] = useState(!!nativeToolConfig?.appUsageStatsEnabled);
   const [calendarEnabled, setCalendarEnabled] = useState(!!nativeToolConfig?.calendarEnabled);
+  const [aiVoiceCallEnabled, setAiVoiceCallEnabled] = useState(!!nativeToolConfig?.aiVoiceCallEnabled);
 
   useEffect(() => {
     setLocationEnabled(!!locationShareConfig?.enabled);
@@ -328,7 +329,7 @@ export function ToolConfigTab({ showToast, keyboardBottomInset }: SettingsTabPro
   }
 
   function handleNativeToolEnabledChange(
-    key: 'deviceInfoEnabled' | 'batteryStatusEnabled' | 'appUsageStatsEnabled' | 'calendarEnabled',
+    key: 'deviceInfoEnabled' | 'batteryStatusEnabled' | 'appUsageStatsEnabled' | 'calendarEnabled' | 'aiVoiceCallEnabled',
     value: boolean
   ) {
     switch (key) {
@@ -343,6 +344,9 @@ export function ToolConfigTab({ showToast, keyboardBottomInset }: SettingsTabPro
         break;
       case 'calendarEnabled':
         setCalendarEnabled(value);
+        break;
+      case 'aiVoiceCallEnabled':
+        setAiVoiceCallEnabled(value);
         break;
     }
     setNativeToolConfig({ [key]: value });
@@ -1579,6 +1583,7 @@ export function ToolConfigTab({ showToast, keyboardBottomInset }: SettingsTabPro
       batteryStatusEnabled,
       appUsageStatsEnabled,
       calendarEnabled,
+      aiVoiceCallEnabled,
     });
     showToast('设备原生工具开关已保存');
   }
@@ -1608,6 +1613,12 @@ export function ToolConfigTab({ showToast, keyboardBottomInset }: SettingsTabPro
       value: calendarEnabled,
       onValueChange: (value: boolean) => handleNativeToolEnabledChange('calendarEnabled', value),
     },
+    {
+      label: 'AI 主动语音通话',
+      hint: '允许 AI 弹出来电界面，用户接听后进入实时语音通话',
+      value: aiVoiceCallEnabled,
+      onValueChange: (value: boolean) => handleNativeToolEnabledChange('aiVoiceCallEnabled', value),
+    },
   ];
 
   const builtInToolCards = [
@@ -1624,6 +1635,7 @@ export function ToolConfigTab({ showToast, keyboardBottomInset }: SettingsTabPro
     { key: 'batteryStatus', name: '电池状态', intro: '读取电量、充电状态和省电模式。', enabled: batteryStatusEnabled, onValueChange: (value: boolean) => handleNativeToolEnabledChange('batteryStatusEnabled', value), meta: '设备原生' },
     { key: 'appUsageStats', name: '应用使用统计', intro: '在系统授权后读取 Android 应用使用时间统计。', enabled: appUsageStatsEnabled, onValueChange: (value: boolean) => handleNativeToolEnabledChange('appUsageStatsEnabled', value), meta: '设备原生' },
     { key: 'calendar', name: '系统日历', intro: '读取、创建、修改和删除系统日历日程。', enabled: calendarEnabled, onValueChange: (value: boolean) => handleNativeToolEnabledChange('calendarEnabled', value), meta: '设备原生' },
+    { key: 'aiVoiceCall', name: '主动语音通话', intro: '允许 AI 给你打实时语音电话；接听后 AI 会先开口。', enabled: aiVoiceCallEnabled, onValueChange: (value: boolean) => handleNativeToolEnabledChange('aiVoiceCallEnabled', value), meta: '设备原生' },
   ];
 
   const selectedBuiltInTool = builtInToolCards.find((tool) => tool.key === selectedBuiltInToolKey) || null;
@@ -1816,6 +1828,10 @@ export function ToolConfigTab({ showToast, keyboardBottomInset }: SettingsTabPro
             case 'calendar':
               setCalendarEnabled(false);
               setNativeToolConfig({ calendarEnabled: false });
+              break;
+            case 'aiVoiceCall':
+              setAiVoiceCallEnabled(false);
+              setNativeToolConfig({ aiVoiceCallEnabled: false });
               break;
           }
           setSelectedBuiltInToolKey(null);

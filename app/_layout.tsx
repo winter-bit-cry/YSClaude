@@ -1,9 +1,10 @@
 import { Stack, router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
-import { useEffect } from 'react';
-import { AppState, StyleSheet } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Alert, AppState, Image, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { Phone, PhoneOff } from 'lucide-react-native';
 import { useThemeColors } from '../src/theme/colors';
 
 import {
@@ -29,6 +30,7 @@ import { useChatStore } from '../src/stores/chat';
 import { cleanupExpiredVoiceFiles } from '../src/services/voiceFiles';
 import { syncTodayWidget } from '../src/services/todayWidget';
 import { useVoiceCallStore } from '../src/stores/voiceCall';
+import { startIncomingCallRingtone, stopIncomingCallRingtone } from '../src/services/androidVoiceCallAudio';
 
 
 SplashScreen.preventAutoHideAsync();
@@ -230,12 +232,176 @@ export default function RootLayout() {
       </Stack>
       <WebViewPanel />
       <IncomingShareHandler />
+      <IncomingVoiceCallModal />
     </GestureHandlerRootView>
+  );
+}
+
+function IncomingVoiceCallModal() {
+  const incomingCall = useVoiceCallStore((state) => state.incomingCall);
+  const acceptIncomingCall = useVoiceCallStore((state) => state.acceptIncomingCall);
+  const rejectIncomingCall = useVoiceCallStore((state) => state.rejectIncomingCall);
+  const appearanceConfig = useSettingsStore((state) => state.appearanceConfig);
+  const assistantName = (appearanceConfig?.assistantDisplayName || 'Claude').trim() || 'Claude';
+  const assistantAvatarUri = appearanceConfig?.assistantAvatarImageUri;
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!incomingCall) {
+      stopIncomingCallRingtone().catch(() => undefined);
+      setBusy(false);
+      return;
+    }
+    startIncomingCallRingtone().catch(() => undefined);
+    return () => {
+      stopIncomingCallRingtone().catch(() => undefined);
+    };
+  }, [incomingCall?.id]);
+
+  const handleAccept = async () => {
+    if (!incomingCall || busy) return;
+    setBusy(true);
+    await stopIncomingCallRingtone().catch(() => undefined);
+    try {
+      await acceptIncomingCall();
+      router.push('/voice-call');
+    } catch (error: any) {
+      Alert.alert('语音通话启动失败', error?.message || '请检查 Deepgram 和 MiniMax 配置');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleReject = async () => {
+    if (!incomingCall || busy) return;
+    setBusy(true);
+    await stopIncomingCallRingtone().catch(() => undefined);
+    await rejectIncomingCall().catch(() => undefined);
+    setBusy(false);
+  };
+
+  return (
+    <Modal
+      visible={!!incomingCall}
+      transparent
+      animationType="fade"
+      statusBarTranslucent
+      onRequestClose={handleReject}
+    >
+      <View style={styles.incomingCallBackdrop}>
+        <View style={styles.incomingCallPanel}>
+          <Text style={styles.incomingCallStatus}>来电</Text>
+          <View style={styles.incomingCallAvatar}>
+            {assistantAvatarUri ? (
+              <Image source={{ uri: assistantAvatarUri }} style={styles.incomingCallAvatarImage} resizeMode="cover" />
+            ) : (
+              <Text style={styles.incomingCallAvatarFallback}>AI</Text>
+            )}
+          </View>
+          <Text style={styles.incomingCallName} numberOfLines={1}>{assistantName}</Text>
+          <Text style={styles.incomingCallHint} numberOfLines={2}>
+            {incomingCall?.reason || '想和你进行语音通话'}
+          </Text>
+          <View style={styles.incomingCallActions}>
+            <Pressable
+              style={[styles.incomingCallAction, styles.incomingCallReject, busy && styles.incomingCallDisabled]}
+              onPress={handleReject}
+              disabled={busy}
+            >
+              <PhoneOff size={30} color="#FFFFFF" strokeWidth={2.4} />
+            </Pressable>
+            <Pressable
+              style={[styles.incomingCallAction, styles.incomingCallAccept, busy && styles.incomingCallDisabled]}
+              onPress={handleAccept}
+              disabled={busy}
+            >
+              <Phone size={30} color="#FFFFFF" strokeWidth={2.4} />
+            </Pressable>
+          </View>
+        </View>
+      </View>
+    </Modal>
   );
 }
 
 const styles = StyleSheet.create({
   gestureRoot: {
     flex: 1,
+  },
+  incomingCallBackdrop: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+    backgroundColor: 'rgba(0,0,0,0.58)',
+  },
+  incomingCallPanel: {
+    width: '100%',
+    maxWidth: 360,
+    alignItems: 'center',
+    gap: 14,
+    borderRadius: 8,
+    paddingHorizontal: 24,
+    paddingTop: 28,
+    paddingBottom: 24,
+    backgroundColor: '#202020',
+    boxShadow: '0 16px 36px rgba(0,0,0,0.35)',
+  },
+  incomingCallStatus: {
+    color: '#a8a8a8',
+    fontSize: 15,
+  },
+  incomingCallAvatar: {
+    width: 92,
+    height: 92,
+    borderRadius: 12,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#3a3a3a',
+  },
+  incomingCallAvatarImage: {
+    width: '100%',
+    height: '100%',
+  },
+  incomingCallAvatarFallback: {
+    color: '#d8d8d8',
+    fontSize: 32,
+    fontWeight: '800',
+  },
+  incomingCallName: {
+    maxWidth: '100%',
+    color: '#f4f4f4',
+    fontSize: 22,
+    fontWeight: '700',
+  },
+  incomingCallHint: {
+    color: '#b8b8b8',
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: 'center',
+  },
+  incomingCallActions: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-around',
+    paddingTop: 18,
+  },
+  incomingCallAction: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  incomingCallReject: {
+    backgroundColor: '#e74c3c',
+  },
+  incomingCallAccept: {
+    backgroundColor: '#26a65b',
+  },
+  incomingCallDisabled: {
+    opacity: 0.58,
   },
 });

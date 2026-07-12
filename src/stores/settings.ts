@@ -232,6 +232,7 @@ export interface NativeToolConfig {
   batteryStatusEnabled: boolean;
   appUsageStatsEnabled: boolean;
   calendarEnabled: boolean;
+  aiVoiceCallEnabled?: boolean;
   accessibilityControlEnabled?: boolean;
 }
 
@@ -931,6 +932,7 @@ export const useSettingsStore = create<SettingsState>()(
         batteryStatusEnabled: false,
         appUsageStatsEnabled: false,
         calendarEnabled: false,
+        aiVoiceCallEnabled: false,
         accessibilityControlEnabled: false,
       },
       calendarAiSyncConfig: {
@@ -1460,6 +1462,14 @@ export const useSettingsStore = create<SettingsState>()(
           promptCacheConfig: normalizePromptCacheConfig(state?.promptCacheConfig),
           ttsConfig: normalizeTTSConfig(state?.ttsConfig),
           sttConfig: normalizeSTTConfig(state?.sttConfig),
+          nativeToolConfig: {
+            deviceInfoEnabled: state?.nativeToolConfig?.deviceInfoEnabled ?? false,
+            batteryStatusEnabled: state?.nativeToolConfig?.batteryStatusEnabled ?? false,
+            appUsageStatsEnabled: state?.nativeToolConfig?.appUsageStatsEnabled ?? false,
+            calendarEnabled: state?.nativeToolConfig?.calendarEnabled ?? false,
+            aiVoiceCallEnabled: state?.nativeToolConfig?.aiVoiceCallEnabled ?? false,
+            accessibilityControlEnabled: state?.nativeToolConfig?.accessibilityControlEnabled ?? false,
+          },
           locationShareConfig: {
             enabled: state?.locationShareConfig?.enabled ?? false,
             provider: 'tencent',

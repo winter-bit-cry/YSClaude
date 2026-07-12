@@ -13,6 +13,7 @@ import android.media.MediaCodec
 import android.media.MediaFormat
 import android.media.MediaPlayer
 import android.media.MediaRecorder
+import android.media.RingtoneManager
 import android.media.audiofx.AcousticEchoCanceler
 import android.media.audiofx.AutomaticGainControl
 import android.media.audiofx.NoiseSuppressor
@@ -73,6 +74,7 @@ class VoiceCallAudioModule(
   private val mainHandler = Handler(Looper.getMainLooper())
   private var currentClipPlayer: MediaPlayer? = null
   private var currentClipFile: File? = null
+  private var incomingRingtonePlayer: MediaPlayer? = null
   private var echoCanceler: AcousticEchoCanceler? = null
   private var noiseSuppressor: NoiseSuppressor? = null
   private var gainControl: AutomaticGainControl? = null
@@ -347,10 +349,57 @@ class VoiceCallAudioModule(
 
   @ReactMethod
   fun stopAll(promise: Promise) {
+    stopIncomingRingtoneInternal()
     cleanupMic()
     cleanupSpeaker()
     restoreAudioModeIfIdle(force = true)
     promise.resolve(true)
+  }
+
+  @ReactMethod
+  fun startIncomingRingtone(promise: Promise) {
+    mainHandler.post {
+      try {
+        stopIncomingRingtoneInternal()
+        val ringtoneUri = RingtoneManager.getActualDefaultRingtoneUri(
+          reactContext,
+          RingtoneManager.TYPE_RINGTONE
+        ) ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
+        if (ringtoneUri == null) {
+          promise.resolve(false)
+          return@post
+        }
+        val player = MediaPlayer()
+        incomingRingtonePlayer = player
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+          player.setAudioAttributes(
+            AudioAttributes.Builder()
+              .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
+              .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+              .build()
+          )
+        } else {
+          @Suppress("DEPRECATION")
+          player.setAudioStreamType(AudioManager.STREAM_RING)
+        }
+        player.isLooping = true
+        player.setDataSource(reactContext, ringtoneUri)
+        player.prepare()
+        player.start()
+        promise.resolve(true)
+      } catch (error: Exception) {
+        stopIncomingRingtoneInternal()
+        promise.reject("VOICE_CALL_RINGTONE", error)
+      }
+    }
+  }
+
+  @ReactMethod
+  fun stopIncomingRingtone(promise: Promise) {
+    mainHandler.post {
+      stopIncomingRingtoneInternal()
+      promise.resolve(true)
+    }
   }
 
   private fun decodeMp3Loop(codec: MediaCodec, track: AudioTrack) {
@@ -864,6 +913,16 @@ class VoiceCallAudioModule(
     }
     audioTrack?.release()
     audioTrack = null
+  }
+
+  private fun stopIncomingRingtoneInternal() {
+    val player = incomingRingtonePlayer
+    incomingRingtonePlayer = null
+    try {
+      player?.stop()
+    } catch (_: Exception) {
+    }
+    player?.release()
   }
 
   private fun sendEvent(name: String, params: Any) {
