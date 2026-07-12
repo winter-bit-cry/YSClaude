@@ -19,6 +19,7 @@ import {
   type AppStateStatus,
   type ImageStyle,
   type ViewStyle,
+  useWindowDimensions,
 } from 'react-native';
 import Animated, {
   Easing,
@@ -78,6 +79,11 @@ const MESSAGE_BOTTOM_GAP = 16;
 const MESSAGE_TOP_GAP = 104;
 const LOAD_MORE_EDGE_THRESHOLD = 96;
 const PROGRAMMATIC_JUMP_SUPPRESS_MS = 1200;
+const TOP_BAR_SIDE_BUTTON_COUNT = 4;
+const TOP_BAR_HORIZONTAL_INSET = 12;
+const TOP_BAR_DEFAULT_BUTTON_SIZE = 40;
+const TOP_BAR_MIN_BUTTON_SIZE = 32;
+const TOP_BAR_DEFAULT_GAP = 4;
 const AUTO_SCROLL_THROTTLE_MS = 72;
 const WEEKDAY_LABELS = ['日', '一', '二', '三', '四', '五', '六'];
 const CLAWD_STATUS_AUTO_CLOSE_MS = 5200;
@@ -276,6 +282,58 @@ export default function ChatScreen() {
 
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { width: windowWidth } = useWindowDimensions();
+  const topBarResponsiveMetrics = useMemo(() => {
+    const reservedCenterHalf = TOP_BAR_DEFAULT_BUTTON_SIZE / 2;
+    const availableSideWidth = Math.max(
+      0,
+      windowWidth / 2 - reservedCenterHalf - TOP_BAR_HORIZONTAL_INSET
+    );
+    const defaultSideWidth = TOP_BAR_SIDE_BUTTON_COUNT * TOP_BAR_DEFAULT_BUTTON_SIZE
+      + (TOP_BAR_SIDE_BUTTON_COUNT - 1) * TOP_BAR_DEFAULT_GAP;
+
+    if (availableSideWidth >= defaultSideWidth) {
+      return {
+        buttonStyle: undefined,
+        groupStyle: undefined,
+        iconSize: 22,
+        clawdIconStyle: undefined,
+      };
+    }
+
+    const gap = Math.max(
+      0,
+      Math.min(
+        TOP_BAR_DEFAULT_GAP,
+        (availableSideWidth - TOP_BAR_SIDE_BUTTON_COUNT * TOP_BAR_MIN_BUTTON_SIZE)
+          / (TOP_BAR_SIDE_BUTTON_COUNT - 1)
+      )
+    );
+    const buttonSize = Math.max(
+      TOP_BAR_MIN_BUTTON_SIZE,
+      Math.min(
+        TOP_BAR_DEFAULT_BUTTON_SIZE,
+        (availableSideWidth - (TOP_BAR_SIDE_BUTTON_COUNT - 1) * gap)
+          / TOP_BAR_SIDE_BUTTON_COUNT
+      )
+    );
+    const iconSize = Math.max(18, Math.min(22, buttonSize - 14));
+    const clawdSize = Math.max(24, Math.min(30, buttonSize - 6));
+
+    return {
+      buttonStyle: {
+        width: buttonSize,
+        height: buttonSize,
+        borderRadius: Math.min(8, buttonSize / 5),
+      },
+      groupStyle: { gap },
+      iconSize,
+      clawdIconStyle: {
+        width: clawdSize,
+        height: clawdSize,
+      },
+    };
+  }, [windowWidth]);
   const appearanceConfig = useSettingsStore((state) => state.appearanceConfig);
   const customCssStyles = useMemo(
     () => parseAppearanceCss(appearanceConfig?.customCss),
@@ -420,7 +478,7 @@ export default function ChatScreen() {
           iconKey={iconKey}
           color={iconStyle.color}
           customUri={topBarIconUris[iconKey]}
-          size={iconStyle.size ?? 22}
+          size={iconStyle.size ?? topBarResponsiveMetrics.iconSize}
         />
       </View>
     );
@@ -1462,38 +1520,38 @@ export default function ChatScreen() {
             style={[styles.headerFade, topBarFadeViewCssStyle]}
           />
         )}
-        <View style={[styles.headerLeftGroup, topBarLeftCssStyle]}>
-          <Pressable style={[styles.headerButton, topBarButtonStyle('history')]} onPress={() => router.push('/history')}>
+        <View style={[styles.headerLeftGroup, topBarResponsiveMetrics.groupStyle, topBarLeftCssStyle]}>
+          <Pressable style={[styles.headerButton, topBarResponsiveMetrics.buttonStyle, topBarButtonStyle('history')]} onPress={() => router.push('/history')}>
             {!topBarIconsHidden && renderTopBarIcon('history')}
           </Pressable>
-          <Pressable style={[styles.headerButton, topBarButtonStyle('reading')]} onPress={() => router.push('/reading')}>
+          <Pressable style={[styles.headerButton, topBarResponsiveMetrics.buttonStyle, topBarButtonStyle('reading')]} onPress={() => router.push('/reading')}>
             {!topBarIconsHidden && renderTopBarIcon('reading')}
           </Pressable>
-          <Pressable style={[styles.headerButton, topBarButtonStyle('web')]} onPress={showWebViewPanel}>
+          <Pressable style={[styles.headerButton, topBarResponsiveMetrics.buttonStyle, topBarButtonStyle('web')]} onPress={showWebViewPanel}>
             {!topBarIconsHidden && renderTopBarIcon('web')}
           </Pressable>
-          <Pressable style={[styles.headerButton, topBarButtonStyle('game')]} onPress={() => router.push('/game')}>
+          <Pressable style={[styles.headerButton, topBarResponsiveMetrics.buttonStyle, topBarButtonStyle('game')]} onPress={() => router.push('/game')}>
             {!topBarIconsHidden && renderTopBarIcon('game')}
           </Pressable>
         </View>
-        <View style={[styles.headerRightGroup, topBarRightCssStyle]}>
-          <Pressable style={[styles.headerButton, topBarButtonStyle('focus')]} onPress={() => router.push('/focus')}>
+        <View style={[styles.headerRightGroup, topBarResponsiveMetrics.groupStyle, topBarRightCssStyle]}>
+          <Pressable style={[styles.headerButton, topBarResponsiveMetrics.buttonStyle, topBarButtonStyle('focus')]} onPress={() => router.push('/focus')}>
             {!topBarIconsHidden && renderTopBarIcon('focus')}
           </Pressable>
-          <Pressable style={[styles.headerButton, topBarButtonStyle('calendar')]} onPress={() => router.push('/calendar')}>
+          <Pressable style={[styles.headerButton, topBarResponsiveMetrics.buttonStyle, topBarButtonStyle('calendar')]} onPress={() => router.push('/calendar')}>
             {!topBarIconsHidden && renderTopBarIcon('calendar')}
           </Pressable>
-          <Pressable style={[styles.headerButton, topBarButtonStyle('music')]} onPress={() => router.push('/music')}>
+          <Pressable style={[styles.headerButton, topBarResponsiveMetrics.buttonStyle, topBarButtonStyle('music')]} onPress={() => router.push('/music')}>
             {!topBarIconsHidden && renderTopBarIcon('music')}
           </Pressable>
-          <Pressable style={[styles.headerButton, topBarButtonStyle('settings')]} onPress={() => router.push('/settings')}>
+          <Pressable style={[styles.headerButton, topBarResponsiveMetrics.buttonStyle, topBarButtonStyle('settings')]} onPress={() => router.push('/settings')}>
             {!topBarIconsHidden && renderTopBarIcon('settings')}
           </Pressable>
         </View>
         <View pointerEvents="box-none" style={[styles.headerCenterSlot, topBarCenterCssStyle]}>
           <Pressable style={[styles.headerCenterButton, topBarCenterButtonCssStyle]} onPress={openClawdStatus}>
             {!topBarIconsHidden && (
-              <Image source={require('../assets/clawd.png')} style={[styles.clawdHeaderIcon, clawdIconCssStyle]} resizeMode="contain" />
+              <Image source={require('../assets/clawd.png')} style={[styles.clawdHeaderIcon, topBarResponsiveMetrics.clawdIconStyle, clawdIconCssStyle]} resizeMode="contain" />
             )}
           </Pressable>
         </View>
