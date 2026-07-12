@@ -9,6 +9,7 @@ class AndroidSystemToolsPackage : ReactPackage {
   override fun createNativeModules(reactContext: ReactApplicationContext): List<NativeModule> {
     return listOf(
       AndroidSystemToolsModule(reactContext),
+      VoiceCallAudioModule(reactContext),
       RemoteSshCommandModule(reactContext),
       AndroidFilePickerModule(reactContext),
       FloatingBallModule(reactContext),

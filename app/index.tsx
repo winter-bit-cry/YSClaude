@@ -68,6 +68,11 @@ import {
   subscribePromptCacheRemoteSnapshotStatus,
   type PromptCacheRemoteSnapshotStatus,
 } from '../src/services/promptCacheKeepalive';
+import {
+  AndroidVoiceCallSession,
+  isAndroidVoiceCallAvailable,
+  type VoiceCallSnapshot,
+} from '../src/services/voiceCallSession';
 
 
 let colors = lightColors;
@@ -79,6 +84,14 @@ const PROGRAMMATIC_JUMP_SUPPRESS_MS = 1200;
 const AUTO_SCROLL_THROTTLE_MS = 72;
 const WEEKDAY_LABELS = ['日', '一', '二', '三', '四', '五', '六'];
 const CLAWD_STATUS_AUTO_CLOSE_MS = 5200;
+const INITIAL_VOICE_CALL_SNAPSHOT: VoiceCallSnapshot = {
+  active: false,
+  status: 'idle',
+  partialTranscript: '',
+  lastUserText: '',
+  speakingText: '',
+  error: null,
+};
 
 function ChatMessageEntrance({
   animate,
@@ -111,6 +124,26 @@ function ChatMessageEntrance({
   }));
 
   return <Animated.View style={style}>{children}</Animated.View>;
+}
+
+function formatVoiceCallStatus(snapshot: VoiceCallSnapshot): string {
+  if (snapshot.error) return snapshot.error;
+  switch (snapshot.status) {
+    case 'connecting':
+      return '正在连接语音通话';
+    case 'listening':
+      return snapshot.partialTranscript || '正在听你说';
+    case 'thinking':
+      return snapshot.lastUserText ? `你：${snapshot.lastUserText}` : '正在思考';
+    case 'speaking':
+      return snapshot.speakingText ? `AI：${snapshot.speakingText}` : '正在说话';
+    case 'stopping':
+      return '正在挂断';
+    case 'error':
+      return snapshot.error || '语音通话出错';
+    default:
+      return 'Deepgram STT + MiniMax TTS';
+  }
 }
 
 function startOfMonth(date: Date): Date {
@@ -352,6 +385,7 @@ export default function ChatScreen() {
   const [clawdStatusVisible, setClawdStatusVisible] = useState(false);
   const [remoteSnapshotStatus, setRemoteSnapshotStatus] = useState(() => getPromptCacheRemoteSnapshotStatus());
   const [refreshingRemoteServerStatus, setRefreshingRemoteServerStatus] = useState(false);
+  const [voiceCallSnapshot, setVoiceCallSnapshot] = useState<VoiceCallSnapshot>(INITIAL_VOICE_CALL_SNAPSHOT);
 
   function resolveTopBarIconStyle(iconKey: TopBarIconKey | 'clawd') {
     const rawStyle = cssStyle('.top-bar-icon', `.top-bar-${iconKey}-icon`);
@@ -422,6 +456,7 @@ export default function ChatScreen() {
   const clawdStatusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const newerMessagesAutoScrollResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const enteringMessageTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const voiceCallSessionRef = useRef<AndroidVoiceCallSession | null>(null);
   const listHeightRef = useRef(0);
   const contentHeightRef = useRef(0);
   const lastAutoScrollAtRef = useRef(0);
@@ -649,6 +684,8 @@ export default function ChatScreen() {
       if (newerMessagesAutoScrollResetTimerRef.current !== null) {
         clearTimeout(newerMessagesAutoScrollResetTimerRef.current);
       }
+      voiceCallSessionRef.current?.stop().catch(() => undefined);
+      voiceCallSessionRef.current = null;
       enteringMessageTimersRef.current.forEach((timer) => clearTimeout(timer));
       enteringMessageTimersRef.current.clear();
     };
@@ -664,6 +701,33 @@ export default function ChatScreen() {
       toastTimerRef.current = null;
     }, 1800);
   }, []);
+
+  const toggleVoiceCall = useCallback(async () => {
+    if (voiceCallSnapshot.active) {
+      await voiceCallSessionRef.current?.stop();
+      voiceCallSessionRef.current = null;
+      setVoiceCallSnapshot(INITIAL_VOICE_CALL_SNAPSHOT);
+      return;
+    }
+
+    if (!isAndroidVoiceCallAvailable()) {
+      Alert.alert('语音通话不可用', '实时语音通话目前只支持 Android 自定义构建。');
+      return;
+    }
+
+    const session = new AndroidVoiceCallSession();
+    voiceCallSessionRef.current = session;
+    const subscription = session.subscribe(setVoiceCallSnapshot);
+    try {
+      await session.start();
+      showToast('语音通话已开始');
+    } catch (error: any) {
+      subscription.remove();
+      voiceCallSessionRef.current = null;
+      setVoiceCallSnapshot({ ...INITIAL_VOICE_CALL_SNAPSHOT, status: 'error', error: error?.message || '语音通话启动失败' });
+      Alert.alert('语音通话启动失败', error?.message || '请检查 Deepgram 和 MiniMax 配置');
+    }
+  }, [showToast, voiceCallSnapshot.active]);
 
   const closeClawdStatus = useCallback(() => {
     if (clawdStatusTimerRef.current !== null) {
@@ -1558,6 +1622,40 @@ export default function ChatScreen() {
         pointerEvents="box-none"
         onLayout={handleInputLayout}
       >
+        {isAndroidVoiceCallAvailable() && (
+          <View style={styles.voiceCallBar}>
+            <View style={styles.voiceCallTextBlock}>
+              <Text style={styles.voiceCallTitle} numberOfLines={1}>
+                {voiceCallSnapshot.active ? '语音通话中' : '语音通话'}
+              </Text>
+              <Text
+                style={[
+                  styles.voiceCallStatus,
+                  voiceCallSnapshot.error && styles.voiceCallStatusError,
+                ]}
+                numberOfLines={1}
+              >
+                {formatVoiceCallStatus(voiceCallSnapshot)}
+              </Text>
+            </View>
+            <Pressable
+              style={[
+                styles.voiceCallButton,
+                voiceCallSnapshot.active && styles.voiceCallButtonActive,
+              ]}
+              onPress={() => void toggleVoiceCall()}
+            >
+              <Text
+                style={[
+                  styles.voiceCallButtonText,
+                  voiceCallSnapshot.active && styles.voiceCallButtonTextActive,
+                ]}
+              >
+                {voiceCallSnapshot.active ? '挂断' : '开始'}
+              </Text>
+            </Pressable>
+          </View>
+        )}
         <ChatInput
           onSend={async (text, imageUri, imageGenerationReferenceUris) => {
             await addUserMessage(text, imageUri, imageGenerationReferenceUris);
@@ -2395,6 +2493,62 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     height: StyleSheet.hairlineWidth,
     backgroundColor: colors.border,
     marginHorizontal: 12,
+  },
+  voiceCallBar: {
+    marginHorizontal: 12,
+    marginBottom: 8,
+    minHeight: 52,
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: colors.inputBackground,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.inputBorder,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
+  },
+  voiceCallTextBlock: {
+    flex: 1,
+    minWidth: 0,
+  },
+  voiceCallTitle: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  voiceCallStatus: {
+    marginTop: 3,
+    color: colors.textSecondary,
+    fontSize: 12,
+  },
+  voiceCallStatusError: {
+    color: colors.danger,
+  },
+  voiceCallButton: {
+    minWidth: 64,
+    minHeight: 34,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+    backgroundColor: colors.primaryLight,
+  },
+  voiceCallButtonActive: {
+    backgroundColor: colors.dangerSurface,
+  },
+  voiceCallButtonText: {
+    color: colors.primary,
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  voiceCallButtonTextActive: {
+    color: colors.danger,
   },
   inputFloating: {
     position: 'absolute',

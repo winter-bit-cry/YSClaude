@@ -1,0 +1,99 @@
+import { DeviceEventEmitter, NativeModules, Platform } from 'react-native';
+
+export interface VoiceCallAudioChunkEvent {
+  base64: string;
+  sampleRate: number;
+}
+
+export interface VoiceCallAudioErrorEvent {
+  message?: string;
+}
+
+export interface VoiceCallPlaybackEvent {
+  active: boolean;
+}
+
+export interface VoiceCallBargeInEvent {
+  chunks?: string[];
+  sampleRate?: number;
+}
+
+interface VoiceCallAudioModule {
+  startMic(sampleRate: number, chunkMs: number): Promise<boolean>;
+  stopMic(): Promise<boolean>;
+  startMp3Speaker(sampleRate: number, channels: number): Promise<boolean>;
+  writeMp3Chunk(base64: string): Promise<boolean>;
+  enqueueMp3Clip(base64: string): Promise<boolean>;
+  clearSpeaker(): Promise<boolean>;
+  stopSpeaker(): Promise<boolean>;
+  stopAll(): Promise<boolean>;
+}
+
+const nativeModule = NativeModules.VoiceCallAudio as VoiceCallAudioModule | undefined;
+
+export function isAndroidVoiceCallAudioAvailable(): boolean {
+  return Platform.OS === 'android' && !!nativeModule;
+}
+
+function requireVoiceCallAudio(): VoiceCallAudioModule {
+  if (!isAndroidVoiceCallAudioAvailable() || !nativeModule) {
+    throw new Error('实时语音通话目前只支持 Android 自定义构建');
+  }
+  return nativeModule;
+}
+
+export async function startVoiceCallMic(sampleRate = 16000, chunkMs = 20): Promise<void> {
+  await requireVoiceCallAudio().startMic(sampleRate, chunkMs);
+}
+
+export async function stopVoiceCallMic(): Promise<void> {
+  await requireVoiceCallAudio().stopMic();
+}
+
+export async function startVoiceCallSpeaker(sampleRate = 32000, channels = 1): Promise<void> {
+  await requireVoiceCallAudio().startMp3Speaker(sampleRate, channels);
+}
+
+export async function writeVoiceCallMp3Chunk(base64: string): Promise<void> {
+  await requireVoiceCallAudio().writeMp3Chunk(base64);
+}
+
+export async function enqueueVoiceCallMp3Clip(base64: string): Promise<void> {
+  await requireVoiceCallAudio().enqueueMp3Clip(base64);
+}
+
+export async function clearVoiceCallSpeaker(): Promise<void> {
+  await requireVoiceCallAudio().clearSpeaker();
+}
+
+export async function stopVoiceCallSpeaker(): Promise<void> {
+  await requireVoiceCallAudio().stopSpeaker();
+}
+
+export async function stopVoiceCallAudio(): Promise<void> {
+  await requireVoiceCallAudio().stopAll();
+}
+
+export function addVoiceCallAudioChunkListener(
+  listener: (event: VoiceCallAudioChunkEvent) => void
+) {
+  return DeviceEventEmitter.addListener('VoiceCallAudioChunk', listener);
+}
+
+export function addVoiceCallAudioErrorListener(
+  listener: (event: VoiceCallAudioErrorEvent) => void
+) {
+  return DeviceEventEmitter.addListener('VoiceCallAudioError', listener);
+}
+
+export function addVoiceCallPlaybackListener(
+  listener: (event: VoiceCallPlaybackEvent) => void
+) {
+  return DeviceEventEmitter.addListener('VoiceCallPlayback', listener);
+}
+
+export function addVoiceCallBargeInListener(
+  listener: (event: VoiceCallBargeInEvent) => void
+) {
+  return DeviceEventEmitter.addListener('VoiceCallBargeIn', listener);
+}
