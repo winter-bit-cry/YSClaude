@@ -1,5 +1,5 @@
 import { fetch as expoFetch } from 'expo/fetch';
-import { File } from 'expo-file-system';
+import { File, UploadType } from 'expo-file-system';
 
 const DEFAULT_TRANSCRIPTION_MODEL = 'whisper-1';
 
@@ -143,21 +143,30 @@ async function transcribeDeepgram({
 }: TranscribeVoiceRequest): Promise<string> {
   const endpoint = buildDeepgramEndpoint(baseUrl, model, language);
   const file = new File(uri);
-  const response = await expoFetch(endpoint, {
-    method: 'POST',
-    headers: {
-      Authorization: `Token ${apiKey.trim()}`,
-      'Content-Type': mimeType || mimeTypeFromUri(uri),
-    },
-    body: await file.bytes() as any,
-  }) as Response;
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Deepgram STT Error ${response.status}: ${errorText.slice(0, 300)}`);
+  let response;
+  try {
+    response = await file.upload(endpoint, {
+      httpMethod: 'POST',
+      uploadType: UploadType.BINARY_CONTENT,
+      mimeType: mimeType || mimeTypeFromUri(uri),
+      headers: {
+        Authorization: `Token ${apiKey.trim()}`,
+        'Content-Type': mimeType || mimeTypeFromUri(uri),
+      },
+    });
+  } catch (error: any) {
+    const message = String(error?.message || error || '');
+    if (message.includes('SETTINGS preface')) {
+      throw new Error('Deepgram STT 请求失败：请确认 Base URL 使用 REST 地址 https://api.deepgram.com/v1');
+    }
+    throw error;
   }
 
-  const json = await response.json();
+  if (response.status < 200 || response.status >= 300) {
+    throw new Error(`Deepgram STT Error ${response.status}: ${response.body.slice(0, 300)}`);
+  }
+
+  const json = JSON.parse(response.body);
   const text = extractDeepgramTranscript(json);
   if (!text) {
     throw new Error('Deepgram STT 未返回文字');
@@ -166,21 +175,25 @@ async function transcribeDeepgram({
 }
 
 function buildDeepgramEndpoint(baseUrl: string, model?: string, language?: string): string {
-  const normalizedBaseUrl = baseUrl.trim().replace(/\/$/, '');
-  const endpoint = normalizedBaseUrl.endsWith('/listen')
-    ? normalizedBaseUrl
-    : `${normalizedBaseUrl}/listen`;
-  const params = new URLSearchParams();
+  const url = new URL(baseUrl.trim() || 'https://api.deepgram.com/v1');
+  const normalizedPath = url.pathname.replace(/\/$/, '');
+  if (!normalizedPath || normalizedPath === '') {
+    url.pathname = '/v1/listen';
+  } else if (normalizedPath.endsWith('/listen')) {
+    url.pathname = normalizedPath;
+  } else {
+    url.pathname = `${normalizedPath}/listen`;
+  }
   const normalizedModel = model?.trim() || 'nova-3';
   if (normalizedModel) {
-    params.set('model', normalizedModel);
+    url.searchParams.set('model', normalizedModel);
   }
   const normalizedLanguage = language?.trim();
   if (normalizedLanguage) {
-    params.set('language', normalizedLanguage);
+    url.searchParams.set('language', normalizedLanguage);
   }
-  params.set('smart_format', 'true');
-  return `${endpoint}?${params.toString()}`;
+  url.searchParams.set('smart_format', 'true');
+  return url.toString();
 }
 
 function extractDeepgramTranscript(json: any): string {
