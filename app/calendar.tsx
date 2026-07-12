@@ -717,7 +717,7 @@ export default function CalendarScreen() {
 
       <Modal visible={createVisible} transparent animationType="fade" onRequestClose={() => setCreateVisible(false)}>
         <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          behavior="padding"
           style={styles.modalKeyboardRoot}
         >
           <Pressable style={styles.modalOverlay} onPress={() => setCreateVisible(false)}>
