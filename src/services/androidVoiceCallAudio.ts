@@ -28,6 +28,7 @@ interface VoiceCallAudioModule {
   startMp3Speaker(sampleRate: number, channels: number): Promise<boolean>;
   setSpeakerphoneOn(enabled: boolean): Promise<boolean>;
   setSpeakerVolume(volume: number): Promise<boolean>;
+  setTuningConfig(config: VoiceCallAudioTuningConfig): Promise<boolean>;
   writeMp3Chunk(base64: string): Promise<boolean>;
   writePcmChunk(base64: string): Promise<boolean>;
   finishPcmPlayback(): Promise<boolean>;
@@ -37,6 +38,22 @@ interface VoiceCallAudioModule {
   stopAll(): Promise<boolean>;
   startIncomingRingtone(): Promise<boolean>;
   stopIncomingRingtone(): Promise<boolean>;
+}
+
+export interface VoiceCallAudioTuningConfig {
+  bargeInMinSpeechMs?: number;
+  bargeInRmsFloor?: number;
+  bargeInEchoMultiplier?: number;
+  bargeInPeakThreshold?: number;
+  bargeInClearPeakThreshold?: number;
+  bargeInClearRmsThreshold?: number;
+  playbackMicSuppressMs?: number;
+  afterPlaybackSuppressMs?: number;
+  micStartMinSpeechMs?: number;
+  micEndSilenceMs?: number;
+  micTrailingAudioMs?: number;
+  micMinStartRms?: number;
+  micMinActiveRms?: number;
 }
 
 const nativeModule = NativeModules.VoiceCallAudio as VoiceCallAudioModule | undefined;
@@ -70,6 +87,10 @@ export async function setVoiceCallSpeakerphoneOn(enabled: boolean): Promise<void
 
 export async function setVoiceCallSpeakerVolume(volume: number): Promise<void> {
   await requireVoiceCallAudio().setSpeakerVolume(volume);
+}
+
+export async function setVoiceCallAudioTuningConfig(config: VoiceCallAudioTuningConfig): Promise<void> {
+  await requireVoiceCallAudio().setTuningConfig(config);
 }
 
 export async function writeVoiceCallMp3Chunk(base64: string): Promise<void> {

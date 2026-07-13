@@ -3,10 +3,12 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -17,11 +19,50 @@ import {
   MicOff,
   PhoneOff,
   PictureInPicture2,
+  RotateCcw,
+  SlidersHorizontal,
+  X,
   Volume2,
   VolumeX,
 } from 'lucide-react-native';
-import { useSettingsStore } from '../src/stores/settings';
+import {
+  createDefaultVoiceCallTuningConfig,
+  useSettingsStore,
+  type VoiceCallTuningConfig,
+} from '../src/stores/settings';
 import { useVoiceCallStore } from '../src/stores/voiceCall';
+
+type TuningField = {
+  key: keyof VoiceCallTuningConfig;
+  label: string;
+  unit: string;
+  step: number;
+  decimals?: number;
+  group: string;
+};
+
+const TUNING_FIELDS: TuningField[] = [
+  { key: 'aliyunUserTurnGraceMs', label: '用户句子提交延迟', unit: 'ms', step: 100, group: '阿里 STT' },
+  { key: 'aliyunPendingFlushMs', label: '转写刷新等待', unit: 'ms', step: 100, group: '阿里 STT' },
+  { key: 'aliyunInterimOnlyFlushGraceMs', label: '仅临时结果等待 final', unit: 'ms', step: 200, group: '阿里 STT' },
+  { key: 'userTurnRecentAudioHoldMs', label: '连续说话保留窗口', unit: 'ms', step: 50, group: '用户回合' },
+  { key: 'playbackRecognitionSuppressMs', label: '播放识别抑制', unit: 'ms', step: 100, group: '播放/打断' },
+  { key: 'deferredBargeInVolume', label: '打断时 TTS 音量', unit: '', step: 0.05, decimals: 2, group: '播放/打断' },
+  { key: 'deferredBargeInMaxMs', label: '打断最大保留时间', unit: 'ms', step: 1000, group: '播放/打断' },
+  { key: 'bargeInMinSpeechMs', label: '打断最短语音', unit: 'ms', step: 10, group: '原生打断' },
+  { key: 'bargeInRmsFloor', label: '打断 RMS 下限', unit: '', step: 20, group: '原生打断' },
+  { key: 'bargeInEchoMultiplier', label: '回声阈值倍率', unit: 'x', step: 0.05, decimals: 2, group: '原生打断' },
+  { key: 'bargeInPeakThreshold', label: '打断峰值阈值', unit: '', step: 50, group: '原生打断' },
+  { key: 'bargeInClearPeakThreshold', label: '强语音峰值阈值', unit: '', step: 100, group: '原生打断' },
+  { key: 'bargeInClearRmsThreshold', label: '强语音 RMS 阈值', unit: '', step: 20, group: '原生打断' },
+  { key: 'playbackMicSuppressMs', label: '播放中麦克风抑制', unit: 'ms', step: 100, group: '原生打断' },
+  { key: 'afterPlaybackSuppressMs', label: '播放后麦克风抑制', unit: 'ms', step: 100, group: '原生打断' },
+  { key: 'micStartMinSpeechMs', label: '麦克风起声时长', unit: 'ms', step: 10, group: '麦克风 VAD' },
+  { key: 'micEndSilenceMs', label: '麦克风结束静音', unit: 'ms', step: 100, group: '麦克风 VAD' },
+  { key: 'micTrailingAudioMs', label: '尾音保留', unit: 'ms', step: 100, group: '麦克风 VAD' },
+  { key: 'micMinStartRms', label: '起声 RMS 下限', unit: '', step: 20, group: '麦克风 VAD' },
+  { key: 'micMinActiveRms', label: '持续 RMS 下限', unit: '', step: 20, group: '麦克风 VAD' },
+];
 
 function formatDuration(startedAt: number | null): string {
   if (!startedAt) return '00:00';
@@ -54,6 +95,7 @@ export default function VoiceCallScreen() {
   const insets = useSafeAreaInsets();
   const scrollRef = useRef<ScrollView>(null);
   const [durationText, setDurationText] = useState('00:00');
+  const [tuningOpen, setTuningOpen] = useState(false);
   const snapshot = useVoiceCallStore((state) => state.snapshot);
   const starting = useVoiceCallStore((state) => state.starting);
   const startCall = useVoiceCallStore((state) => state.startCall);
@@ -63,6 +105,8 @@ export default function VoiceCallScreen() {
   const minimizeToFloatingBall = useVoiceCallStore((state) => state.minimizeToFloatingBall);
   const restoreFromFloatingBall = useVoiceCallStore((state) => state.restoreFromFloatingBall);
   const appearanceConfig = useSettingsStore((state) => state.appearanceConfig);
+  const voiceCallTuningConfig = useSettingsStore((state) => state.voiceCallTuningConfig);
+  const setVoiceCallTuningConfig = useSettingsStore((state) => state.setVoiceCallTuningConfig);
   const assistantName = (appearanceConfig?.assistantDisplayName || 'Claude').trim() || 'Claude';
   const assistantAvatarUri = appearanceConfig?.assistantAvatarImageUri;
 
@@ -147,7 +191,18 @@ export default function VoiceCallScreen() {
         <Pressable style={styles.pipButton} onPress={handleMinimize} disabled={!snapshot.active}>
           <PictureInPicture2 size={27} color="rgba(255,255,255,0.78)" strokeWidth={1.7} />
         </Pressable>
+        <Pressable style={styles.tuningButton} onPress={() => setTuningOpen(true)}>
+          <SlidersHorizontal size={24} color="rgba(255,255,255,0.82)" strokeWidth={1.9} />
+        </Pressable>
       </View>
+
+      <VoiceTuningModal
+        visible={tuningOpen}
+        config={voiceCallTuningConfig}
+        onClose={() => setTuningOpen(false)}
+        onChange={setVoiceCallTuningConfig}
+        onReset={() => setVoiceCallTuningConfig(createDefaultVoiceCallTuningConfig())}
+      />
 
       <View style={styles.profileSection}>
         <View style={styles.avatar}>
@@ -245,6 +300,114 @@ function ControlButton({
   );
 }
 
+function VoiceTuningModal({
+  visible,
+  config,
+  onClose,
+  onChange,
+  onReset,
+}: {
+  visible: boolean;
+  config: VoiceCallTuningConfig;
+  onClose: () => void;
+  onChange: (config: Partial<VoiceCallTuningConfig>) => void;
+  onReset: () => void;
+}) {
+  const groups = useMemo(() => {
+    return TUNING_FIELDS.reduce<Array<{ title: string; fields: TuningField[] }>>((result, field) => {
+      const group = result.find((item) => item.title === field.group);
+      if (group) {
+        group.fields.push(field);
+      } else {
+        result.push({ title: field.group, fields: [field] });
+      }
+      return result;
+    }, []);
+  }, []);
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={styles.modalBackdrop}>
+        <View style={styles.tuningPanel}>
+          <View style={styles.tuningHeader}>
+            <Text style={styles.tuningTitle}>语音调参</Text>
+            <View style={styles.tuningHeaderActions}>
+              <Pressable style={styles.tuningIconButton} onPress={onReset}>
+                <RotateCcw size={18} color="#d8d8d8" strokeWidth={2} />
+              </Pressable>
+              <Pressable style={styles.tuningIconButton} onPress={onClose}>
+                <X size={20} color="#d8d8d8" strokeWidth={2} />
+              </Pressable>
+            </View>
+          </View>
+          <ScrollView style={styles.tuningScroll} contentContainerStyle={styles.tuningScrollContent}>
+            {groups.map((group) => (
+              <View key={group.title} style={styles.tuningGroup}>
+                <Text style={styles.tuningGroupTitle}>{group.title}</Text>
+                {group.fields.map((field) => (
+                  <TuningRow
+                    key={field.key}
+                    field={field}
+                    value={config[field.key]}
+                    onChange={(value) => onChange({ [field.key]: value } as Partial<VoiceCallTuningConfig>)}
+                  />
+                ))}
+              </View>
+            ))}
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+function TuningRow({
+  field,
+  value,
+  onChange,
+}: {
+  field: TuningField;
+  value: number;
+  onChange: (value: number) => void;
+}) {
+  const decimals = field.decimals ?? 0;
+  const formatted = decimals > 0 ? value.toFixed(decimals) : String(Math.round(value));
+  const commitText = (text: string) => {
+    const numeric = Number(text.replace(',', '.'));
+    if (Number.isFinite(numeric)) {
+      onChange(decimals > 0 ? Number(numeric.toFixed(decimals)) : Math.round(numeric));
+    }
+  };
+  const adjust = (direction: -1 | 1) => {
+    const next = value + direction * field.step;
+    onChange(decimals > 0 ? Number(next.toFixed(decimals)) : Math.round(next));
+  };
+
+  return (
+    <View style={styles.tuningRow}>
+      <View style={styles.tuningLabelBlock}>
+        <Text style={styles.tuningLabel} numberOfLines={1}>{field.label}</Text>
+        {!!field.unit && <Text style={styles.tuningUnit}>{field.unit}</Text>}
+      </View>
+      <View style={styles.tuningStepper}>
+        <Pressable style={styles.stepButton} onPress={() => adjust(-1)}>
+          <Text style={styles.stepButtonText}>-</Text>
+        </Pressable>
+        <TextInput
+          style={styles.tuningInput}
+          value={formatted}
+          keyboardType="numeric"
+          selectTextOnFocus
+          onChangeText={commitText}
+        />
+        <Pressable style={styles.stepButton} onPress={() => adjust(1)}>
+          <Text style={styles.stepButtonText}>+</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
@@ -253,12 +416,20 @@ const styles = StyleSheet.create({
   topBar: {
     paddingHorizontal: 16,
     minHeight: 56,
-    justifyContent: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   pipButton: {
     width: 42,
     height: 42,
     alignItems: 'flex-start',
+    justifyContent: 'center',
+  },
+  tuningButton: {
+    width: 42,
+    height: 42,
+    alignItems: 'flex-end',
     justifyContent: 'center',
   },
   profileSection: {
@@ -394,5 +565,114 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.58)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+  },
+  tuningPanel: {
+    width: '100%',
+    maxWidth: 520,
+    maxHeight: '82%',
+    backgroundColor: '#252525',
+    borderRadius: 8,
+    overflow: 'hidden',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.14)',
+  },
+  tuningHeader: {
+    height: 56,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(255,255,255,0.12)',
+  },
+  tuningTitle: {
+    color: '#f1f1f1',
+    fontSize: 17,
+    fontWeight: '700',
+  },
+  tuningHeaderActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  tuningIconButton: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tuningScroll: {
+    maxHeight: 560,
+  },
+  tuningScrollContent: {
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    gap: 18,
+  },
+  tuningGroup: {
+    gap: 10,
+  },
+  tuningGroupTitle: {
+    color: '#9bbfe3',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  tuningRow: {
+    minHeight: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  tuningLabelBlock: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  tuningLabel: {
+    color: '#e2e2e2',
+    fontSize: 14,
+  },
+  tuningUnit: {
+    color: '#888888',
+    fontSize: 11,
+  },
+  tuningStepper: {
+    width: 156,
+    height: 38,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 6,
+    overflow: 'hidden',
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.14)',
+  },
+  stepButton: {
+    width: 38,
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.07)',
+  },
+  stepButtonText: {
+    color: '#f0f0f0',
+    fontSize: 20,
+    fontWeight: '600',
+  },
+  tuningInput: {
+    flex: 1,
+    height: '100%',
+    color: '#ffffff',
+    fontSize: 14,
+    textAlign: 'center',
+    fontVariant: ['tabular-nums'],
+    paddingHorizontal: 4,
+  },
 });
-

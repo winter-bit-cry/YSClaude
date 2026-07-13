@@ -26,6 +26,7 @@ import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReactMethod
+import com.facebook.react.bridge.ReadableMap
 import com.facebook.react.modules.core.DeviceEventManagerModule
 import java.nio.ByteBuffer
 import java.io.File
@@ -44,7 +45,7 @@ class VoiceCallAudioModule(
   companion object {
     private const val PLAYBACK_START_GUARD_MS = 120L
     private const val BARGE_IN_PREROLL_MS = 320
-    private const val BARGE_IN_MIN_SPEECH_MS = 40
+    private const val BARGE_IN_MIN_SPEECH_MS = 20
     private const val BARGE_IN_COOLDOWN_MS = 700L
     private const val BARGE_IN_RECOGNITION_OPEN_MS = 2_500L
     private const val MIC_PREROLL_MS = 720
@@ -95,6 +96,19 @@ class VoiceCallAudioModule(
   private var micSilenceMs = 0
   private var micNoiseRms = MIC_INITIAL_NOISE_RMS
   private var speakerVolume = 1.0f
+  private var bargeInMinSpeechMs = BARGE_IN_MIN_SPEECH_MS
+  private var bargeInRmsFloor = 180.0
+  private var bargeInEchoMultiplier = 0.38
+  private var bargeInPeakThreshold = 380
+  private var bargeInClearPeakThreshold = 1_600
+  private var bargeInClearRmsThreshold = 160.0
+  private var playbackMicSuppressMs = 1_000L
+  private var afterPlaybackSuppressMs = 900L
+  private var micStartMinSpeechMs = MIC_START_MIN_SPEECH_MS
+  private var micEndSilenceMs = MIC_END_SILENCE_MS
+  private var micTrailingAudioMs = MIC_TRAILING_AUDIO_MS
+  private var micMinStartRms = MIC_MIN_START_RMS
+  private var micMinActiveRms = MIC_MIN_ACTIVE_RMS
 
   @ReactMethod
   fun startMic(sampleRate: Double, chunkMs: Double, promise: Promise) {
@@ -296,6 +310,28 @@ class VoiceCallAudioModule(
       promise.resolve(true)
     } catch (error: Exception) {
       promise.reject("VOICE_CALL_AUDIO_VOLUME", error)
+    }
+  }
+
+  @ReactMethod
+  fun setTuningConfig(config: ReadableMap, promise: Promise) {
+    try {
+      bargeInMinSpeechMs = readDouble(config, "bargeInMinSpeechMs", bargeInMinSpeechMs.toDouble()).toInt().coerceIn(10, 500)
+      bargeInRmsFloor = readDouble(config, "bargeInRmsFloor", bargeInRmsFloor).coerceIn(50.0, 3_000.0)
+      bargeInEchoMultiplier = readDouble(config, "bargeInEchoMultiplier", bargeInEchoMultiplier).coerceIn(0.05, 3.0)
+      bargeInPeakThreshold = readDouble(config, "bargeInPeakThreshold", bargeInPeakThreshold.toDouble()).toInt().coerceIn(100, 8_000)
+      bargeInClearPeakThreshold = readDouble(config, "bargeInClearPeakThreshold", bargeInClearPeakThreshold.toDouble()).toInt().coerceIn(200, 12_000)
+      bargeInClearRmsThreshold = readDouble(config, "bargeInClearRmsThreshold", bargeInClearRmsThreshold).coerceIn(50.0, 3_000.0)
+      playbackMicSuppressMs = readDouble(config, "playbackMicSuppressMs", playbackMicSuppressMs.toDouble()).toLong().coerceIn(0L, 3_000L)
+      afterPlaybackSuppressMs = readDouble(config, "afterPlaybackSuppressMs", afterPlaybackSuppressMs.toDouble()).toLong().coerceIn(0L, 3_000L)
+      micStartMinSpeechMs = readDouble(config, "micStartMinSpeechMs", micStartMinSpeechMs.toDouble()).toInt().coerceIn(10, 500)
+      micEndSilenceMs = readDouble(config, "micEndSilenceMs", micEndSilenceMs.toDouble()).toInt().coerceIn(200, 4_000)
+      micTrailingAudioMs = readDouble(config, "micTrailingAudioMs", micTrailingAudioMs.toDouble()).toInt().coerceIn(100, 4_000)
+      micMinStartRms = readDouble(config, "micMinStartRms", micMinStartRms).coerceIn(50.0, 3_000.0)
+      micMinActiveRms = readDouble(config, "micMinActiveRms", micMinActiveRms).coerceIn(50.0, 3_000.0)
+      promise.resolve(true)
+    } catch (error: Exception) {
+      promise.reject("VOICE_CALL_AUDIO_TUNING", error)
     }
   }
 
@@ -616,11 +652,12 @@ class VoiceCallAudioModule(
   }
 
   private fun suppressMicForPlayback() {
-    micSuppressedUntilMs.set(System.currentTimeMillis() + 1_000)
+    if (bargeInTriggered.get()) return
+    micSuppressedUntilMs.set(System.currentTimeMillis() + playbackMicSuppressMs)
   }
 
   private fun suppressMicAfterPlayback() {
-    micSuppressedUntilMs.set(System.currentTimeMillis() + 900)
+    micSuppressedUntilMs.set(System.currentTimeMillis() + afterPlaybackSuppressMs)
   }
 
   private fun endPlaybackGate() {
@@ -665,8 +702,10 @@ class VoiceCallAudioModule(
     }
 
     val peak = calculatePcmPeak(payload)
-    val threshold = maxOf(360.0, playbackEchoRms * 0.75)
-    val loudNearSpeech = rms >= threshold && peak >= 650
+    val threshold = maxOf(bargeInRmsFloor, playbackEchoRms * bargeInEchoMultiplier)
+    val loudNearSpeech =
+      (rms >= threshold && peak >= bargeInPeakThreshold) ||
+        (peak >= bargeInClearPeakThreshold && rms >= bargeInClearRmsThreshold)
     if (loudNearSpeech) {
       bargeInSpeechMs += chunkMs
     } else {
@@ -674,7 +713,7 @@ class VoiceCallAudioModule(
       bargeInSpeechMs = maxOf(0, bargeInSpeechMs - chunkMs * 2)
     }
 
-    return bargeInSpeechMs >= BARGE_IN_MIN_SPEECH_MS && now - bargeInLastEventAtMs >= BARGE_IN_COOLDOWN_MS
+    return bargeInSpeechMs >= bargeInMinSpeechMs && now - bargeInLastEventAtMs >= BARGE_IN_COOLDOWN_MS
   }
 
   private fun updatePlaybackEchoFloor(rms: Double, fast: Boolean) {
@@ -717,7 +756,7 @@ class VoiceCallAudioModule(
     if (likelySpeech) {
       micSpeechMs += chunkMs
       micSilenceMs = 0
-      if (!micSpeechActive && micSpeechMs >= MIC_START_MIN_SPEECH_MS) {
+      if (!micSpeechActive && micSpeechMs >= micStartMinSpeechMs) {
         micSpeechActive = true
         emitMicPreroll(sampleRate)
         return
@@ -730,10 +769,10 @@ class VoiceCallAudioModule(
 
     if (micSpeechActive) {
       micSilenceMs += chunkMs
-      if (micSilenceMs <= MIC_TRAILING_AUDIO_MS) {
+      if (micSilenceMs <= micTrailingAudioMs) {
         emitMicChunk(payload, sampleRate)
       }
-      if (micSilenceMs >= MIC_END_SILENCE_MS) {
+      if (micSilenceMs >= micEndSilenceMs) {
         micSpeechActive = false
         micSpeechMs = 0
         micSilenceMs = 0
@@ -757,13 +796,13 @@ class VoiceCallAudioModule(
 
   private fun isLikelyUserSpeech(rms: Double, peak: Int): Boolean {
     val threshold = if (micSpeechActive) {
-      maxOf(MIC_MIN_ACTIVE_RMS, min(720.0, micNoiseRms * 1.25 + 80.0))
+      maxOf(micMinActiveRms, min(720.0, micNoiseRms * 1.25 + 80.0))
     } else {
-      maxOf(MIC_MIN_START_RMS, min(900.0, micNoiseRms * 1.45 + 100.0))
+      maxOf(micMinStartRms, min(900.0, micNoiseRms * 1.45 + 100.0))
     }
     val peakThreshold = if (micSpeechActive) 650 else 850
     val sustainedSpeech = rms >= threshold && peak >= peakThreshold
-    val clearSpeechPeak = peak >= 3_200 && rms >= maxOf(MIC_MIN_ACTIVE_RMS, micNoiseRms * 1.2)
+    val clearSpeechPeak = peak >= 3_200 && rms >= maxOf(micMinActiveRms, micNoiseRms * 1.2)
     return sustainedSpeech || clearSpeechPeak
   }
 
@@ -837,6 +876,15 @@ class VoiceCallAudioModule(
         putBoolean("active", active)
       }
     )
+  }
+
+  private fun readDouble(config: ReadableMap, key: String, fallback: Double): Double {
+    if (!config.hasKey(key) || config.isNull(key)) return fallback
+    return try {
+      config.getDouble(key)
+    } catch (_: Exception) {
+      fallback
+    }
   }
 
   private fun applySpeakerVolume(track: AudioTrack) {
