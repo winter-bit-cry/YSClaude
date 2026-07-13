@@ -552,13 +552,17 @@ async function transcribeMessageVoice(
       ? sttConfig.fishBaseUrl
       : provider === 'deepgram'
         ? sttConfig.deepgramBaseUrl
-        : sttConfig.openAiBaseUrl.trim() || chatConfig?.baseUrl || '';
+        : provider === 'aliyun'
+          ? sttConfig.aliyunBaseUrl
+          : sttConfig.openAiBaseUrl.trim() || chatConfig?.baseUrl || '';
   const apiKey =
     provider === 'fish'
       ? sttConfig.fishApiKey
       : provider === 'deepgram'
         ? sttConfig.deepgramApiKey
-        : sttConfig.openAiApiKey.trim() || chatConfig?.apiKey || '';
+        : provider === 'aliyun'
+          ? sttConfig.aliyunApiKey
+          : sttConfig.openAiApiKey.trim() || chatConfig?.apiKey || '';
 
   if (!baseUrl || !apiKey) {
     const providerLabel =
@@ -566,7 +570,9 @@ async function transcribeMessageVoice(
         ? 'Fish Audio'
         : provider === 'deepgram'
           ? 'Deepgram'
-          : 'STT 或主聊天';
+          : provider === 'aliyun'
+            ? '阿里百炼'
+            : 'STT 或主聊天';
     const failed = {
       ...voice,
       transcriptStatus: 'failed' as const,
@@ -592,9 +598,13 @@ async function transcribeMessageVoice(
       fileName: `${voice.id}${extensionFromUri(voice.uri)}`,
       model: provider === 'deepgram'
         ? sttConfig.deepgramModel || 'nova-3'
+        : provider === 'aliyun'
+          ? sttConfig.aliyunModel || 'qwen3-asr-flash-realtime'
         : sttConfig.openAiModel || 'whisper-1',
       language: provider === 'deepgram'
         ? sttConfig.deepgramLanguage
+        : provider === 'aliyun'
+          ? sttConfig.aliyunLanguage
         : sttConfig.fishLanguage,
       ignoreTimestamps: sttConfig.fishIgnoreTimestamps,
     });

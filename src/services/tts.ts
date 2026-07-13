@@ -13,10 +13,16 @@ export function isTTSConfigReady(config: TTSConfig): boolean {
   if (config.provider === 'deepgram') {
     return !!config.deepgramApiKey.trim() && !!config.deepgramModel.trim();
   }
+  if (config.provider === 'cartesia') {
+    return !!config.cartesiaApiKey.trim() && !!config.cartesiaVoiceId.trim();
+  }
   return !!config.apiKey.trim() && !!config.groupId.trim() && !!config.voiceId.trim();
 }
 
 export function getTTSConfigMissingMessage(config: TTSConfig): string {
+  if (config.provider === 'cartesia') {
+    return '请先配置 Cartesia API Key 和 Voice ID';
+  }
   if (config.provider === 'fish') {
     return '请先配置 Fish Audio API Key 和 Reference ID';
   }
@@ -36,6 +42,9 @@ async function createTTSPlayer(text: string, config: TTSConfig): Promise<ReturnT
   }
   if (config.provider === 'deepgram') {
     return createDeepgramTTSPlayer(speakableText, config);
+  }
+  if (config.provider === 'cartesia') {
+    return createCartesiaTTSPlayer(speakableText, config);
   }
   return createMiniMaxTTSPlayer(speakableText, config);
 }
@@ -191,6 +200,63 @@ async function createDeepgramTTSPlayer(speakableText: string, config: TTSConfig)
   return createAudioPlayer(file.uri);
 }
 
+async function createCartesiaTTSPlayer(speakableText: string, config: TTSConfig): Promise<ReturnType<typeof createAudioPlayer>> {
+  const apiKey = config.cartesiaApiKey.trim();
+  const voiceId = config.cartesiaVoiceId.trim();
+  if (!apiKey) {
+    throw new Error('请先配置 Cartesia API Key');
+  }
+  if (!voiceId) {
+    throw new Error('请先配置 Cartesia Voice ID');
+  }
+
+  const response = await fetch(buildCartesiaTtsBytesEndpoint(config.cartesiaBaseUrl), {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Cartesia-Version': '2026-03-01',
+      'Content-Type': 'application/json',
+      Accept: 'audio/mpeg',
+    },
+    body: JSON.stringify({
+      model_id: config.cartesiaModel.trim() || 'sonic-3.5',
+      transcript: speakableText,
+      voice: {
+        mode: 'id',
+        id: voiceId,
+      },
+      language: normalizeCartesiaLanguage(config.cartesiaLanguage),
+      output_format: {
+        container: 'mp3',
+        sample_rate: 44100,
+        bit_rate: 128000,
+      },
+      generation_config: {
+        speed: clampNumber(config.cartesiaSpeed, 0.6, 1.5, 1),
+        volume: clampNumber(config.cartesiaVolume, 0.5, 2, 1),
+      },
+    }),
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`Cartesia TTS Error ${response.status}: ${errText.slice(0, 200)}`);
+  }
+
+  const audioBytes = new Uint8Array(await response.arrayBuffer());
+  if (audioBytes.length === 0) {
+    throw new Error('Cartesia 未返回音频数据');
+  }
+
+  const file = new File(Paths.cache, 'tts_audio_cartesia.mp3');
+  const writable = file.writableStream();
+  const writer = writable.getWriter();
+  await writer.write(audioBytes);
+  await writer.close();
+
+  return createAudioPlayer(file.uri);
+}
+
 function buildDeepgramSpeakEndpoint(baseUrl: string, model: string): string {
   const url = new URL(baseUrl.trim() || 'https://api.deepgram.com/v1');
   const path = url.pathname.replace(/\/$/, '');
@@ -203,6 +269,22 @@ function buildDeepgramSpeakEndpoint(baseUrl: string, model: string): string {
   }
   url.searchParams.set('model', model.trim() || 'aura-2-thalia-en');
   return url.toString();
+}
+
+function buildCartesiaTtsBytesEndpoint(baseUrl: string): string {
+  const url = new URL(baseUrl.trim() || 'https://api.cartesia.ai');
+  const path = url.pathname.replace(/\/$/, '');
+  url.pathname = path.endsWith('/tts/bytes') ? path : `${path || ''}/tts/bytes`;
+  return url.toString();
+}
+
+function normalizeCartesiaLanguage(language: string): string {
+  return (language || 'zh').trim() || 'zh';
+}
+
+function clampNumber(value: number, min: number, max: number, fallback: number): number {
+  if (!Number.isFinite(value)) return fallback;
+  return Math.min(max, Math.max(min, value));
 }
 
 export async function playTTS(text: string, config: TTSConfig): Promise<void> {

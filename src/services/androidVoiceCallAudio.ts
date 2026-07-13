@@ -28,6 +28,8 @@ interface VoiceCallAudioModule {
   startMp3Speaker(sampleRate: number, channels: number): Promise<boolean>;
   setSpeakerphoneOn(enabled: boolean): Promise<boolean>;
   writeMp3Chunk(base64: string): Promise<boolean>;
+  writePcmChunk(base64: string): Promise<boolean>;
+  finishPcmPlayback(): Promise<boolean>;
   enqueueMp3Clip(base64: string): Promise<boolean>;
   clearSpeaker(): Promise<boolean>;
   stopSpeaker(): Promise<boolean>;
@@ -67,6 +69,14 @@ export async function setVoiceCallSpeakerphoneOn(enabled: boolean): Promise<void
 
 export async function writeVoiceCallMp3Chunk(base64: string): Promise<void> {
   await requireVoiceCallAudio().writeMp3Chunk(base64);
+}
+
+export async function writeVoiceCallPcmChunk(base64: string): Promise<void> {
+  await requireVoiceCallAudio().writePcmChunk(base64);
+}
+
+export async function finishVoiceCallPcmPlayback(): Promise<void> {
+  await requireVoiceCallAudio().finishPcmPlayback();
 }
 
 export async function enqueueVoiceCallMp3Clip(base64: string): Promise<void> {

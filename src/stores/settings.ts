@@ -74,7 +74,7 @@ export type { PromptCacheCompatibility, PromptCacheTtl, ThinkingCompatibility, T
 // HiddenRange 已迁移到 src/types，这里 re-export 保持旧的 import 路径兼容。
 export type { HiddenRange } from '../types';
 
-export type TTSProvider = 'minimax' | 'fish' | 'deepgram';
+export type TTSProvider = 'minimax' | 'fish' | 'deepgram' | 'cartesia';
 
 export interface TTSConfig {
   provider: TTSProvider;
@@ -95,9 +95,16 @@ export interface TTSConfig {
   deepgramBaseUrl: string;
   deepgramApiKey: string;
   deepgramModel: string;
+  cartesiaBaseUrl: string;
+  cartesiaApiKey: string;
+  cartesiaModel: string;
+  cartesiaVoiceId: string;
+  cartesiaLanguage: string;
+  cartesiaSpeed: number;
+  cartesiaVolume: number;
 }
 
-export type STTProvider = 'openai' | 'fish' | 'deepgram';
+export type STTProvider = 'openai' | 'fish' | 'deepgram' | 'aliyun';
 
 export interface STTConfig {
   provider: STTProvider;
@@ -112,6 +119,11 @@ export interface STTConfig {
   deepgramApiKey: string;
   deepgramModel: string;
   deepgramLanguage: string;
+  aliyunBaseUrl: string;
+  aliyunApiKey: string;
+  aliyunModel: string;
+  aliyunLanguage: string;
+  aliyunSemanticVad: boolean;
 }
 
 export interface MemoryVaultConfig {
@@ -529,7 +541,7 @@ function normalizeImageGenerationConfig(config?: Partial<ImageGenerationConfig>)
 
 function normalizeSTTConfig(config?: Partial<STTConfig>): STTConfig {
   const provider =
-    config?.provider === 'fish' || config?.provider === 'deepgram'
+    config?.provider === 'fish' || config?.provider === 'deepgram' || config?.provider === 'aliyun'
       ? config.provider
       : 'openai';
   return {
@@ -545,12 +557,17 @@ function normalizeSTTConfig(config?: Partial<STTConfig>): STTConfig {
     deepgramApiKey: config?.deepgramApiKey || '',
     deepgramModel: config?.deepgramModel || 'nova-3',
     deepgramLanguage: config?.deepgramLanguage || '',
+    aliyunBaseUrl: config?.aliyunBaseUrl || 'wss://dashscope.aliyuncs.com/api-ws/v1/realtime',
+    aliyunApiKey: config?.aliyunApiKey || '',
+    aliyunModel: config?.aliyunModel || 'qwen3-asr-flash-realtime',
+    aliyunLanguage: config?.aliyunLanguage || 'zh',
+    aliyunSemanticVad: config?.aliyunSemanticVad ?? true,
   };
 }
 
 function normalizeTTSConfig(config?: Partial<TTSConfig>): TTSConfig {
   const provider =
-    config?.provider === 'fish' || config?.provider === 'deepgram'
+    config?.provider === 'fish' || config?.provider === 'deepgram' || config?.provider === 'cartesia'
       ? config.provider
       : 'minimax';
   return {
@@ -575,6 +592,13 @@ function normalizeTTSConfig(config?: Partial<TTSConfig>): TTSConfig {
     deepgramBaseUrl: config?.deepgramBaseUrl || 'https://api.deepgram.com/v1',
     deepgramApiKey: config?.deepgramApiKey || '',
     deepgramModel: config?.deepgramModel || 'aura-2-thalia-en',
+    cartesiaBaseUrl: config?.cartesiaBaseUrl || 'https://api.cartesia.ai',
+    cartesiaApiKey: config?.cartesiaApiKey || '',
+    cartesiaModel: config?.cartesiaModel || 'sonic-3.5',
+    cartesiaVoiceId: config?.cartesiaVoiceId || '',
+    cartesiaLanguage: config?.cartesiaLanguage || 'zh',
+    cartesiaSpeed: config?.cartesiaSpeed ?? 1,
+    cartesiaVolume: config?.cartesiaVolume ?? 1,
   };
 }
 

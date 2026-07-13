@@ -4,7 +4,7 @@ import { File, UploadType } from 'expo-file-system';
 const DEFAULT_TRANSCRIPTION_MODEL = 'whisper-1';
 
 export interface TranscribeVoiceRequest {
-  provider?: 'openai' | 'fish' | 'deepgram';
+  provider?: 'openai' | 'fish' | 'deepgram' | 'aliyun';
   baseUrl: string;
   apiKey: string;
   uri: string;
@@ -47,6 +47,10 @@ export async function transcribeVoice({
       model,
       language,
     });
+  }
+
+  if (provider === 'aliyun') {
+    throw new Error('阿里实时 STT 目前仅用于语音通话，录音文件转写暂未接入');
   }
 
   return transcribeOpenAI({

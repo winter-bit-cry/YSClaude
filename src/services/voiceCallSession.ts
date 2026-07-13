@@ -1,7 +1,7 @@
 import { requestRecordingPermissionsAsync } from 'expo-audio';
 import { Platform } from 'react-native';
 import { useChatStore } from '../stores/chat';
-import { useSettingsStore, type TTSConfig } from '../stores/settings';
+import { useSettingsStore, type STTConfig, type TTSConfig } from '../stores/settings';
 import {
   addVoiceCallAudioChunkListener,
   addVoiceCallAudioErrorListener,
@@ -10,12 +10,14 @@ import {
   addVoiceCallPlaybackListener,
   clearVoiceCallSpeaker,
   enqueueVoiceCallMp3Clip,
+  finishVoiceCallPcmPlayback,
   isAndroidVoiceCallAudioAvailable,
   setVoiceCallSpeakerphoneOn,
   startVoiceCallMic,
   startVoiceCallSpeaker,
   stopVoiceCallMic,
   stopVoiceCallAudio,
+  writeVoiceCallPcmChunk,
 } from './androidVoiceCallAudio';
 
 type VoiceCallStatus = 'idle' | 'connecting' | 'listening' | 'thinking' | 'speaking' | 'stopping' | 'error';
@@ -48,12 +50,22 @@ type DeepgramWebSocketAuthAttempt = {
 };
 
 const DEEPGRAM_SAMPLE_RATE = 16000;
+const ALIYUN_SAMPLE_RATE = 16000;
 const MINIMAX_SAMPLE_RATE = 32000;
+const CARTESIA_SAMPLE_RATE = 24000;
+const CARTESIA_VERSION = '2026-03-01';
+const CARTESIA_FINISH_PLAYBACK_DELAY_MS = 700;
+const DEEPGRAM_FLUX_SILENCE_KEEPALIVE_MS = 200;
+const DEEPGRAM_FLUX_EOT_THRESHOLD = '0.8';
+const DEEPGRAM_FLUX_EOT_TIMEOUT_MS = '7000';
+const ALIYUN_MANUAL_COMMIT_SILENCE_MS = 900;
 const PLAYBACK_RECOGNITION_SUPPRESS_MS = 900;
 const BARGE_IN_RECOGNITION_OPEN_MS = 2500;
-const PENDING_TRANSCRIPT_FLUSH_MS = 1500;
-const LOCAL_SPEECH_END_FLUSH_MS = 900;
-const DUPLICATE_USER_TEXT_WINDOW_MS = 6000;
+const PENDING_TRANSCRIPT_FLUSH_MS = 2200;
+const LOCAL_SPEECH_END_FLUSH_MS = 1150;
+const CHINESE_PENDING_TRANSCRIPT_FLUSH_MS = 3400;
+const CHINESE_LOCAL_SPEECH_END_FLUSH_MS = 2400;
+const DUPLICATE_USER_TEXT_WINDOW_MS = 45000;
 const TTS_SEGMENT_BOUNDARY = /[。！？!?；;，,、\n]/;
 const MAX_TTS_SEGMENT_CHARS = 44;
 const MINIMAX_TASK_START_FALLBACK_MS = 350;
@@ -99,8 +111,13 @@ export class AndroidVoiceCallSession {
   private playbackSubscription: Subscription | null = null;
   private chatSubscription: (() => void) | null = null;
   private deepgramWs: WebSocket | null = null;
+  private aliyunWs: WebSocket | null = null;
   private minimaxWs: WebSocket | null = null;
+  private cartesiaWs: WebSocket | null = null;
+  private cartesiaContextId: string | null = null;
+  private cartesiaFinishTimer: ReturnType<typeof setTimeout> | null = null;
   private deepgramKeepAlive: ReturnType<typeof setInterval> | null = null;
+  private deepgramFluxMode = false;
   private finalTranscriptParts: string[] = [];
   private lastInterimTranscript = '';
   private pendingTranscriptFlushTimer: ReturnType<typeof setTimeout> | null = null;
@@ -122,6 +139,9 @@ export class AndroidVoiceCallSession {
   private bargeInRecognitionOpenUntil = 0;
   private lastSubmittedUserText = '';
   private lastSubmittedUserTextAt = 0;
+  private listeningStartedAt = 0;
+  private sentAudioInCurrentListeningWindow = false;
+  private lastMicAudioSentAt = 0;
 
   subscribe(listener: SnapshotListener): Subscription {
     this.listeners.add(listener);
@@ -159,12 +179,12 @@ export class AndroidVoiceCallSession {
         ],
       });
       this.flushPendingTtsText(true);
-      this.finishMiniMax();
+      this.finishAssistantTts();
       if (useChatStore.getState().error) {
         throw new Error(useChatStore.getState().error || 'AI 主动语音开场失败');
       }
       if (this.snapshot.active && this.snapshot.status !== 'error') {
-        this.update({ status: 'listening' });
+        this.enterListeningState();
       }
     } catch (error: any) {
       this.fail(error?.message || 'AI 主动语音开场失败');
@@ -186,17 +206,23 @@ export class AndroidVoiceCallSession {
     if (!settings._hydrated) {
       throw new Error('设置还没有加载完成');
     }
-    if (settings.sttConfig.provider !== 'deepgram') {
-      throw new Error('语音通话需要在设置中将 STT 选择为 Deepgram');
+    if (settings.sttConfig.provider !== 'deepgram' && settings.sttConfig.provider !== 'aliyun') {
+      throw new Error('语音通话需要在设置中将 STT 选择为 Deepgram 或阿里百炼');
     }
-    if (settings.ttsConfig.provider !== 'minimax') {
+    if (settings.ttsConfig.provider !== 'minimax' && settings.ttsConfig.provider !== 'cartesia') {
       throw new Error('语音通话当前仅支持 MiniMax TTS');
     }
-    if (!settings.sttConfig.deepgramApiKey.trim()) {
+    if (settings.sttConfig.provider === 'deepgram' && !settings.sttConfig.deepgramApiKey.trim()) {
       throw new Error('请先配置 Deepgram API Key');
     }
-    if (!settings.ttsConfig.apiKey.trim() || !settings.ttsConfig.voiceId.trim()) {
+    if (settings.sttConfig.provider === 'aliyun' && !settings.sttConfig.aliyunApiKey.trim()) {
+      throw new Error('请先配置阿里百炼 API Key');
+    }
+    if (settings.ttsConfig.provider === 'minimax' && (!settings.ttsConfig.apiKey.trim() || !settings.ttsConfig.voiceId.trim())) {
       throw new Error('请先配置 MiniMax API Key 和 Voice ID');
+    }
+    if (settings.ttsConfig.provider === 'cartesia' && (!settings.ttsConfig.cartesiaApiKey.trim() || !settings.ttsConfig.cartesiaVoiceId.trim())) {
+      throw new Error('请先配置 Cartesia API Key 和 Voice ID');
     }
 
     this.stopping = false;
@@ -226,16 +252,20 @@ export class AndroidVoiceCallSession {
     this.playbackSubscription = addVoiceCallPlaybackListener((event) => {
       this.setAssistantPlaybackActive(!!event.active);
     });
-    await startVoiceCallSpeaker(MINIMAX_SAMPLE_RATE, 1);
+    await startVoiceCallSpeaker(getVoiceCallTtsSampleRate(settings.ttsConfig), 1);
     await setVoiceCallSpeakerphoneOn(false).catch(() => undefined);
-    await this.connectDeepgram();
+    await this.connectRealtimeStt();
   }
 
   async setMicrophoneEnabled(enabled: boolean): Promise<void> {
     if (!this.snapshot.active || this.stopping || this.snapshot.micEnabled === enabled) return;
     if (enabled) {
       await startVoiceCallMic(DEEPGRAM_SAMPLE_RATE, 20);
-      this.update({ micEnabled: true, status: this.snapshot.status === 'idle' ? 'listening' : this.snapshot.status });
+      if (this.snapshot.status === 'idle') {
+        this.enterListeningState({ micEnabled: true });
+      } else {
+        this.update({ micEnabled: true });
+      }
       return;
     }
     await stopVoiceCallMic();
@@ -257,8 +287,8 @@ export class AndroidVoiceCallSession {
       useChatStore.getState().stopStreaming();
     }
     this.cleanupChatBridge();
-    this.closeMiniMax();
-    this.closeDeepgram();
+    this.closeAssistantTts();
+    this.closeRealtimeStt();
     this.clearPendingTranscriptFlush();
     this.audioChunkSubscription?.remove();
     this.audioErrorSubscription?.remove();
@@ -285,6 +315,9 @@ export class AndroidVoiceCallSession {
     this.bargeInRecognitionOpenUntil = 0;
     this.lastSubmittedUserText = '';
     this.lastSubmittedUserTextAt = 0;
+    this.listeningStartedAt = 0;
+    this.sentAudioInCurrentListeningWindow = false;
+    this.lastMicAudioSentAt = 0;
     this.stopping = false;
     await this.closeVoiceCallSystemMessage();
     this.update({
@@ -299,6 +332,15 @@ export class AndroidVoiceCallSession {
     });
   }
 
+  private async connectRealtimeStt(): Promise<void> {
+    const settings = useSettingsStore.getState();
+    if (settings.sttConfig.provider === 'aliyun') {
+      await this.connectAliyun();
+      return;
+    }
+    await this.connectDeepgram();
+  }
+
   private async connectDeepgram(): Promise<void> {
     const settings = useSettingsStore.getState();
     const url = buildDeepgramLiveUrl(
@@ -306,7 +348,8 @@ export class AndroidVoiceCallSession {
       settings.sttConfig.deepgramModel,
       settings.sttConfig.deepgramLanguage
     );
-    const apiKey = settings.sttConfig.deepgramApiKey.trim();
+    this.deepgramFluxMode = isDeepgramFluxModel(settings.sttConfig.deepgramModel);
+    const apiKey = normalizeDeepgramApiKey(settings.sttConfig.deepgramApiKey);
     const attempts: DeepgramWebSocketAuthAttempt[] = [
       {
         label: 'Authorization header',
@@ -355,10 +398,11 @@ export class AndroidVoiceCallSession {
       };
 
       ws.onopen = () => {
-        this.update({ status: 'listening' });
+        this.enterListeningState();
         this.audioChunkSubscription = addVoiceCallAudioChunkListener((event) => {
           if (this.deepgramWs !== ws || ws.readyState !== WebSocket.OPEN) return;
           if (this.shouldSuppressRecognition()) return;
+          this.markMicAudioSent();
           ws.send(base64ToArrayBuffer(event.base64));
         });
         startVoiceCallMic(DEEPGRAM_SAMPLE_RATE, 20).then(
@@ -367,7 +411,9 @@ export class AndroidVoiceCallSession {
         );
         this.deepgramKeepAlive = setInterval(() => {
           if (this.deepgramWs === ws && ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({ type: 'KeepAlive' }));
+            ws.send(this.deepgramFluxMode
+              ? createPcmSilence(DEEPGRAM_SAMPLE_RATE, DEEPGRAM_FLUX_SILENCE_KEEPALIVE_MS)
+              : JSON.stringify({ type: 'KeepAlive' }));
           }
         }, 8000);
       };
@@ -389,11 +435,78 @@ export class AndroidVoiceCallSession {
     });
   }
 
+  private async connectAliyun(): Promise<void> {
+    const settings = useSettingsStore.getState();
+    const url = buildAliyunRealtimeUrl(settings.sttConfig.aliyunBaseUrl, settings.sttConfig.aliyunModel);
+    const ws = new NativeWebSocket(url, undefined, {
+      headers: {
+        Authorization: `Bearer ${settings.sttConfig.aliyunApiKey.trim()}`,
+        'OpenAI-Beta': 'realtime=v1',
+      },
+    } as any);
+    this.aliyunWs = ws;
+    this.deepgramFluxMode = false;
+
+    await new Promise<void>((resolve, reject) => {
+      let settled = false;
+      const settle = (error?: Error) => {
+        if (settled) return;
+        settled = true;
+        if (error) {
+          if (this.aliyunWs === ws) {
+            this.aliyunWs = null;
+          }
+          if (ws.readyState <= WebSocket.OPEN) {
+            ws.close();
+          }
+          reject(error);
+        } else {
+          resolve();
+        }
+      };
+
+      ws.onopen = () => {
+        this.enterListeningState();
+        ws.send(JSON.stringify(buildAliyunSessionUpdateRequest(settings.sttConfig)));
+        this.audioChunkSubscription = addVoiceCallAudioChunkListener((event) => {
+          if (this.aliyunWs !== ws || ws.readyState !== WebSocket.OPEN) return;
+          if (this.shouldSuppressRecognition()) return;
+          this.markMicAudioSent();
+          ws.send(JSON.stringify(buildAliyunAudioAppendRequest(event.base64)));
+        });
+        startVoiceCallMic(ALIYUN_SAMPLE_RATE, 20).then(
+          () => settle(),
+          (error) => settle(error instanceof Error ? error : new Error(String(error)))
+        );
+      };
+
+      ws.onerror = () => settle(new Error('WebSocket 握手未通过'));
+      ws.onclose = (event: any) => {
+        const closeDetail = formatWebSocketClose(event);
+        if (!settled) {
+          settle(new Error(closeDetail ? `WebSocket 握手未通过：${closeDetail}` : 'WebSocket 握手未通过'));
+          return;
+        }
+        if (!this.stopping && this.aliyunWs === ws) {
+          this.fail(closeDetail ? `阿里实时连接已断开：${closeDetail}` : '阿里实时连接已断开');
+        }
+      };
+      ws.onmessage = (message: any) => {
+        this.handleAliyunMessage(String(message.data));
+      };
+    });
+  }
+
   private handleDeepgramMessage(raw: string): void {
     let event: any;
     try {
       event = JSON.parse(raw);
     } catch {
+      return;
+    }
+
+    if (event.type === 'TurnInfo') {
+      this.handleDeepgramFluxTurnInfo(event);
       return;
     }
 
@@ -405,6 +518,10 @@ export class AndroidVoiceCallSession {
     }
 
     if (event.type === 'SpeechStarted') {
+      if (this.snapshot.status === 'listening' && !this.sentAudioInCurrentListeningWindow) {
+        this.clearRecognitionBuffers();
+        return;
+      }
       if (this.snapshot.status === 'speaking' || useChatStore.getState().isStreaming) {
         this.interruptAssistant();
       }
@@ -412,6 +529,10 @@ export class AndroidVoiceCallSession {
     }
 
     if (event.type === 'UtteranceEnd') {
+      if (this.isDeepgramChineseMode()) {
+        this.schedulePendingTranscriptFlush(CHINESE_PENDING_TRANSCRIPT_FLUSH_MS);
+        return;
+      }
       this.flushFinalTranscript();
       return;
     }
@@ -421,8 +542,16 @@ export class AndroidVoiceCallSession {
       this.clearRecognitionBuffers();
       return;
     }
+    if (!this.sentAudioInCurrentListeningWindow) {
+      this.clearRecognitionBuffers();
+      return;
+    }
     const transcript = extractDeepgramTranscript(event);
     if (!transcript) return;
+    if (this.isDuplicateSubmittedUserText(transcript)) {
+      this.clearRecognitionBuffers();
+      return;
+    }
 
     if (event.is_final) {
       this.finalTranscriptParts.push(transcript);
@@ -432,11 +561,127 @@ export class AndroidVoiceCallSession {
       this.lastInterimTranscript = transcript;
       this.update({ partialTranscript: transcript });
     }
-    this.schedulePendingTranscriptFlush();
+    this.schedulePendingTranscriptFlush(this.getPendingTranscriptFlushMs());
 
     if (event.speech_final) {
+      if (this.isDeepgramChineseMode()) {
+        this.schedulePendingTranscriptFlush(CHINESE_PENDING_TRANSCRIPT_FLUSH_MS);
+        return;
+      }
       this.flushFinalTranscript();
     }
+  }
+
+  private handleAliyunMessage(raw: string): void {
+    let event: any;
+    try {
+      event = JSON.parse(raw);
+    } catch {
+      return;
+    }
+
+    const type = String(event.type || '');
+    if (type === 'error') {
+      this.fail(extractAliyunErrorMessage(event));
+      return;
+    }
+
+    if (this.shouldSuppressRecognition()) {
+      if (isAliyunSpeechEvent(type) || isAliyunTranscriptEvent(type)) {
+        this.clearRecognitionBuffers();
+        return;
+      }
+    }
+
+    if (type.includes('speech_started')) {
+      if (this.snapshot.status === 'listening' && !this.sentAudioInCurrentListeningWindow) {
+        this.clearRecognitionBuffers();
+        return;
+      }
+      if (this.snapshot.status === 'speaking' || useChatStore.getState().isStreaming) {
+        this.interruptAssistant();
+      }
+      return;
+    }
+
+    if (type.includes('speech_stopped')) {
+      if (!useSettingsStore.getState().sttConfig.aliyunSemanticVad) {
+        this.commitAliyunAudio();
+      }
+      return;
+    }
+
+    if (!isAliyunTranscriptEvent(type)) return;
+    if (this.snapshot.status !== 'listening') {
+      this.clearRecognitionBuffers();
+      return;
+    }
+    if (!this.sentAudioInCurrentListeningWindow) {
+      this.clearRecognitionBuffers();
+      return;
+    }
+
+    const transcript = extractAliyunTranscript(event);
+    if (!transcript) return;
+    if (this.isDuplicateSubmittedUserText(transcript)) {
+      this.clearRecognitionBuffers();
+      return;
+    }
+
+    if (isAliyunFinalTranscriptEvent(type)) {
+      this.clearPendingTranscriptFlush();
+      this.finalTranscriptParts = [];
+      this.lastInterimTranscript = '';
+      this.update({ partialTranscript: '' });
+      this.lastSubmittedUserText = transcript;
+      this.lastSubmittedUserTextAt = Date.now();
+      this.handleUserTurn(transcript).catch((error) => {
+        this.fail(error?.message || 'Voice turn failed');
+      });
+      return;
+    }
+
+    this.lastInterimTranscript = transcript;
+    this.update({ partialTranscript: transcript });
+    if (!useSettingsStore.getState().sttConfig.aliyunSemanticVad) {
+      this.schedulePendingTranscriptFlush(ALIYUN_MANUAL_COMMIT_SILENCE_MS);
+    }
+  }
+
+  private handleDeepgramFluxTurnInfo(event: any): void {
+    const turnEvent = String(event.event || '');
+    const transcript = extractDeepgramFluxTranscript(event);
+
+    if (turnEvent === 'StartOfTurn') {
+      if (this.snapshot.status === 'speaking' || useChatStore.getState().isStreaming) {
+        this.interruptAssistant();
+      }
+      if (transcript && !this.isDuplicateSubmittedUserText(transcript)) {
+        this.update({ partialTranscript: transcript });
+      }
+      return;
+    }
+
+    if (turnEvent === 'Update' || turnEvent === 'EagerEndOfTurn' || turnEvent === 'TurnResumed') {
+      if (this.snapshot.status !== 'listening') return;
+      if (transcript && !this.isDuplicateSubmittedUserText(transcript)) {
+        this.update({ partialTranscript: transcript });
+      }
+      return;
+    }
+
+    if (turnEvent !== 'EndOfTurn') return;
+    const text = (transcript || this.snapshot.partialTranscript).trim();
+    this.clearPendingTranscriptFlush();
+    this.finalTranscriptParts = [];
+    this.lastInterimTranscript = '';
+    this.update({ partialTranscript: '' });
+    if (!text || this.isDuplicateSubmittedUserText(text)) return;
+    this.lastSubmittedUserText = text;
+    this.lastSubmittedUserTextAt = Date.now();
+    this.handleUserTurn(text).catch((error) => {
+      this.fail(error?.message || 'Voice turn failed');
+    });
   }
 
   private flushFinalTranscript(): void {
@@ -502,21 +747,21 @@ export class AndroidVoiceCallSession {
       additionalRuntimeSections: [VOICE_CALL_RUNTIME_INSTRUCTION],
     });
     this.flushPendingTtsText(true);
-    this.finishMiniMax();
+    this.finishAssistantTts();
     if (this.snapshot.active && this.snapshot.status !== 'error') {
-      this.update({ status: 'listening' });
+      this.enterListeningState();
     }
   }
 
   private startAssistantTtsBridge(): void {
     this.cleanupChatBridge();
-    this.closeMiniMax();
+    this.closeAssistantTts();
     this.activeAssistantId = null;
     this.activeAssistantTranscriptId = null;
     this.lastSpeakableAssistantText = '';
     this.pendingTtsText = '';
     this.ttsTextQueue = [];
-    this.connectMiniMax(useSettingsStore.getState().ttsConfig);
+    this.connectAssistantTts(useSettingsStore.getState().ttsConfig);
 
     this.chatSubscription = useChatStore.subscribe((state) => {
       const last = state.messages[state.messages.length - 1];
@@ -548,15 +793,147 @@ export class AndroidVoiceCallSession {
     while (boundaryIndex >= 0) {
       const segment = this.pendingTtsText.slice(0, boundaryIndex + 1).trim();
       this.pendingTtsText = this.pendingTtsText.slice(boundaryIndex + 1);
-      this.sendMiniMaxText(segment);
+      this.sendAssistantTtsText(segment);
       boundaryIndex = findTtsBoundary(this.pendingTtsText);
     }
 
     if (this.pendingTtsText.length >= MAX_TTS_SEGMENT_CHARS || (force && this.pendingTtsText.trim())) {
       const segment = this.pendingTtsText.trim();
       this.pendingTtsText = '';
-      this.sendMiniMaxText(segment);
+      this.sendAssistantTtsText(segment);
     }
+  }
+
+  private connectAssistantTts(config: TTSConfig): void {
+    if (config.provider === 'cartesia') {
+      this.connectCartesia(config);
+      return;
+    }
+    this.connectMiniMax(config);
+  }
+
+  private sendAssistantTtsText(text: string): void {
+    const config = useSettingsStore.getState().ttsConfig;
+    if (config.provider === 'cartesia') {
+      this.sendCartesiaText(text, config);
+      return;
+    }
+    this.sendMiniMaxText(text);
+  }
+
+  private finishAssistantTts(): void {
+    const config = useSettingsStore.getState().ttsConfig;
+    if (config.provider === 'cartesia') {
+      this.finishCartesia(config);
+      return;
+    }
+    this.finishMiniMax();
+  }
+
+  private connectCartesia(config: TTSConfig): void {
+    this.closeCartesia();
+    const ws = new NativeWebSocket(
+      buildCartesiaWebSocketUrl(config.cartesiaBaseUrl),
+      undefined,
+      {
+        headers: {
+          'X-API-Key': config.cartesiaApiKey.trim(),
+        },
+      } as any
+    );
+    this.cartesiaWs = ws;
+    this.cartesiaContextId = `voice-call-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    this.ttsStarted = false;
+
+    ws.onopen = () => {
+      this.ttsStarted = true;
+      this.drainCartesiaTextQueue();
+    };
+    ws.onerror = () => {
+      this.fail('Cartesia TTS realtime connection failed');
+    };
+    ws.onclose = (event: any) => {
+      if (this.cartesiaWs !== ws || this.stopping) return;
+      const closeDetail = formatWebSocketClose(event);
+      this.fail(closeDetail ? `Cartesia TTS connection closed: ${closeDetail}` : 'Cartesia TTS connection closed');
+    };
+    ws.onmessage = (message: any) => {
+      this.handleCartesiaMessage(String(message.data), ws);
+    };
+  }
+
+  private sendCartesiaText(text: string, config: TTSConfig): void {
+    const normalized = text.trim();
+    if (!normalized) return;
+    this.update({ speakingText: normalized });
+    if (!this.cartesiaWs || this.cartesiaWs.readyState > WebSocket.OPEN) {
+      this.connectCartesia(config);
+    }
+    if (!this.ttsStarted || this.cartesiaWs?.readyState !== WebSocket.OPEN) {
+      this.ttsTextQueue.push(normalized);
+      return;
+    }
+    this.cartesiaWs.send(JSON.stringify(buildCartesiaGenerationRequest(config, this.requireCartesiaContextId(), normalized, true)));
+  }
+
+  private finishCartesia(config: TTSConfig): void {
+    if (this.cartesiaWs?.readyState === WebSocket.OPEN && this.ttsStarted) {
+      this.cartesiaWs.send(JSON.stringify(buildCartesiaGenerationRequest(config, this.requireCartesiaContextId(), '', false)));
+    }
+  }
+
+  private drainCartesiaTextQueue(): void {
+    const queued = [...this.ttsTextQueue];
+    this.ttsTextQueue = [];
+    queued.forEach((text) => this.sendCartesiaText(text, useSettingsStore.getState().ttsConfig));
+  }
+
+  private handleCartesiaMessage(raw: string, ws: WebSocket): void {
+    if (this.cartesiaWs !== ws) return;
+    let event: any;
+    try {
+      event = JSON.parse(raw);
+    } catch {
+      return;
+    }
+
+    if (event.type === 'error') {
+      this.fail(event.message || event.title || 'Cartesia TTS returned an error');
+      return;
+    }
+
+    const audioBase64 = typeof event.data === 'string'
+      ? event.data
+      : typeof event.audio === 'string'
+        ? event.audio
+        : '';
+    if (event.type === 'chunk' && audioBase64) {
+      this.update({ status: 'speaking' });
+      writeVoiceCallPcmChunk(audioBase64).catch((error) => {
+        this.fail(error?.message || 'Failed to play Cartesia audio');
+      });
+    }
+
+    if (event.done || event.type === 'done') {
+      this.scheduleCartesiaPlaybackFinish();
+    }
+  }
+
+  private scheduleCartesiaPlaybackFinish(): void {
+    if (this.cartesiaFinishTimer !== null) {
+      clearTimeout(this.cartesiaFinishTimer);
+    }
+    this.cartesiaFinishTimer = setTimeout(() => {
+      this.cartesiaFinishTimer = null;
+      finishVoiceCallPcmPlayback().catch(() => undefined);
+    }, CARTESIA_FINISH_PLAYBACK_DELAY_MS);
+  }
+
+  private requireCartesiaContextId(): string {
+    if (!this.cartesiaContextId) {
+      this.cartesiaContextId = `voice-call-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    }
+    return this.cartesiaContextId;
   }
 
   private connectMiniMax(config: TTSConfig, endpointIndex = 0): void {
@@ -733,16 +1110,56 @@ export class AndroidVoiceCallSession {
     if (ws && ws.readyState === WebSocket.OPEN) {
       chunks.forEach((chunk) => {
         if (chunk) {
+          this.markMicAudioSent();
           ws.send(base64ToArrayBuffer(chunk));
+        }
+      });
+    }
+
+    const aliyunWs = this.aliyunWs;
+    if (aliyunWs && aliyunWs.readyState === WebSocket.OPEN) {
+      chunks.forEach((chunk) => {
+        if (chunk) {
+          this.markMicAudioSent();
+          aliyunWs.send(JSON.stringify(buildAliyunAudioAppendRequest(chunk)));
         }
       });
     }
   }
 
   private handleLocalSpeechEnd(): void {
+    if (this.deepgramFluxMode) return;
     if (!this.snapshot.active || this.stopping || this.snapshot.status !== 'listening') return;
+    if (this.aliyunWs?.readyState === WebSocket.OPEN) {
+      if (!useSettingsStore.getState().sttConfig.aliyunSemanticVad) {
+        this.commitAliyunAudio();
+        this.schedulePendingTranscriptFlush(ALIYUN_MANUAL_COMMIT_SILENCE_MS);
+      }
+      return;
+    }
     if (!this.finalTranscriptParts.length && !this.lastInterimTranscript && !this.snapshot.partialTranscript) return;
-    this.schedulePendingTranscriptFlush(LOCAL_SPEECH_END_FLUSH_MS);
+    this.schedulePendingTranscriptFlush(this.isDeepgramChineseMode()
+      ? CHINESE_LOCAL_SPEECH_END_FLUSH_MS
+      : LOCAL_SPEECH_END_FLUSH_MS);
+  }
+
+  private getPendingTranscriptFlushMs(): number {
+    return this.isDeepgramChineseMode()
+      ? CHINESE_PENDING_TRANSCRIPT_FLUSH_MS
+      : PENDING_TRANSCRIPT_FLUSH_MS;
+  }
+
+  private isDeepgramChineseMode(): boolean {
+    const settings = useSettingsStore.getState();
+    if (settings.sttConfig.provider !== 'deepgram') return false;
+    if (isDeepgramFluxModel(settings.sttConfig.deepgramModel)) return false;
+    return isChineseDeepgramLanguage(settings.sttConfig.deepgramLanguage);
+  }
+
+  private commitAliyunAudio(): void {
+    const ws = this.aliyunWs;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    ws.send(JSON.stringify(buildAliyunCommitRequest()));
   }
 
   private isDuplicateSubmittedUserText(text: string): boolean {
@@ -750,13 +1167,12 @@ export class AndroidVoiceCallSession {
     const next = normalizeTranscriptForCompare(text);
     if (!previous || !next) return false;
     if (Date.now() - this.lastSubmittedUserTextAt > DUPLICATE_USER_TEXT_WINDOW_MS) return false;
-    if (previous === next) return true;
-    return previous.includes(next) || next.includes(previous);
+    return previous === next;
   }
 
   private interruptAssistant(): void {
     clearVoiceCallSpeaker().catch(() => undefined);
-    this.closeMiniMax();
+    this.closeAssistantTts();
     const chat = useChatStore.getState();
     if (chat.isStreaming) {
       chat.stopStreaming();
@@ -765,7 +1181,7 @@ export class AndroidVoiceCallSession {
     this.pendingTtsText = '';
     this.ttsTextQueue = [];
     this.minimaxAudioHexParts = [];
-    this.update({ status: 'listening', speakingText: '' });
+    this.enterListeningState({ speakingText: '' });
   }
 
   private cleanupChatBridge(): void {
@@ -780,6 +1196,38 @@ export class AndroidVoiceCallSession {
     }
     const ws = this.deepgramWs;
     this.deepgramWs = null;
+    if (ws && ws.readyState <= WebSocket.OPEN) {
+      ws.close();
+    }
+  }
+
+  private closeRealtimeStt(): void {
+    this.closeDeepgram();
+    this.closeAliyun();
+  }
+
+  private closeAliyun(): void {
+    const ws = this.aliyunWs;
+    this.aliyunWs = null;
+    if (ws && ws.readyState <= WebSocket.OPEN) {
+      ws.close();
+    }
+  }
+
+  private closeAssistantTts(): void {
+    this.closeMiniMax();
+    this.closeCartesia();
+  }
+
+  private closeCartesia(): void {
+    if (this.cartesiaFinishTimer !== null) {
+      clearTimeout(this.cartesiaFinishTimer);
+      this.cartesiaFinishTimer = null;
+    }
+    const ws = this.cartesiaWs;
+    this.cartesiaWs = null;
+    this.cartesiaContextId = null;
+    this.ttsStarted = false;
     if (ws && ws.readyState <= WebSocket.OPEN) {
       ws.close();
     }
@@ -815,7 +1263,7 @@ export class AndroidVoiceCallSession {
     if (active) {
       this.update({ status: 'speaking', partialTranscript: '' });
     } else if (!useChatStore.getState().isStreaming && this.snapshot.status === 'speaking') {
-      this.update({ status: 'listening', speakingText: '', partialTranscript: '' });
+      this.enterListeningState({ speakingText: '', partialTranscript: '' });
     }
   }
 
@@ -834,6 +1282,23 @@ export class AndroidVoiceCallSession {
     }
   }
 
+  private enterListeningState(patch: Partial<VoiceCallSnapshot> = {}): void {
+    this.clearRecognitionBuffers();
+    this.listeningStartedAt = Date.now();
+    this.sentAudioInCurrentListeningWindow = false;
+    this.lastMicAudioSentAt = 0;
+    this.update({
+      ...patch,
+      status: 'listening',
+      partialTranscript: '',
+    });
+  }
+
+  private markMicAudioSent(): void {
+    this.sentAudioInCurrentListeningWindow = true;
+    this.lastMicAudioSentAt = Date.now();
+  }
+
   private fail(message: string): void {
     if (this.stopping) return;
     this.stopping = true;
@@ -841,8 +1306,8 @@ export class AndroidVoiceCallSession {
       useChatStore.getState().stopStreaming();
     }
     this.cleanupChatBridge();
-    this.closeMiniMax();
-    this.closeDeepgram();
+    this.closeAssistantTts();
+    this.closeRealtimeStt();
     this.audioChunkSubscription?.remove();
     this.audioErrorSubscription?.remove();
     this.bargeInSubscription?.remove();
@@ -858,6 +1323,9 @@ export class AndroidVoiceCallSession {
     this.bargeInRecognitionOpenUntil = 0;
     this.lastSubmittedUserText = '';
     this.lastSubmittedUserTextAt = 0;
+    this.listeningStartedAt = 0;
+    this.sentAudioInCurrentListeningWindow = false;
+    this.lastMicAudioSentAt = 0;
     stopVoiceCallAudio().catch(() => undefined);
     this.closeVoiceCallSystemMessage().catch(() => undefined);
     this.stopping = false;
@@ -925,22 +1393,100 @@ export class AndroidVoiceCallSession {
 }
 
 function buildDeepgramLiveUrl(baseUrl: string, model: string, language: string): string {
-  const url = new URL(baseUrl.trim() || 'https://api.deepgram.com/v1');
+  const normalizedModel = model.trim() || 'nova-3';
+  const fluxMode = isDeepgramFluxModel(normalizedModel);
+  const url = new URL(baseUrl.trim() || (fluxMode ? 'https://api.deepgram.com/v2' : 'https://api.deepgram.com/v1'));
   url.protocol = url.protocol === 'http:' ? 'ws:' : 'wss:';
   const path = url.pathname.replace(/\/$/, '');
-  url.pathname = path.endsWith('/listen') ? path : `${path || '/v1'}/listen`;
-  url.searchParams.set('model', model.trim() || 'nova-3');
+  if (fluxMode) {
+    url.pathname = buildDeepgramFluxListenPath(path);
+  } else {
+    url.pathname = path.endsWith('/listen') ? path : `${path || '/v1'}/listen`;
+  }
+  url.searchParams.set('model', normalizedModel);
   url.searchParams.set('encoding', 'linear16');
   url.searchParams.set('sample_rate', String(DEEPGRAM_SAMPLE_RATE));
+  if (fluxMode) {
+    url.searchParams.set('eot_threshold', DEEPGRAM_FLUX_EOT_THRESHOLD);
+    url.searchParams.set('eot_timeout_ms', DEEPGRAM_FLUX_EOT_TIMEOUT_MS);
+    const normalizedLanguage = language.trim();
+    if (normalizedLanguage) {
+      normalizedLanguage.split(/[,\s]+/).filter(Boolean).forEach((item) => {
+        url.searchParams.append('language_hint', item);
+      });
+    }
+    return url.toString();
+  }
   url.searchParams.set('channels', '1');
   url.searchParams.set('interim_results', 'true');
   url.searchParams.set('smart_format', 'true');
   url.searchParams.set('vad_events', 'true');
-  url.searchParams.set('endpointing', '650');
-  url.searchParams.set('utterance_end_ms', '1200');
+  url.searchParams.set('endpointing', '1000');
+  url.searchParams.set('utterance_end_ms', '1800');
   const normalizedLanguage = language.trim();
   url.searchParams.set('language', normalizedLanguage || 'multi');
   return url.toString();
+}
+
+function buildAliyunRealtimeUrl(baseUrl: string, model: string): string {
+  const url = new URL(baseUrl.trim() || 'wss://dashscope.aliyuncs.com/api-ws/v1/realtime');
+  url.protocol = url.protocol === 'http:' ? 'ws:' : url.protocol === 'https:' ? 'wss:' : url.protocol;
+  url.searchParams.set('model', model.trim() || 'qwen3-asr-flash-realtime');
+  return url.toString();
+}
+
+function buildAliyunSessionUpdateRequest(config: STTConfig): Record<string, any> {
+  const language = config.aliyunLanguage.trim() || 'zh';
+  return {
+    event_id: createRealtimeEventId('session'),
+    type: 'session.update',
+    session: {
+      modalities: ['text'],
+      input_audio_format: 'pcm',
+      sample_rate: ALIYUN_SAMPLE_RATE,
+      input_audio_transcription: {
+        model: config.aliyunModel.trim() || 'qwen3-asr-flash-realtime',
+        language,
+      },
+      turn_detection: config.aliyunSemanticVad
+        ? {
+            type: 'server_vad',
+            threshold: 0.2,
+            prefix_padding_ms: 300,
+            silence_duration_ms: 750,
+          }
+        : null,
+    },
+  };
+}
+
+function buildAliyunAudioAppendRequest(base64: string): Record<string, any> {
+  return {
+    event_id: createRealtimeEventId('audio'),
+    type: 'input_audio_buffer.append',
+    audio: base64,
+  };
+}
+
+function buildAliyunCommitRequest(): Record<string, any> {
+  return {
+    event_id: createRealtimeEventId('commit'),
+    type: 'input_audio_buffer.commit',
+  };
+}
+
+function createRealtimeEventId(prefix: string): string {
+  return `event_${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function buildDeepgramFluxListenPath(path: string): string {
+  if (!path || path === '/') return '/v2/listen';
+  if (path.endsWith('/v2/listen')) return path;
+  if (path.endsWith('/v1/listen')) return `${path.slice(0, -'/v1/listen'.length)}/v2/listen`;
+  if (path.endsWith('/v1')) return `${path.slice(0, -'/v1'.length)}/v2/listen`;
+  if (path.endsWith('/v2')) return `${path}/listen`;
+  if (path.endsWith('/listen')) return path;
+  return `${path}/listen`;
 }
 
 function waitForChatIdle(): Promise<void> {
@@ -960,8 +1506,12 @@ function waitForChatIdle(): Promise<void> {
 }
 
 function buildDeepgramAuthorizationHeader(apiKey: string): string {
-  const token = apiKey.trim();
+  const token = normalizeDeepgramApiKey(apiKey);
   return token.split('.').length === 3 ? `Bearer ${token}` : `Token ${token}`;
+}
+
+function normalizeDeepgramApiKey(apiKey: string): string {
+  return apiKey.trim().replace(/^(token|bearer)\s+/i, '').trim();
 }
 
 function buildMiniMaxWebSocketUrls(groupId: string): string[] {
@@ -983,6 +1533,43 @@ function buildMiniMaxWebSocketUrls(groupId: string): string[] {
   ];
 }
 
+function buildCartesiaWebSocketUrl(baseUrl: string): string {
+  const url = new URL(baseUrl.trim() || 'https://api.cartesia.ai');
+  url.protocol = url.protocol === 'http:' ? 'ws:' : 'wss:';
+  const path = url.pathname.replace(/\/$/, '');
+  url.pathname = path.endsWith('/tts/websocket') ? path : `${path || ''}/tts/websocket`;
+  url.searchParams.set('cartesia_version', CARTESIA_VERSION);
+  return url.toString();
+}
+
+function buildCartesiaGenerationRequest(config: TTSConfig, contextId: string, transcript: string, mayContinue: boolean): Record<string, any> {
+  return {
+    model_id: config.cartesiaModel.trim() || 'sonic-3.5',
+    transcript,
+    voice: {
+      mode: 'id',
+      id: config.cartesiaVoiceId.trim(),
+    },
+    output_format: {
+      container: 'raw',
+      encoding: 'pcm_s16le',
+      sample_rate: CARTESIA_SAMPLE_RATE,
+    },
+    language: normalizeCartesiaLanguage(config.cartesiaLanguage),
+    context_id: contextId,
+    continue: mayContinue,
+    max_buffer_delay_ms: 120,
+    generation_config: {
+      speed: clampNumber(config.cartesiaSpeed, 0.6, 1.5, 1),
+      volume: clampNumber(config.cartesiaVolume, 0.5, 2, 1),
+    },
+  };
+}
+
+function getVoiceCallTtsSampleRate(config: TTSConfig): number {
+  return config.provider === 'cartesia' ? CARTESIA_SAMPLE_RATE : MINIMAX_SAMPLE_RATE;
+}
+
 function extractDeepgramTranscript(event: any): string {
   const alternatives = event?.channel?.alternatives;
   if (!Array.isArray(alternatives)) return '';
@@ -991,6 +1578,75 @@ function extractDeepgramTranscript(event: any): string {
     .filter(Boolean)
     .join('\n')
     .trim();
+}
+
+function extractDeepgramFluxTranscript(event: any): string {
+  if (typeof event?.transcript === 'string') return event.transcript.trim();
+  if (typeof event?.channel?.alternatives?.[0]?.transcript === 'string') {
+    return event.channel.alternatives[0].transcript.trim();
+  }
+  if (Array.isArray(event?.words)) {
+    return event.words
+      .map((word: any) => typeof word?.word === 'string' ? word.word.trim() : '')
+      .filter(Boolean)
+      .join(' ')
+      .trim();
+  }
+  return '';
+}
+
+function isAliyunSpeechEvent(type: string): boolean {
+  return type.includes('input_audio_buffer.speech_started')
+    || type.includes('input_audio_buffer.speech_stopped')
+    || type.includes('speech_started')
+    || type.includes('speech_stopped');
+}
+
+function isAliyunTranscriptEvent(type: string): boolean {
+  return type.includes('input_audio_transcription')
+    || type.includes('transcription')
+    || type.includes('transcript');
+}
+
+function isAliyunFinalTranscriptEvent(type: string): boolean {
+  return type.includes('completed')
+    || type.includes('committed')
+    || type.endsWith('.done');
+}
+
+function extractAliyunTranscript(event: any): string {
+  const direct = pickString(
+    event.transcript,
+    event.text,
+    event.delta,
+    event.output?.text,
+    event.output?.transcript,
+    event.result?.text,
+    event.result?.transcript,
+    event.item?.content?.[0]?.transcript,
+    event.item?.content?.[0]?.text
+  );
+  const stash = pickString(event.stash, event.output?.stash, event.result?.stash);
+  return `${direct}${stash}`.trim();
+}
+
+function extractAliyunErrorMessage(event: any): string {
+  const message = pickString(
+    event.error?.message,
+    event.error?.code,
+    event.message,
+    event.code
+  );
+  return message ? `阿里实时 STT 错误：${message}` : '阿里实时 STT 返回错误';
+}
+
+function pickString(...values: unknown[]): string {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim()) {
+      return value.trim();
+    }
+  }
+  return '';
 }
 
 function uniqueJoin(parts: string[]): string {
@@ -1009,6 +1665,35 @@ function normalizeTranscriptForCompare(text: string): string {
     .trim()
     .toLowerCase()
     .replace(/[\s，。！？、；：,.!?;:]+/g, '');
+}
+
+function isDeepgramFluxModel(model: string): boolean {
+  return model.trim().toLowerCase().startsWith('flux-');
+}
+
+function isChineseDeepgramLanguage(language: string): boolean {
+  const normalized = language.trim().toLowerCase();
+  return normalized === 'zh'
+    || normalized === 'zh-cn'
+    || normalized === 'zh-hans'
+    || normalized === 'zh-tw'
+    || normalized === 'zh-hant'
+    || normalized === 'zh-hk'
+    || normalized === 'cmn'
+    || normalized === 'yue';
+}
+
+function createPcmSilence(sampleRate: number, durationMs: number): ArrayBuffer {
+  return new ArrayBuffer(Math.max(1, Math.floor(sampleRate * durationMs / 1000)) * 2);
+}
+
+function normalizeCartesiaLanguage(language: string): string {
+  return (language || 'zh').trim() || 'zh';
+}
+
+function clampNumber(value: number, min: number, max: number, fallback: number): number {
+  if (!Number.isFinite(value)) return fallback;
+  return Math.min(max, Math.max(min, value));
 }
 
 function extractSpeakableAssistantText(content: string): string {

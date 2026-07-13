@@ -14,6 +14,7 @@ const TTS_PROVIDERS: Array<{ key: TTSProvider; label: string }> = [
   { key: 'minimax', label: 'MiniMax' },
   { key: 'fish', label: 'Fish Audio' },
   { key: 'deepgram', label: 'Deepgram' },
+  { key: 'cartesia', label: 'Cartesia' },
 ];
 const MINIMAX_TTS_MODELS = [
   'speech-2.8-hd',
@@ -27,12 +28,15 @@ const MINIMAX_TTS_MODELS = [
 ];
 const FISH_TTS_MODELS = ['s2-pro', 's1'];
 const FISH_TTS_FORMATS: Array<TTSConfig['fishFormat']> = ['mp3', 'wav', 'pcm'];
+const CARTESIA_TTS_MODELS = ['sonic-3.5', 'sonic-3', 'sonic-latest'];
+const DEEPGRAM_FLUX_STT_MODELS = ['flux-general-multi', 'flux-general-en'];
 const STT_PROVIDERS: Array<{ key: STTProvider; label: string }> = [
   { key: 'openai', label: 'OpenAI Whisper' },
   { key: 'fish', label: 'Fish Audio' },
   { key: 'deepgram', label: 'Deepgram' },
+  { key: 'aliyun', label: 'Aliyun' },
 ];
-type VoiceModelTarget = 'tts-minimax' | 'tts-fish' | 'tts-deepgram' | 'stt-openai' | 'stt-deepgram';
+type VoiceModelTarget = 'tts-minimax' | 'tts-fish' | 'tts-deepgram' | 'tts-cartesia' | 'stt-openai' | 'stt-deepgram';
 
 export function TTSConfigTab({ showToast, keyboardBottomInset }: TTSConfigTabProps) {
   const colors = useSettingsPageColors();
@@ -56,6 +60,13 @@ export function TTSConfigTab({ showToast, keyboardBottomInset }: TTSConfigTabPro
   const [ttsDeepgramBaseUrl, setTtsDeepgramBaseUrl] = useState(ttsConfig.deepgramBaseUrl);
   const [ttsDeepgramApiKey, setTtsDeepgramApiKey] = useState(ttsConfig.deepgramApiKey);
   const [ttsDeepgramModel, setTtsDeepgramModel] = useState(ttsConfig.deepgramModel);
+  const [ttsCartesiaBaseUrl, setTtsCartesiaBaseUrl] = useState(ttsConfig.cartesiaBaseUrl);
+  const [ttsCartesiaApiKey, setTtsCartesiaApiKey] = useState(ttsConfig.cartesiaApiKey);
+  const [ttsCartesiaModel, setTtsCartesiaModel] = useState(ttsConfig.cartesiaModel);
+  const [ttsCartesiaVoiceId, setTtsCartesiaVoiceId] = useState(ttsConfig.cartesiaVoiceId);
+  const [ttsCartesiaLanguage, setTtsCartesiaLanguage] = useState(ttsConfig.cartesiaLanguage);
+  const [ttsCartesiaSpeed, setTtsCartesiaSpeed] = useState(String(ttsConfig.cartesiaSpeed));
+  const [ttsCartesiaVolume, setTtsCartesiaVolume] = useState(String(ttsConfig.cartesiaVolume));
   const [sttProvider, setSttProvider] = useState<STTProvider>(sttConfig.provider);
   const [openAiBaseUrl, setOpenAiBaseUrl] = useState(sttConfig.openAiBaseUrl);
   const [openAiApiKey, setOpenAiApiKey] = useState(sttConfig.openAiApiKey);
@@ -68,6 +79,11 @@ export function TTSConfigTab({ showToast, keyboardBottomInset }: TTSConfigTabPro
   const [deepgramApiKey, setDeepgramApiKey] = useState(sttConfig.deepgramApiKey);
   const [deepgramModel, setDeepgramModel] = useState(sttConfig.deepgramModel);
   const [deepgramLanguage, setDeepgramLanguage] = useState(sttConfig.deepgramLanguage);
+  const [aliyunBaseUrl, setAliyunBaseUrl] = useState(sttConfig.aliyunBaseUrl);
+  const [aliyunApiKey, setAliyunApiKey] = useState(sttConfig.aliyunApiKey);
+  const [aliyunModel, setAliyunModel] = useState(sttConfig.aliyunModel);
+  const [aliyunLanguage, setAliyunLanguage] = useState(sttConfig.aliyunLanguage);
+  const [aliyunSemanticVad, setAliyunSemanticVad] = useState(sttConfig.aliyunSemanticVad);
   const [testing, setTesting] = useState(false);
   const [voiceModels, setVoiceModels] = useState<string[]>([]);
   const [voiceModelTarget, setVoiceModelTarget] = useState<VoiceModelTarget>('tts-minimax');
@@ -94,6 +110,13 @@ export function TTSConfigTab({ showToast, keyboardBottomInset }: TTSConfigTabPro
       deepgramBaseUrl: ttsDeepgramBaseUrl.trim() || 'https://api.deepgram.com/v1',
       deepgramApiKey: ttsDeepgramApiKey.trim(),
       deepgramModel: ttsDeepgramModel.trim() || 'aura-2-thalia-en',
+      cartesiaBaseUrl: ttsCartesiaBaseUrl.trim() || 'https://api.cartesia.ai',
+      cartesiaApiKey: ttsCartesiaApiKey.trim(),
+      cartesiaModel: ttsCartesiaModel.trim() || 'sonic-3.5',
+      cartesiaVoiceId: ttsCartesiaVoiceId.trim(),
+      cartesiaLanguage: ttsCartesiaLanguage.trim() || 'zh',
+      cartesiaSpeed: parseFloat(ttsCartesiaSpeed) || 1,
+      cartesiaVolume: parseFloat(ttsCartesiaVolume) || 1,
     });
     setSTTConfig({
       provider: sttProvider,
@@ -108,6 +131,11 @@ export function TTSConfigTab({ showToast, keyboardBottomInset }: TTSConfigTabPro
       deepgramApiKey: deepgramApiKey.trim(),
       deepgramModel: deepgramModel.trim() || 'nova-3',
       deepgramLanguage: deepgramLanguage.trim(),
+      aliyunBaseUrl: aliyunBaseUrl.trim() || 'wss://dashscope.aliyuncs.com/api-ws/v1/realtime',
+      aliyunApiKey: aliyunApiKey.trim(),
+      aliyunModel: aliyunModel.trim() || 'qwen3-asr-flash-realtime',
+      aliyunLanguage: aliyunLanguage.trim() || 'zh',
+      aliyunSemanticVad,
     });
     showToast('语音配置已保存');
   }
@@ -120,6 +148,8 @@ export function TTSConfigTab({ showToast, keyboardBottomInset }: TTSConfigTabPro
         return ttsFishModel;
       case 'tts-deepgram':
         return ttsDeepgramModel;
+      case 'tts-cartesia':
+        return ttsCartesiaModel;
       case 'stt-openai':
         return openAiModel;
       case 'stt-deepgram':
@@ -137,6 +167,8 @@ export function TTSConfigTab({ showToast, keyboardBottomInset }: TTSConfigTabPro
         return '选择 Fish Audio TTS 模型';
       case 'tts-deepgram':
         return '选择 Deepgram TTS 模型';
+      case 'tts-cartesia':
+        return '选择 Cartesia TTS 模型';
       case 'stt-openai':
         return '选择 OpenAI STT 模型';
       case 'stt-deepgram':
@@ -156,6 +188,9 @@ export function TTSConfigTab({ showToast, keyboardBottomInset }: TTSConfigTabPro
         break;
       case 'tts-deepgram':
         setTtsDeepgramModel(item);
+        break;
+      case 'tts-cartesia':
+        setTtsCartesiaModel(item);
         break;
       case 'stt-openai':
         setOpenAiModel(item);
@@ -195,6 +230,10 @@ export function TTSConfigTab({ showToast, keyboardBottomInset }: TTSConfigTabPro
       const data = await fetchJson(`${baseUrl}/openapi.json`, optionalBearerHeaders(ttsFishApiKey));
       const ids = extractFishTTSModelIds(data);
       return ids.length > 0 ? ids : [...FISH_TTS_MODELS];
+    }
+
+    if (target === 'tts-cartesia') {
+      return [...CARTESIA_TTS_MODELS];
     }
 
     if (target === 'stt-openai') {
@@ -252,6 +291,13 @@ export function TTSConfigTab({ showToast, keyboardBottomInset }: TTSConfigTabPro
         deepgramBaseUrl: ttsDeepgramBaseUrl.trim() || 'https://api.deepgram.com/v1',
         deepgramApiKey: ttsDeepgramApiKey.trim(),
         deepgramModel: ttsDeepgramModel.trim() || 'aura-2-thalia-en',
+        cartesiaBaseUrl: ttsCartesiaBaseUrl.trim() || 'https://api.cartesia.ai',
+        cartesiaApiKey: ttsCartesiaApiKey.trim(),
+        cartesiaModel: ttsCartesiaModel.trim() || 'sonic-3.5',
+        cartesiaVoiceId: ttsCartesiaVoiceId.trim(),
+        cartesiaLanguage: ttsCartesiaLanguage.trim() || 'zh',
+        cartesiaSpeed: parseFloat(ttsCartesiaSpeed) || 1,
+        cartesiaVolume: parseFloat(ttsCartesiaVolume) || 1,
     };
     if (!isTTSConfigReady(testConfig)) {
       Alert.alert('提示', getTTSConfigMissingMessage(testConfig));
@@ -487,6 +533,98 @@ export function TTSConfigTab({ showToast, keyboardBottomInset }: TTSConfigTabPro
             />
           </View>
         </>
+      ) : ttsProvider === 'cartesia' ? (
+        <>
+          <View style={styles.field}>
+            <Text style={styles.label}>Cartesia Base URL</Text>
+            <TextInput
+              style={styles.input}
+              value={ttsCartesiaBaseUrl}
+              onChangeText={setTtsCartesiaBaseUrl}
+              placeholder="https://api.cartesia.ai"
+              placeholderTextColor={colors.textTertiary}
+              autoCapitalize="none"
+            />
+          </View>
+          <View style={styles.field}>
+            <Text style={styles.label}>Cartesia API Key</Text>
+            <TextInput
+              style={styles.input}
+              value={ttsCartesiaApiKey}
+              onChangeText={setTtsCartesiaApiKey}
+              placeholder="sk_car_..."
+              placeholderTextColor={colors.textTertiary}
+              secureTextEntry
+              autoCapitalize="none"
+            />
+          </View>
+          <View style={styles.field}>
+            <Text style={styles.label}>Voice ID</Text>
+            <TextInput
+              style={styles.input}
+              value={ttsCartesiaVoiceId}
+              onChangeText={setTtsCartesiaVoiceId}
+              placeholder="Cartesia voice id"
+              placeholderTextColor={colors.textTertiary}
+              autoCapitalize="none"
+            />
+          </View>
+          <View style={styles.field}>
+            <Text style={styles.label}>Model</Text>
+            <View style={styles.modelRow}>
+              <TextInput
+                style={[styles.input, { flex: 1 }]}
+                value={ttsCartesiaModel}
+                onChangeText={setTtsCartesiaModel}
+                placeholder="sonic-3.5"
+                placeholderTextColor={colors.textTertiary}
+                autoCapitalize="none"
+              />
+              <Pressable
+                style={styles.fetchButton}
+                onPress={() => handleFetchVoiceModels('tts-cartesia')}
+                disabled={fetchingModelTarget !== null}
+              >
+                {fetchingModelTarget === 'tts-cartesia'
+                  ? <ActivityIndicator size="small" color="#FFF" />
+                  : <Text style={styles.fetchButtonText}>拉取</Text>}
+              </Pressable>
+            </View>
+          </View>
+          <View style={styles.field}>
+            <Text style={styles.label}>Language</Text>
+            <TextInput
+              style={styles.input}
+              value={ttsCartesiaLanguage}
+              onChangeText={setTtsCartesiaLanguage}
+              placeholder="zh / en / ja ..."
+              placeholderTextColor={colors.textTertiary}
+              autoCapitalize="none"
+            />
+          </View>
+          <View style={styles.field}>
+            <Text style={styles.label}>Speed (0.6 ~ 1.5)</Text>
+            <TextInput
+              style={styles.input}
+              value={ttsCartesiaSpeed}
+              onChangeText={setTtsCartesiaSpeed}
+              keyboardType="decimal-pad"
+              placeholder="1"
+              placeholderTextColor={colors.textTertiary}
+            />
+          </View>
+          <View style={styles.field}>
+            <Text style={styles.label}>Volume (0.5 ~ 2.0)</Text>
+            <TextInput
+              style={styles.input}
+              value={ttsCartesiaVolume}
+              onChangeText={setTtsCartesiaVolume}
+              keyboardType="decimal-pad"
+              placeholder="1"
+              placeholderTextColor={colors.textTertiary}
+            />
+          </View>
+        </>
       ) : (
         <>
           <View style={styles.field}>
@@ -665,6 +803,71 @@ export function TTSConfigTab({ showToast, keyboardBottomInset }: TTSConfigTabPro
             </ScrollView>
           </View>
         </>
+      ) : sttProvider === 'aliyun' ? (
+        <>
+          <View style={styles.field}>
+            <Text style={styles.label}>Aliyun Base URL</Text>
+            <TextInput
+              style={styles.input}
+              value={aliyunBaseUrl}
+              onChangeText={setAliyunBaseUrl}
+              placeholder="wss://dashscope.aliyuncs.com/api-ws/v1/realtime"
+              placeholderTextColor={colors.textTertiary}
+              autoCapitalize="none"
+            />
+          </View>
+          <View style={styles.field}>
+            <Text style={styles.label}>Aliyun API Key</Text>
+            <TextInput
+              style={styles.input}
+              value={aliyunApiKey}
+              onChangeText={setAliyunApiKey}
+              placeholder="sk-..."
+              placeholderTextColor={colors.textTertiary}
+              secureTextEntry
+              autoCapitalize="none"
+            />
+          </View>
+          <View style={styles.field}>
+            <Text style={styles.label}>Aliyun Model</Text>
+            <TextInput
+              style={styles.input}
+              value={aliyunModel}
+              onChangeText={setAliyunModel}
+              placeholder="qwen3-asr-flash-realtime"
+              placeholderTextColor={colors.textTertiary}
+              autoCapitalize="none"
+            />
+          </View>
+          <View style={styles.field}>
+            <Text style={styles.label}>Language</Text>
+            <TextInput
+              style={styles.input}
+              value={aliyunLanguage}
+              onChangeText={setAliyunLanguage}
+              placeholder="zh"
+              placeholderTextColor={colors.textTertiary}
+              autoCapitalize="none"
+            />
+          </View>
+          <View style={styles.field}>
+            <Text style={styles.label}>Turn Detection</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.configList}>
+              <Pressable
+                style={[styles.configChip, aliyunSemanticVad && styles.configChipActive]}
+                onPress={() => setAliyunSemanticVad(true)}
+              >
+                <Text style={[styles.configChipText, aliyunSemanticVad && styles.configChipTextActive]}>Server VAD</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.configChip, !aliyunSemanticVad && styles.configChipActive]}
+                onPress={() => setAliyunSemanticVad(false)}
+              >
+                <Text style={[styles.configChipText, !aliyunSemanticVad && styles.configChipTextActive]}>Manual Commit</Text>
+              </Pressable>
+            </ScrollView>
+          </View>
+        </>
       ) : (
         <>
           <View style={styles.field}>
@@ -697,7 +900,7 @@ export function TTSConfigTab({ showToast, keyboardBottomInset }: TTSConfigTabPro
                 style={[styles.input, { flex: 1 }]}
                 value={deepgramModel}
                 onChangeText={setDeepgramModel}
-                placeholder="nova-3"
+                placeholder="nova-3 / flux-general-multi"
                 placeholderTextColor={colors.textTertiary}
                 autoCapitalize="none"
               />
@@ -851,7 +1054,7 @@ function extractDeepgramSTTModelIds(data: any): string[] {
     .filter((id: unknown): id is string => typeof id === 'string' && id.trim().length > 0)
     .map((id: string) => id.trim())
     .filter((id: string) => !/^aura/i.test(id));
-  return uniqueSorted(ids);
+  return uniqueSorted([...DEEPGRAM_FLUX_STT_MODELS, ...ids]);
 }
 
 function extractDeepgramTTSModelIds(data: any): string[] {

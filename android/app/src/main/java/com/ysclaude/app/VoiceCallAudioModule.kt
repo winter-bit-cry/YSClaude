@@ -47,13 +47,13 @@ class VoiceCallAudioModule(
     private const val BARGE_IN_MIN_SPEECH_MS = 140
     private const val BARGE_IN_COOLDOWN_MS = 1_500L
     private const val BARGE_IN_RECOGNITION_OPEN_MS = 2_500L
-    private const val MIC_PREROLL_MS = 520
-    private const val MIC_START_MIN_SPEECH_MS = 60
-    private const val MIC_TRAILING_AUDIO_MS = 760
-    private const val MIC_END_SILENCE_MS = 820
+    private const val MIC_PREROLL_MS = 720
+    private const val MIC_START_MIN_SPEECH_MS = 40
+    private const val MIC_TRAILING_AUDIO_MS = 1_260
+    private const val MIC_END_SILENCE_MS = 1_320
     private const val MIC_INITIAL_NOISE_RMS = 260.0
-    private const val MIC_MIN_START_RMS = 320.0
-    private const val MIC_MIN_ACTIVE_RMS = 220.0
+    private const val MIC_MIN_START_RMS = 280.0
+    private const val MIC_MIN_ACTIVE_RMS = 200.0
   }
 
   override fun getName(): String = "VoiceCallAudio"
@@ -86,6 +86,7 @@ class VoiceCallAudioModule(
   private val micPreroll = ArrayDeque<ByteArray>()
   private val bargeInLock = Any()
   private var playbackGateStartedAtMs = 0L
+  private var pcmPlaybackActive = false
   private var playbackEchoRms = 900.0
   private var bargeInSpeechMs = 0
   private var bargeInLastEventAtMs = 0L
@@ -300,6 +301,42 @@ class VoiceCallAudioModule(
   }
 
   @ReactMethod
+  fun writePcmChunk(base64: String, promise: Promise) {
+    if (!speakerRunning.get()) {
+      promise.resolve(false)
+      return
+    }
+    try {
+      val bytes = Base64.decode(base64, Base64.DEFAULT)
+      if (bytes.isNotEmpty()) {
+        if (!pcmPlaybackActive || playbackGateStartedAtMs == 0L) {
+          beginPlaybackGate()
+          pcmPlaybackActive = true
+        }
+        emitPlaybackState(true)
+        audioTrack?.write(bytes, 0, bytes.size)
+        suppressMicForPlayback()
+      }
+      promise.resolve(true)
+    } catch (error: Exception) {
+      promise.reject("VOICE_CALL_AUDIO_WRITE_PCM", error)
+    }
+  }
+
+  @ReactMethod
+  fun finishPcmPlayback(promise: Promise) {
+    try {
+      pcmPlaybackActive = false
+      suppressMicAfterPlayback()
+      endPlaybackGate()
+      emitPlaybackState(false)
+      promise.resolve(true)
+    } catch (error: Exception) {
+      promise.reject("VOICE_CALL_AUDIO_FINISH_PCM", error)
+    }
+  }
+
+  @ReactMethod
   fun enqueueMp3Clip(base64: String, promise: Promise) {
     try {
       val bytes = Base64.decode(base64, Base64.DEFAULT)
@@ -330,6 +367,7 @@ class VoiceCallAudioModule(
   @ReactMethod
   fun clearSpeaker(promise: Promise) {
     mp3Queue.clear()
+    pcmPlaybackActive = false
     clearClipQueue()
     try {
       audioTrack?.pause()
@@ -572,6 +610,7 @@ class VoiceCallAudioModule(
     val now = System.currentTimeMillis()
     val recentlyBargedIn = now - bargeInLastEventAtMs < BARGE_IN_RECOGNITION_OPEN_MS
     playbackGateStartedAtMs = 0L
+    pcmPlaybackActive = false
     playbackEchoRms = 900.0
     bargeInSpeechMs = 0
     if (recentlyBargedIn) {
@@ -704,9 +743,9 @@ class VoiceCallAudioModule(
     val threshold = if (micSpeechActive) {
       maxOf(MIC_MIN_ACTIVE_RMS, min(720.0, micNoiseRms * 1.25 + 80.0))
     } else {
-      maxOf(MIC_MIN_START_RMS, min(980.0, micNoiseRms * 1.65 + 120.0))
+      maxOf(MIC_MIN_START_RMS, min(900.0, micNoiseRms * 1.45 + 100.0))
     }
-    val peakThreshold = if (micSpeechActive) 700 else 950
+    val peakThreshold = if (micSpeechActive) 650 else 850
     val sustainedSpeech = rms >= threshold && peak >= peakThreshold
     val clearSpeechPeak = peak >= 3_200 && rms >= maxOf(MIC_MIN_ACTIVE_RMS, micNoiseRms * 1.2)
     return sustainedSpeech || clearSpeechPeak
