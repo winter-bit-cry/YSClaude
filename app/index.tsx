@@ -1530,8 +1530,8 @@ export default function ChatScreen() {
           <Pressable style={[styles.headerButton, topBarResponsiveMetrics.buttonStyle, topBarButtonStyle('web')]} onPress={showWebViewPanel}>
             {!topBarIconsHidden && renderTopBarIcon('web')}
           </Pressable>
-          <Pressable style={[styles.headerButton, topBarResponsiveMetrics.buttonStyle, topBarButtonStyle('game')]} onPress={() => router.push('/game')}>
-            {!topBarIconsHidden && renderTopBarIcon('game')}
+          <Pressable style={[styles.headerButton, topBarResponsiveMetrics.buttonStyle, topBarButtonStyle('accounting')]} onPress={() => router.push('/accounting')}>
+            {!topBarIconsHidden && renderTopBarIcon('accounting')}
           </Pressable>
         </View>
         <View style={[styles.headerRightGroup, topBarResponsiveMetrics.groupStyle, topBarRightCssStyle]}>

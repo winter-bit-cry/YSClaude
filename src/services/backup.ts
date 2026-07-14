@@ -10,7 +10,6 @@ import {
 } from '../db/kv-storage';
 import { stopTTS } from './tts';
 import { useChatStore } from '../stores/chat';
-import { useGameStore } from '../stores/game';
 import { useMusicStore } from '../stores/music';
 import { useRadioStore } from '../stores/radio';
 
@@ -239,7 +238,6 @@ function validateSqliteDatabase(bytes: Uint8Array, label: string): void {
 
 async function stopRuntimeWork(): Promise<void> {
   useChatStore.getState().stopStreaming();
-  useGameStore.getState().stopGenerating();
   useRadioStore.setState((state) => ({
     active: false,
     loading: false,

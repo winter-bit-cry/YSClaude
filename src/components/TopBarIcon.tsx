@@ -3,11 +3,11 @@ import { Image, StyleSheet } from 'react-native';
 import {
   BookOpen,
   CalendarDays,
-  Gamepad2,
   Globe,
   History,
   ListTodo,
   Music2,
+  WalletCards,
   Settings,
 } from 'lucide-react-native';
 import { TOP_BAR_ICON_LABELS, TOP_BAR_ICON_KEYS, type TopBarIconKey } from '../utils/topBarIconTypes';
@@ -22,7 +22,7 @@ const TOP_BAR_ICON_COMPONENTS: Record<TopBarIconKey, IconComponent> = {
   history: History,
   reading: BookOpen,
   web: Globe,
-  game: Gamepad2,
+  accounting: WalletCards,
   focus: ListTodo,
   calendar: CalendarDays,
   music: Music2,

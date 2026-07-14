@@ -3,7 +3,7 @@ import { Directory, File, Paths } from 'expo-file-system';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { Award, BookOpen, Flower2, Gamepad2, Gem, Heart, Leaf, MessageCircle, Radio, Snowflake, Sparkles, Sun, Zap } from 'lucide-react-native';
+import { Award, BookOpen, Flower2, Gem, Heart, Leaf, MessageCircle, Radio, Snowflake, Sparkles, Sun, Zap } from 'lucide-react-native';
 import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -541,7 +541,6 @@ function BadgeIcon({ pattern, size, color }: { pattern: ApiAchievementBadgePatte
   if (pattern === 'message') return <MessageCircle {...common} />;
   if (pattern === 'book') return <BookOpen {...common} />;
   if (pattern === 'radio') return <Radio {...common} />;
-  if (pattern === 'game') return <Gamepad2 {...common} />;
   if (pattern === 'bolt') return <Zap {...common} />;
   if (pattern === 'gem') return <Gem {...common} />;
   if (pattern === 'flower') return <Flower2 {...common} />;

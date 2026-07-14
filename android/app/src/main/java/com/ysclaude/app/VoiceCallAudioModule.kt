@@ -996,15 +996,20 @@ class VoiceCallAudioModule(
 
   private fun setCommunicationSpeakerphone(audioManager: AudioManager, enabled: Boolean) {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-      if (!enabled) {
+      val targetDeviceType = if (enabled) {
+        AudioDeviceInfo.TYPE_BUILTIN_SPEAKER
+      } else {
+        AudioDeviceInfo.TYPE_BUILTIN_EARPIECE
+      }
+      val targetDevice = audioManager.availableCommunicationDevices.firstOrNull {
+        it.type == targetDeviceType
+      }
+      if (targetDevice != null) {
+        audioManager.setCommunicationDevice(targetDevice)
+      } else if (!enabled) {
+        // Devices without a built-in earpiece (for example, some tablets) must
+        // fall back to Android's automatic communication-device selection.
         audioManager.clearCommunicationDevice()
-        return
-      }
-      val speaker = audioManager.availableCommunicationDevices.firstOrNull {
-        it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER
-      }
-      if (speaker != null) {
-        audioManager.setCommunicationDevice(speaker)
       }
       return
     }

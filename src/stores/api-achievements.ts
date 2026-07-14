@@ -3,7 +3,7 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import { sqliteStorage } from '../db/kv-storage';
 
 export type ApiAchievementMetric = 'activeDays' | 'totalTokens';
-type ApiAchievementFeatureScope = 'all' | 'chat' | 'reading' | 'radio' | 'game' | 'unknown';
+type ApiAchievementFeatureScope = 'all' | 'chat' | 'reading' | 'radio' | 'unknown';
 export type ApiAchievementCategory = 'companionDays' | 'totalTokens' | 'season' | 'anniversary';
 export type ApiAchievementSeason = 'spring' | 'summer' | 'autumn' | 'winter';
 export type ApiAchievementBadgePattern =
@@ -13,7 +13,6 @@ export type ApiAchievementBadgePattern =
   | 'message'
   | 'book'
   | 'radio'
-  | 'game'
   | 'bolt'
   | 'gem'
   | 'flower'

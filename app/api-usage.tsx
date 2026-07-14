@@ -451,7 +451,6 @@ function formatGroupKey(key: string): string {
     chat: '主聊天',
     reading: '共读',
     radio: 'AI 电台',
-    game: '副本',
     unknown: '未分类',
   };
   return labels[key] ?? key;
