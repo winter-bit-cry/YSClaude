@@ -109,6 +109,7 @@ export default function VoiceCallScreen() {
   const setVoiceCallTuningConfig = useSettingsStore((state) => state.setVoiceCallTuningConfig);
   const assistantName = (appearanceConfig?.assistantDisplayName || 'Claude').trim() || 'Claude';
   const assistantAvatarUri = appearanceConfig?.assistantAvatarImageUri;
+  const canHangup = snapshot.active || !!snapshot.error || snapshot.status === 'error';
 
   const transcriptItems = useMemo(() => {
     const items = [...snapshot.transcriptItems];
@@ -259,7 +260,7 @@ export default function VoiceCallScreen() {
           onPress={() => setMicrophoneEnabled(!snapshot.micEnabled)}
           Icon={snapshot.micEnabled ? Mic : MicOff}
         />
-        <Pressable style={styles.hangupButton} onPress={snapshot.active ? handleHangup : handleStart} disabled={starting}>
+        <Pressable style={styles.hangupButton} onPress={canHangup ? handleHangup : handleStart} disabled={starting}>
           <View style={styles.hangupCircle}>
             {starting ? <ActivityIndicator color="#FFFFFF" /> : <PhoneOff size={32} color="#FFFFFF" strokeWidth={2.4} />}
           </View>

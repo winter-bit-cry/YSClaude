@@ -121,6 +121,8 @@ export class AndroidVoiceCallSession {
   private minimaxWs: WebSocket | null = null;
   private cartesiaWs: WebSocket | null = null;
   private cartesiaContextId: string | null = null;
+  private cartesiaContextHasTranscript = false;
+  private cartesiaFinishSent = false;
   private cartesiaFinishTimer: ReturnType<typeof setTimeout> | null = null;
   private deepgramKeepAlive: ReturnType<typeof setInterval> | null = null;
   private deepgramFluxMode = false;
@@ -157,6 +159,7 @@ export class AndroidVoiceCallSession {
   private lastMicAudioSentAt = 0;
   private aliyunAudioAppendedSinceCommit = false;
   private deferredBargeInActive = false;
+  private deferredBargeInReplacementToken: number | null = null;
   private deferredBargeInRestoreTimer: ReturnType<typeof setTimeout> | null = null;
   private replacementTtsPlaybackPromise: Promise<void> | null = null;
   private shouldResetSttAfterCurrentTurn = false;
@@ -649,14 +652,14 @@ export class AndroidVoiceCallSession {
     }
 
     const type = String(event.type || '');
-    if (type === 'error') {
-      if (isBenignAliyunCommitError(event)) {
-        this.aliyunAudioAppendedSinceCommit = false;
-        if (this.finalTranscriptParts.length || this.lastInterimTranscript || this.snapshot.partialTranscript) {
-          this.schedulePendingTranscriptFlush(this.getPendingTranscriptFlushMs());
-        }
-        return;
+    if (isBenignAliyunCommitError(event)) {
+      this.aliyunAudioAppendedSinceCommit = false;
+      if (this.finalTranscriptParts.length || this.lastInterimTranscript || this.snapshot.partialTranscript) {
+        this.schedulePendingTranscriptFlush(this.getPendingTranscriptFlushMs());
       }
+      return;
+    }
+    if (type === 'error') {
       this.fail(extractAliyunErrorMessage(event));
       return;
     }
@@ -945,6 +948,7 @@ export class AndroidVoiceCallSession {
       this.assistantTtsConnectDeferred = true;
     } else {
       this.ttsPlaybackToken += 1;
+      this.deferredBargeInReplacementToken = null;
       this.closeAssistantTts();
       this.connectAssistantTts(useSettingsStore.getState().ttsConfig);
       this.ttsTextQueue = [];
@@ -1019,6 +1023,7 @@ export class AndroidVoiceCallSession {
     if (!this.assistantTtsConnectDeferred) return;
     this.assistantTtsConnectDeferred = false;
     this.ttsPlaybackToken += 1;
+    this.deferredBargeInReplacementToken = this.ttsPlaybackToken;
     this.closeAssistantTts();
     this.ttsTextQueue = [];
     this.minimaxAudioHexParts = [];
@@ -1047,6 +1052,8 @@ export class AndroidVoiceCallSession {
     );
     this.cartesiaWs = ws;
     this.cartesiaContextId = `voice-call-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    this.cartesiaContextHasTranscript = false;
+    this.cartesiaFinishSent = false;
     this.ttsStarted = false;
 
     ws.onopen = () => {
@@ -1078,10 +1085,15 @@ export class AndroidVoiceCallSession {
       return;
     }
     this.cartesiaWs.send(JSON.stringify(buildCartesiaGenerationRequest(config, this.requireCartesiaContextId(), normalized, true)));
+    this.cartesiaContextHasTranscript = true;
+    this.cartesiaFinishSent = false;
   }
 
   private finishCartesia(config: TTSConfig): void {
+    if (!this.cartesiaContextHasTranscript && !this.ttsTextQueue.length) return;
+    if (this.cartesiaFinishSent) return;
     if (this.cartesiaWs?.readyState === WebSocket.OPEN && this.ttsStarted) {
+      this.cartesiaFinishSent = true;
       this.cartesiaWs.send(JSON.stringify(buildCartesiaGenerationRequest(config, this.requireCartesiaContextId(), '', false)));
     }
   }
@@ -1102,6 +1114,10 @@ export class AndroidVoiceCallSession {
     }
 
     if (event.type === 'error') {
+      if (isBenignCartesiaTranscriptError(event)) {
+        this.scheduleCartesiaPlaybackFinish();
+        return;
+      }
       this.fail(event.message || event.title || 'Cartesia TTS returned an error');
       return;
     }
@@ -1112,9 +1128,11 @@ export class AndroidVoiceCallSession {
         ? event.audio
         : '';
     if (event.type === 'chunk' && audioBase64) {
-      this.update({ status: 'speaking' });
       const playbackToken = this.ttsPlaybackToken;
-      this.prepareReplacementTtsPlayback()
+      if (this.shouldApplyTtsPlaybackState(playbackToken)) {
+        this.update({ status: 'speaking' });
+      }
+      this.prepareReplacementTtsPlayback(playbackToken)
         .then(() => {
           if (
             playbackToken !== this.ttsPlaybackToken
@@ -1242,15 +1260,17 @@ export class AndroidVoiceCallSession {
       : typeof event?.audio === 'string'
         ? event.audio
         : '';
+    const playbackToken = this.ttsPlaybackToken;
     if (audioHex) {
-      this.update({ status: 'speaking' });
+      if (this.shouldApplyTtsPlaybackState(playbackToken)) {
+        this.update({ status: 'speaking' });
+      }
       this.minimaxAudioHexParts.push(audioHex);
     }
     if (event.is_final && this.minimaxAudioHexParts.length > 0) {
       const audio = this.minimaxAudioHexParts.join('');
       this.minimaxAudioHexParts = [];
-      const playbackToken = this.ttsPlaybackToken;
-      this.prepareReplacementTtsPlayback()
+      this.prepareReplacementTtsPlayback(playbackToken)
         .then(() => {
           if (
             playbackToken !== this.ttsPlaybackToken
@@ -1445,9 +1465,17 @@ export class AndroidVoiceCallSession {
     this.cleanupChatBridge();
     this.flushPendingTtsText(true);
     this.finishAssistantTts();
+    const hadMicAudioInWindow = this.sentAudioInCurrentListeningWindow;
+    const lastMicAudioSentAt = this.lastMicAudioSentAt;
+    const hadAliyunAudioInWindow = this.aliyunAudioAppendedSinceCommit;
+
     if (!alreadyDeferred) {
-      this.enterListeningState({ speakingText: '' });
-    } else if (this.snapshot.status !== 'listening') {
+      this.enterListeningState({ speakingText: '' }, {
+        preserveAudioWindow: hadMicAudioInWindow,
+        lastMicAudioSentAt,
+        preserveAliyunAudio: hadAliyunAudioInWindow,
+      });
+    } else if (this.snapshot.status === 'speaking') {
       this.update({ status: 'listening', speakingText: '' });
     } else if (this.snapshot.speakingText) {
       this.update({ speakingText: '' });
@@ -1458,13 +1486,15 @@ export class AndroidVoiceCallSession {
     }, tuning.deferredBargeInMaxMs);
   }
 
-  private async prepareReplacementTtsPlayback(): Promise<void> {
+  private async prepareReplacementTtsPlayback(playbackToken: number): Promise<void> {
     if (this.replacementTtsPlaybackPromise) {
       return this.replacementTtsPlaybackPromise;
     }
     if (!this.deferredBargeInActive) return;
+    if (this.deferredBargeInReplacementToken !== playbackToken) return;
     this.clearDeferredBargeInTimer();
     this.deferredBargeInActive = false;
+    this.deferredBargeInReplacementToken = null;
     this.replacementTtsPlaybackPromise = (async () => {
       try {
         await clearVoiceCallSpeaker();
@@ -1476,9 +1506,14 @@ export class AndroidVoiceCallSession {
     return this.replacementTtsPlaybackPromise;
   }
 
+  private shouldApplyTtsPlaybackState(playbackToken: number): boolean {
+    return !this.deferredBargeInActive || this.deferredBargeInReplacementToken === playbackToken;
+  }
+
   private clearDeferredBargeIn(restoreVolume: boolean): void {
     this.clearDeferredBargeInTimer();
     this.deferredBargeInActive = false;
+    this.deferredBargeInReplacementToken = null;
     this.replacementTtsPlaybackPromise = null;
     if (restoreVolume) {
       setVoiceCallSpeakerVolume(1).catch(() => undefined);
@@ -1580,6 +1615,8 @@ export class AndroidVoiceCallSession {
     const ws = this.cartesiaWs;
     this.cartesiaWs = null;
     this.cartesiaContextId = null;
+    this.cartesiaContextHasTranscript = false;
+    this.cartesiaFinishSent = false;
     this.ttsStarted = false;
     if (ws && ws.readyState <= WebSocket.OPEN) {
       ws.close();
@@ -1608,7 +1645,7 @@ export class AndroidVoiceCallSession {
       this.assistantPlaybackActive = false;
       this.suppressRecognitionUntil = 0;
       if (!this.snapshot.active || this.stopping || this.snapshot.status === 'error') return;
-      if (this.snapshot.status !== 'listening') {
+      if (this.snapshot.status === 'speaking') {
         this.enterListeningState({ speakingText: '', partialTranscript: '' });
       }
       return;
@@ -1633,6 +1670,7 @@ export class AndroidVoiceCallSession {
 
   private shouldSuppressRecognition(): boolean {
     const now = Date.now();
+    if (this.deferredBargeInActive) return false;
     if (now < this.bargeInRecognitionOpenUntil) return false;
     return this.assistantPlaybackActive || now < this.suppressRecognitionUntil;
   }
@@ -1647,12 +1685,19 @@ export class AndroidVoiceCallSession {
     }
   }
 
-  private enterListeningState(patch: Partial<VoiceCallSnapshot> = {}): void {
+  private enterListeningState(
+    patch: Partial<VoiceCallSnapshot> = {},
+    options: {
+      preserveAudioWindow?: boolean;
+      lastMicAudioSentAt?: number;
+      preserveAliyunAudio?: boolean;
+    } = {}
+  ): void {
     this.clearRecognitionBuffers();
     this.listeningStartedAt = Date.now();
-    this.sentAudioInCurrentListeningWindow = false;
-    this.lastMicAudioSentAt = 0;
-    this.aliyunAudioAppendedSinceCommit = false;
+    this.sentAudioInCurrentListeningWindow = !!options.preserveAudioWindow;
+    this.lastMicAudioSentAt = options.preserveAudioWindow ? options.lastMicAudioSentAt || 0 : 0;
+    this.aliyunAudioAppendedSinceCommit = !!options.preserveAliyunAudio;
     this.update({
       ...patch,
       status: 'listening',
@@ -2021,23 +2066,49 @@ function extractAliyunErrorMessage(event: any): string {
   const message = pickString(
     event.error?.message,
     event.error?.code,
+    event.error?.type,
+    event.error?.param,
     event.message,
-    event.code
+    event.code,
+    event.status,
+    event.status_msg,
+    event.base_resp?.status_msg
   );
   return message ? `阿里实时 STT 错误：${message}` : '阿里实时 STT 返回错误';
 }
 
-function isBenignAliyunCommitError(event: any): boolean {
-  const message = pickString(
-    event.error?.message,
-    event.error?.code,
-    event.message,
-    event.code
-  ).toLowerCase();
+function isBenignCartesiaTranscriptError(event: any): boolean {
+  const message = pickString(event.message, event.title, event.error).toLowerCase();
   if (!message) return false;
   return (
     message.includes('no valid transcripts passed')
     || message.includes('no valid transcript')
+    || (message.includes('transcript') && (message.includes('empty') || message.includes('no valid')))
+  );
+}
+
+function isBenignAliyunCommitError(event: any): boolean {
+  const message = [
+    event.type,
+    event.error?.message,
+    event.error?.code,
+    event.error?.type,
+    event.error?.param,
+    event.message,
+    event.code,
+    event.status,
+    event.status_msg,
+    event.base_resp?.status_msg,
+  ]
+    .filter((value) => typeof value === 'string' && value.trim())
+    .join(' ')
+    .toLowerCase();
+  if (!message) return false;
+  return (
+    message.includes('no valid transcripts passed')
+    || message.includes('no valid transcript')
+    || message.includes('no valid transcripts')
+    || message.includes('valid transcripts passed')
     || message.includes('committing input audio buffer')
     || (
       message.includes('input_audio_buffer')

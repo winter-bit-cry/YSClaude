@@ -48,6 +48,7 @@ class VoiceCallAudioModule(
     private const val BARGE_IN_MIN_SPEECH_MS = 20
     private const val BARGE_IN_COOLDOWN_MS = 700L
     private const val BARGE_IN_RECOGNITION_OPEN_MS = 2_500L
+    private const val BARGE_IN_DIRECT_STREAM_MAX_MS = 8_000L
     private const val MIC_PREROLL_MS = 720
     private const val MIC_START_MIN_SPEECH_MS = 40
     private const val MIC_TRAILING_AUDIO_MS = 1_260
@@ -91,6 +92,9 @@ class VoiceCallAudioModule(
   private var playbackEchoRms = 900.0
   private var bargeInSpeechMs = 0
   private var bargeInLastEventAtMs = 0L
+  private var bargeInDirectStreamUntilMs = 0L
+  private var bargeInDirectStreamSilenceMs = 0
+  private var bargeInDirectStreamSpeechSeen = false
   private var micSpeechActive = false
   private var micSpeechMs = 0
   private var micSilenceMs = 0
@@ -177,6 +181,9 @@ class VoiceCallAudioModule(
           val read = record.read(buffer, 0, buffer.size)
           if (read > 0) {
             val payload = if (read == buffer.size) buffer else buffer.copyOf(read)
+            if (processBargeInDirectStream(payload, normalizedChunkMs, normalizedSampleRate)) {
+              continue
+            }
             if (shouldSuppressMic()) {
               rememberBargeInPreroll(payload, normalizedChunkMs)
               if (isLikelyBargeIn(payload, normalizedChunkMs)) {
@@ -727,9 +734,13 @@ class VoiceCallAudioModule(
 
   private fun emitBargeIn(sampleRate: Int) {
     if (!bargeInTriggered.compareAndSet(false, true)) return
-    bargeInLastEventAtMs = System.currentTimeMillis()
+    val now = System.currentTimeMillis()
+    bargeInLastEventAtMs = now
     micSuppressedUntilMs.set(0)
     resetMicGate()
+    bargeInDirectStreamUntilMs = now + BARGE_IN_DIRECT_STREAM_MAX_MS
+    bargeInDirectStreamSilenceMs = 0
+    bargeInDirectStreamSpeechSeen = true
     val chunks = Arguments.createArray()
     synchronized(bargeInLock) {
       bargeInPreroll.forEach { chunk ->
@@ -744,6 +755,54 @@ class VoiceCallAudioModule(
         putArray("chunks", chunks)
       }
     )
+  }
+
+  private fun processBargeInDirectStream(payload: ByteArray, chunkMs: Int, sampleRate: Int): Boolean {
+    val now = System.currentTimeMillis()
+    if (bargeInDirectStreamUntilMs == 0L) return false
+    if (now > bargeInDirectStreamUntilMs) {
+      clearBargeInDirectStream()
+      emitSpeechEnd(sampleRate)
+      return false
+    }
+
+    val rms = calculatePcmRms(payload)
+    val peak = calculatePcmPeak(payload)
+    if (isLikelyUserSpeech(rms, peak)) {
+      bargeInDirectStreamSilenceMs = 0
+      bargeInDirectStreamSpeechSeen = true
+      bargeInDirectStreamUntilMs = now + BARGE_IN_DIRECT_STREAM_MAX_MS
+      emitMicChunk(payload, sampleRate)
+      return true
+    }
+
+    if (!bargeInDirectStreamSpeechSeen) {
+      emitMicChunk(payload, sampleRate)
+      return true
+    }
+
+    bargeInDirectStreamSilenceMs += chunkMs
+    if (bargeInDirectStreamSilenceMs <= micTrailingAudioMs) {
+      emitMicChunk(payload, sampleRate)
+    }
+    if (bargeInDirectStreamSilenceMs >= micEndSilenceMs) {
+      clearBargeInDirectStream()
+      emitSpeechEnd(sampleRate)
+    }
+    return true
+  }
+
+  private fun clearBargeInDirectStream() {
+    bargeInDirectStreamUntilMs = 0L
+    bargeInDirectStreamSilenceMs = 0
+    bargeInDirectStreamSpeechSeen = false
+  }
+
+  private fun isPlaybackOutputActive(): Boolean {
+    if (pcmPlaybackActive || playbackGateStartedAtMs != 0L) return true
+    synchronized(clipLock) {
+      return currentClipPlayer != null || clipQueue.isNotEmpty()
+    }
   }
 
   private fun processListeningMicChunk(payload: ByteArray, chunkMs: Int, sampleRate: Int) {
@@ -842,6 +901,7 @@ class VoiceCallAudioModule(
     micSpeechMs = 0
     micSilenceMs = 0
     micNoiseRms = MIC_INITIAL_NOISE_RMS
+    clearBargeInDirectStream()
   }
 
   private fun calculatePcmRms(payload: ByteArray): Double {
