@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import {
   Alert,
   Image,
+  Keyboard,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -251,7 +252,19 @@ function CategoryModal({ item, colors, onClose }: { item: AccountingCategory | '
   return <EditorModal visible={visible} title={existing ? '编辑分类' : '新增分类'} colors={colors} onClose={onClose} onSave={save}><Field label="分类名称" value={displayName} onChangeText={setName} colors={colors} /><Text style={[styles.fieldTitle, { color: colors.textSecondary }]}>适用类型</Text><View style={styles.filterRow}>{([{ id: 'expense', name: '支出' }, { id: 'income', name: '收入' }, { id: 'both', name: '通用' }] as const).map((entry) => <FilterChip key={entry.id} label={entry.name} active={displayType === entry.id} onPress={() => { setName(displayName); setType(entry.id); }} colors={colors} />)}</View><Text style={[styles.fieldTitle, { color: colors.textSecondary }]}>颜色</Text><View style={styles.colorRow}>{PALETTE.map((entry) => <Pressable key={entry} onPress={() => { setName(displayName); setColor(entry); }} style={[styles.colorChoice, { backgroundColor: entry }, displayColor === entry && { borderColor: colors.text, borderWidth: 3 }]} />)}</View></EditorModal>;
 }
 
-function EditorModal({ visible, title, children, colors, onClose, onSave }: { visible: boolean; title: string; children: React.ReactNode; colors: ThemeColors; onClose: () => void; onSave: () => void }) { return <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}><KeyboardAvoidingView style={styles.modalBackdrop} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}><View style={[styles.modalCard, { backgroundColor: colors.background }]}><View style={styles.modalHeader}><Pressable onPress={onClose}><X size={22} color={colors.text} /></Pressable><Text style={[styles.modalTitle, { color: colors.text }]}>{title}</Text><Pressable onPress={onSave}><Text style={[styles.saveText, { color: colors.primary }]}>保存</Text></Pressable></View><ScrollView contentContainerStyle={styles.modalContent} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive">{children}</ScrollView></View></KeyboardAvoidingView></Modal>; }
+function EditorModal({ visible, title, children, colors, onClose, onSave }: { visible: boolean; title: string; children: React.ReactNode; colors: ThemeColors; onClose: () => void; onSave: () => void }) {
+  const dismissAndClose = () => {
+    Keyboard.dismiss();
+    onClose();
+  };
+  const dismissAndSave = () => {
+    Keyboard.dismiss();
+    onSave();
+  };
+  const content = <View style={[styles.modalCard, { backgroundColor: colors.background }]}><View style={styles.modalHeader}><Pressable onPress={dismissAndClose}><X size={22} color={colors.text} /></Pressable><Text style={[styles.modalTitle, { color: colors.text }]}>{title}</Text><Pressable onPress={dismissAndSave}><Text style={[styles.saveText, { color: colors.primary }]}>保存</Text></Pressable></View><ScrollView contentContainerStyle={styles.modalContent} keyboardShouldPersistTaps="always" keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}>{children}</ScrollView></View>;
+
+  return <Modal visible={visible} animationType={Platform.OS === 'ios' ? 'slide' : 'fade'} transparent onRequestClose={dismissAndClose}>{Platform.OS === 'ios' ? <KeyboardAvoidingView style={styles.modalBackdrop} behavior="padding">{content}</KeyboardAvoidingView> : <View style={styles.modalBackdrop}>{content}</View>}</Modal>;
+}
 function Field({ label, value, onChangeText, colors, keyboardType }: { label: string; value: string; onChangeText: (value: string) => void; colors: ThemeColors; keyboardType?: 'decimal-pad' }) { return <View><Text style={[styles.fieldTitle, { color: colors.textSecondary }]}>{label}</Text><TextInput value={value} onChangeText={onChangeText} keyboardType={keyboardType} placeholder={label} placeholderTextColor={colors.textTertiary} style={[styles.input, { color: colors.text, backgroundColor: colors.inputBackground, borderColor: colors.border }]} /></View>; }
 function PickerChips({ title, items, value, onChange, colors }: { title: string; items: { id: string; name: string }[]; value?: string; onChange: (id: string) => void; colors: ThemeColors }) { return <View><Text style={[styles.fieldTitle, { color: colors.textSecondary }]}>{title}</Text><View style={styles.wrapRow}>{items.map((item) => <FilterChip key={item.id} label={item.name} active={value === item.id} onPress={() => onChange(item.id)} colors={colors} />)}</View></View>; }
 
