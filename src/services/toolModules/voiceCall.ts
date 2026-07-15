@@ -1,5 +1,8 @@
 import { ToolDefinition, ToolModule } from './types';
 
+let hangupPending = false;
+const HANGUP_RPC_FLUSH_DELAY_MS = 500;
+
 const START_AI_VOICE_CALL_TOOL: ToolDefinition = {
   type: 'function',
   function: {
@@ -61,13 +64,27 @@ export const voiceCallTool: ToolModule = {
     if (toolName !== 'start_ai_voice_call' && toolName !== 'hangup_ai_voice_call') return undefined;
     const { useVoiceCallStore } = await import('../../stores/voiceCall');
     if (toolName === 'hangup_ai_voice_call') {
-      const { snapshot, stopCall } = useVoiceCallStore.getState();
+      const { snapshot } = useVoiceCallStore.getState();
       if (!snapshot.active || snapshot.status === 'error') {
         return '当前没有正在进行的通话，无法挂断。';
       }
-      await stopCall();
+      if (hangupPending) return '挂断指令已经收到，通话即将结束。';
+
+      // Return the tool result before disconnecting the LiveKit room. Awaiting
+      // stopCall here closes the RPC transport before Brain receives a reply,
+      // causing an otherwise successful hangup to look like a failed tool call.
+      hangupPending = true;
+      setTimeout(() => {
+        const call = useVoiceCallStore.getState();
+        const stop = call.snapshot.active && call.snapshot.status !== 'error'
+          ? call.stopCall()
+          : Promise.resolve();
+        stop.catch(() => undefined).finally(() => {
+          hangupPending = false;
+        });
+      }, HANGUP_RPC_FLUSH_DELAY_MS);
       const reason = typeof args.reason === 'string' ? args.reason.trim() : '';
-      return reason ? `已挂断当前通话。原因：${reason}` : '已挂断当前通话。';
+      return reason ? `已收到挂断指令，通话即将结束。原因：${reason}` : '已收到挂断指令，通话即将结束。';
     }
     const reason = typeof args.reason === 'string' ? args.reason : '';
     const mode = args.call_type === 'video' || args.call_type === 'screen' ? args.call_type : 'voice';
