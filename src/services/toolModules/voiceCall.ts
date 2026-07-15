@@ -1,7 +1,7 @@
 import { ToolDefinition, ToolModule } from './types';
 
 let hangupPending = false;
-const HANGUP_RPC_FLUSH_DELAY_MS = 500;
+const HANGUP_FALLBACK_DELAY_MS = 10_000;
 
 const START_AI_VOICE_CALL_TOOL: ToolDefinition = {
   type: 'function',
@@ -70,11 +70,18 @@ export const voiceCallTool: ToolModule = {
       }
       if (hangupPending) return '挂断指令已经收到，通话即将结束。';
 
-      // Return the tool result before disconnecting the LiveKit room. Awaiting
-      // stopCall here closes the RPC transport before Brain receives a reply,
-      // causing an otherwise successful hangup to look like a failed tool call.
+      // Return the tool result before disconnecting the LiveKit room. The agent
+      // still needs the room while it feeds this result back to the model and
+      // plays its closing response, so wait for speaking -> listening instead
+      // of using a short fixed delay that can interrupt the tool-call turn.
       hangupPending = true;
-      setTimeout(() => {
+      let heardClosingResponse = false;
+      let finished = false;
+      const finishHangup = () => {
+        if (finished) return;
+        finished = true;
+        clearTimeout(fallbackTimer);
+        unsubscribe();
         const call = useVoiceCallStore.getState();
         const stop = call.snapshot.active && call.snapshot.status !== 'error'
           ? call.stopCall()
@@ -82,7 +89,17 @@ export const voiceCallTool: ToolModule = {
         stop.catch(() => undefined).finally(() => {
           hangupPending = false;
         });
-      }, HANGUP_RPC_FLUSH_DELAY_MS);
+      };
+      const unsubscribe = useVoiceCallStore.subscribe((state) => {
+        if (state.snapshot.status === 'speaking') {
+          heardClosingResponse = true;
+        } else if (heardClosingResponse && state.snapshot.status === 'listening') {
+          finishHangup();
+        } else if (!state.snapshot.active || state.snapshot.status === 'error') {
+          finishHangup();
+        }
+      });
+      const fallbackTimer = setTimeout(finishHangup, HANGUP_FALLBACK_DELAY_MS);
       const reason = typeof args.reason === 'string' ? args.reason.trim() : '';
       return reason ? `已收到挂断指令，通话即将结束。原因：${reason}` : '已收到挂断指令，通话即将结束。';
     }
