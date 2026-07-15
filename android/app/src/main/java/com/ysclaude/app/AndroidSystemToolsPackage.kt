@@ -13,6 +13,7 @@ class AndroidSystemToolsPackage : ReactPackage {
       RemoteSshCommandModule(reactContext),
       AndroidFilePickerModule(reactContext),
       FloatingBallModule(reactContext),
+      VoiceCallServiceModule(reactContext),
       TodayTodoWidgetModule(reactContext)
     )
   }

@@ -16,6 +16,10 @@ import {
 } from '../services/floatingBall';
 import { useChatStore } from './chat';
 import { useSettingsStore } from './settings';
+import {
+  startVoiceCallForegroundService,
+  stopVoiceCallForegroundService,
+} from '../services/voiceCallForegroundService';
 
 export const INITIAL_VOICE_CALL_SNAPSHOT: VoiceCallSnapshot = {
   active: false,
@@ -120,11 +124,17 @@ export const useVoiceCallStore = create<VoiceCallStore>((set, get) => ({
     sessionSubscription?.remove();
     sessionSubscription = nextSession.subscribe((snapshot) => {
       set({ snapshot });
+      if (snapshot.status === 'error') {
+        stopVoiceCallForegroundService().catch(() => undefined);
+      }
     });
 
     try {
       await nextSession.start();
+      await startVoiceCallForegroundService(mode);
     } catch (error) {
+      await stopVoiceCallForegroundService().catch(() => undefined);
+      await nextSession.stop().catch(() => undefined);
       sessionSubscription?.remove();
       sessionSubscription = null;
       session = null;
@@ -150,6 +160,7 @@ export const useVoiceCallStore = create<VoiceCallStore>((set, get) => ({
     sessionSubscription = null;
     set({ starting: false, minimized: false, localVideoTrack: null });
     await hideVoiceCallFloatingBall().catch(() => undefined);
+    await stopVoiceCallForegroundService().catch(() => undefined);
     try {
       if (activeSession) {
         await activeSession.stop();
