@@ -14,6 +14,11 @@ import type {
   ConversationArtifactKind,
   ConversationArtifactVersion,
 } from '../types';
+import {
+  hasAndroidNativeFilePicker,
+  pickAndroidConversationFile,
+  readAndroidTextFile,
+} from './androidFilePicker';
 
 const FILE_TOKEN_PATTERN = /\[File:([^\]\r\n]+)\]/g;
 const MAX_TEXT_FILE_BYTES = 512 * 1024;
@@ -176,7 +181,10 @@ export async function createConversationArtifactFromContent({
 }
 
 export async function pickConversationArtifactFile(conversationId: string): Promise<ConversationArtifact | null> {
-  const picked = await File.pickFileAsync({
+  const useAndroidPicker = hasAndroidNativeFilePicker();
+  const androidFile = useAndroidPicker ? await pickAndroidConversationFile() : null;
+  if (useAndroidPicker && !androidFile) return null;
+  const picked = useAndroidPicker ? null : await File.pickFileAsync({
     mimeTypes: [
       'text/*',
       'application/json',
@@ -190,23 +198,30 @@ export async function pickConversationArtifactFile(conversationId: string): Prom
     multipleFiles: false,
   });
 
-  if (picked.canceled || !picked.result) return null;
-  const file = picked.result;
-  if (!isSupportedConversationArtifact(file.name, file.type)) {
+  if (!androidFile && (picked?.canceled || !picked?.result)) return null;
+  const file = androidFile ? new File(androidFile.uri) : picked?.result;
+  if (!file) return null;
+  const fileName = androidFile?.name || file.name;
+  const mimeType = androidFile?.mimeType || file.type || undefined;
+  if (!isSupportedConversationArtifact(fileName, mimeType)) {
     throw new Error('暂只支持文本、Markdown、HTML、CSS、JS/TS、JSON 和 CSV 文件');
   }
-  const fileSize = typeof file.size === 'number' ? file.size : null;
+  const fileSize = typeof androidFile?.size === 'number'
+    ? androidFile.size
+    : typeof file.size === 'number'
+      ? file.size
+      : null;
   if (fileSize !== null && fileSize > MAX_TEXT_FILE_BYTES) {
     throw new Error('文件过大，当前最多支持 512KB 的文本文件');
   }
-  const content = await file.text();
+  const content = (await readAndroidTextFile(file.uri)) ?? (await file.text());
   if (byteSizeOf(content) > MAX_TEXT_FILE_BYTES) {
     throw new Error('文件过大，当前最多支持 512KB 的文本文件');
   }
   return await createConversationArtifactFromContent({
     conversationId,
-    name: file.name,
-    mimeType: file.type || undefined,
+    name: fileName,
+    mimeType,
     content,
     createdBy: 'user',
   });

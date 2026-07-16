@@ -1,5 +1,5 @@
 ﻿import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, Image, Pressable, ScrollView, Switch, Text, TextInput, View } from 'react-native';
+import { Alert, Image, Pressable, ScrollView, Switch, Text, TextInput, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { randomUUID } from 'expo-crypto';
 import { Directory, File, Paths } from 'expo-file-system';
@@ -365,38 +365,6 @@ export function ChatSettingsTab({ showToast, keyboardBottomInset }: SettingsTabP
   function snippet(text: string) {
     const t = text.replace(/\s+/g, ' ').trim();
     return t.length > 60 ? t.slice(0, 60) + '…' : t;
-  }
-
-  function handleSaveTokens() {
-    const val = tokensStr.trim();
-    if (!val) {
-      setMaxOutputTokens(null);
-      showToast('输出字数不限制');
-      return;
-    }
-    const num = parseInt(val, 10);
-    if (isNaN(num) || num <= 0) {
-      Alert.alert('提示', '请输入有效的正整数');
-      return;
-    }
-    setMaxOutputTokens(num);
-    showToast(`AI 最大输出 ${num} tokens`);
-  }
-
-  function handleSaveTokenWarning() {
-    const val = tokenWarningStr.trim();
-    if (!val) {
-      setTokenWarningThreshold(null);
-      showToast('Token 预警已关闭');
-      return;
-    }
-    const num = parseInt(val, 10);
-    if (isNaN(num) || num <= 0) {
-      Alert.alert('提示', '请输入有效的正整数');
-      return;
-    }
-    setTokenWarningThreshold(num);
-    showToast(`Token 预警 ${num}`);
   }
 
   function handleSavePromptCacheQuietHours(

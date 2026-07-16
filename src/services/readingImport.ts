@@ -2,7 +2,11 @@ import { Directory, File, Paths } from 'expo-file-system';
 import { unzipSync } from 'fflate';
 import { XMLParser } from 'fast-xml-parser';
 import { ReadingBookFormat, ReadingChapter } from '../types';
-import { pickAndroidReadingBookFile } from './androidFilePicker';
+import {
+  hasAndroidNativeFilePicker,
+  pickAndroidReadingBookFile,
+  readAndroidTextFile,
+} from './androidFilePicker';
 
 export interface ParsedReadingBook {
   title: string;
@@ -34,8 +38,9 @@ const xmlParser = new XMLParser({
 });
 
 export async function pickReadingBookDocument(): Promise<PickedReadingBookFile | null> {
-  const androidFile = await pickAndroidReadingBookFile();
-  if (androidFile) {
+  if (hasAndroidNativeFilePicker()) {
+    const androidFile = await pickAndroidReadingBookFile();
+    if (!androidFile) return null;
     const file = new File(androidFile.uri);
     return {
       file,
@@ -78,7 +83,7 @@ export async function parseReadingBookAsset(
   const fileUri = await copyImportedFile(asset.file, bookId, asset.name);
 
   if (format === 'txt') {
-    const text = await readTextFile(asset.file);
+    const text = await readTextFile(asset.file, asset.uri);
     const cleanText = normalizeBookText(text);
     return {
       title: titleFromFilename(asset.name),
@@ -117,7 +122,10 @@ async function copyImportedFile(file: File, bookId: string, name: string): Promi
   }
 }
 
-async function readTextFile(file: File): Promise<string> {
+async function readTextFile(file: File, uri: string): Promise<string> {
+  const androidText = await readAndroidTextFile(uri);
+  if (androidText !== null) return androidText;
+
   try {
     return await file.text();
   } catch {

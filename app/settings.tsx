@@ -15,6 +15,7 @@ import { ChatSettingsTab } from '../src/screens/settings/ChatSettingsTab';
 import { DiaryTab } from '../src/screens/settings/DiaryTab';
 import { ToolConfigTab } from '../src/screens/settings/ToolConfigTab';
 import { TodayWidgetTab } from '../src/screens/settings/TodayWidgetTab';
+import { IOSToast } from '../src/components/IOSToast';
 
 import { useKeyboardHeight } from '../src/hooks/useKeyboardHeight';
 
@@ -93,11 +94,7 @@ export default function SettingsScreen() {
       {activeTab === 9 && <WelcomePageTab showToast={showToast} keyboardBottomInset={keyboardHeight} />}
       {activeTab === 10 && <AppearanceTab showToast={showToast} keyboardBottomInset={keyboardHeight} />}
 
-      {toastMessage && (
-        <View pointerEvents="none" style={styles.toast}>
-          <Text style={styles.toastText}>{toastMessage}</Text>
-        </View>
-      )}
+      <IOSToast message={toastMessage} bottom={keyboardHeight + 34} />
     </View>
   );
 }

@@ -1,8 +1,7 @@
-import React, { useMemo } from 'react';
+import { useMemo } from 'react';
 import { View, Text, Pressable, Modal, StyleSheet, ScrollView } from 'react-native';
 import { lightColors, useThemeColors, type ThemeColors } from '../theme/colors';
 
-import { fonts } from '../theme/fonts';
 import { useSettingsStore } from '../stores/settings';
 
 

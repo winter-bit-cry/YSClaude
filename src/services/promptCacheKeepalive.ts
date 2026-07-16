@@ -1,4 +1,4 @@
-import { AppState, type AppStateStatus } from 'react-native';
+import { AppState } from 'react-native';
 import { ChatMessage } from './api';
 import { useSettingsStore, type PromptCacheCompatibility, type PromptCacheConfig, type PromptCacheTtl, type ThinkingCompatibility, type ThinkingEffort } from '../stores/settings';
 
@@ -130,7 +130,6 @@ interface PromptCacheRemoteServerConversationStatus {
 let pendingSnapshots: PromptCacheRemoteSnapshot[] = [];
 let snapshotSyncTimer: ReturnType<typeof setTimeout> | null = null;
 let snapshotSyncDueAt: number | null = null;
-let snapshotFlushAppState: AppStateStatus = AppState.currentState;
 let snapshotSyncInFlight = false;
 let snapshotFlushRequested = false;
 let latestSnapshotPreview: SnapshotPreview | null = null;
@@ -748,12 +747,10 @@ export async function testRemoteDingTalkPush(config: PromptCacheConfig): Promise
 }
 
 export function startPromptCacheRemoteSnapshotFlushListener(): () => void {
-  snapshotFlushAppState = AppState.currentState;
   refreshPromptCacheRemoteServerStatus(latestSnapshotPreview?.conversationId).catch((error) => {
     console.warn('[PromptCacheKeepalive] 初始化刷新远程快照状态失败:', error);
   });
   const sub = AppState.addEventListener('change', (nextState) => {
-    snapshotFlushAppState = nextState;
     if (nextState === 'active') {
       refreshPromptCacheRemoteServerStatus(latestSnapshotPreview?.conversationId).catch((error) => {
         console.warn('[PromptCacheKeepalive] 前台刷新远程快照状态失败:', error);

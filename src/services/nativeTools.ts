@@ -375,11 +375,6 @@ export async function isAccessibilityControlEnabled(): Promise<boolean> {
   return await module.isAccessibilityServiceEnabled();
 }
 
-async function isInputMethodReady(): Promise<boolean> {
-  const module = ensureAccessibilityScreenContext();
-  return await module.isInputMethodReady();
-}
-
 export async function tapAccessibilityScreen(args: Record<string, any>): Promise<string> {
   const module = ensureAccessibilityScreenContext();
   const result = await withAccessibilityTimeout(

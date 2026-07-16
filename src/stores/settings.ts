@@ -577,11 +577,6 @@ function normalizeSTTConfig(config?: Partial<STTConfig>): STTConfig {
   };
 }
 
-function clampNumber(value: unknown, fallback: number, min: number, max: number): number {
-  const numeric = typeof value === 'number' && Number.isFinite(value) ? value : fallback;
-  return Math.min(max, Math.max(min, numeric));
-}
-
 function normalizeTTSConfig(config?: Partial<TTSConfig>): TTSConfig {
   const provider =
     config?.provider === 'fish' || config?.provider === 'deepgram' || config?.provider === 'cartesia' || config?.provider === 'elevenlabs'
@@ -874,7 +869,7 @@ interface SettingsState {
 
 export const useSettingsStore = create<SettingsState>()(
   persist(
-    (set, get) => ({
+    (set) => ({
       _hydrated: false,
       apiConfigs: [],
       activeConfigIndex: 0,

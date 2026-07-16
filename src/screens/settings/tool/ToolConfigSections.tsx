@@ -1,4 +1,4 @@
-import { Pressable, Switch, Text, View } from 'react-native';
+import { Switch } from 'react-native';
 import { ButtonRow, SettingsGroup, SettingsRow, TextEditRow } from '../ui';
 
 type BuiltInToolCard = {
@@ -47,22 +47,22 @@ function SectionHeader({
   hint,
   expanded,
   onPress,
-  styles,
 }: {
   title: string;
   hint: string;
   expanded: boolean;
   onPress: () => void;
-  styles: any;
 }) {
   return (
-    <Pressable style={styles.toolGroupHeader} onPress={onPress}>
-      <View style={styles.switchText}>
-        <Text style={styles.toolGroupTitle}>{title}</Text>
-        <Text style={styles.hint}>{hint}</Text>
-      </View>
-      <Text style={styles.platformToggleIcon}>{expanded ? '↑' : '↓'}</Text>
-    </Pressable>
+    <SettingsGroup marginBottom={expanded ? 10 : 20}>
+      <SettingsRow
+        label={title}
+        sublabel={hint}
+        value={expanded ? '收起' : '展开'}
+        showChevron
+        onPress={onPress}
+      />
+    </SettingsGroup>
   );
 }
 
@@ -101,7 +101,6 @@ function ToolRows({
 }
 
 export function BuiltInToolsSection({
-  styles,
   colors,
   expanded,
   tools,
@@ -115,7 +114,6 @@ export function BuiltInToolsSection({
         hint="按类别管理 AI 可调用的内置能力。"
         expanded={expanded}
         onPress={onToggleExpanded}
-        styles={styles}
       />
       {expanded && (
         <ToolRows
@@ -130,7 +128,6 @@ export function BuiltInToolsSection({
 }
 
 export function McpToolsSection({
-  styles,
   colors,
   expanded,
   mcpMaxCalls,
@@ -156,7 +153,6 @@ export function McpToolsSection({
         hint="连接远程 MCP 服务并管理它们暴露的工具与资源。"
         expanded={expanded}
         onPress={onToggleExpanded}
-        styles={styles}
       />
       {expanded && (
         <>
@@ -176,7 +172,9 @@ export function McpToolsSection({
             <ButtonRow label="添加服务" onPress={onAddServer} />
           </SettingsGroup>
           {mcpServers.length === 0 ? (
-            <Text style={styles.emptyText}>尚未添加 MCP 服务</Text>
+            <SettingsGroup>
+              <SettingsRow label="尚未添加 MCP 服务" />
+            </SettingsGroup>
           ) : (
             <SettingsGroup header="已添加服务">
               {mcpServers.map((server) => (
@@ -205,7 +203,6 @@ export function McpToolsSection({
 }
 
 export function OtherFeaturesSection({
-  styles,
   colors,
   expanded,
   tools,
@@ -219,7 +216,6 @@ export function OtherFeaturesSection({
         hint="管理不属于 AI 工具调用的本地辅助能力。"
         expanded={expanded}
         onPress={onToggleExpanded}
-        styles={styles}
       />
       {expanded && (
         <ToolRows

@@ -1,16 +1,14 @@
 ﻿import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, Image, NativeModules, Platform, Pressable, ScrollView, Switch, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, NativeModules, Platform, Pressable, ScrollView, Switch, Text, TextInput, View } from 'react-native';
 import { randomUUID } from 'expo-crypto';
 import { File } from 'expo-file-system';
 import { useSettingsPageColors } from '../../theme/colors';
 import {
   useSettingsStore,
   type DailyPaperSourceConfig,
-  type MemoryVaultConfig,
   type QQBotConfig,
   type RunCommandProfile,
   type RunCommandProfileConfig,
-  type WebSearchConfig,
 } from '../../stores/settings';
 import { useChatStore } from '../../stores/chat';
 import { formatMcpPromptResult, getMcpPrompt, listMcpCapabilities } from '../../services/mcpHttpClient';
@@ -116,7 +114,6 @@ export function ToolConfigTab({ showToast, keyboardBottomInset }: SettingsTabPro
   const [hbPlatformTypes, setHbPlatformTypes] = useState<string[]>(
     normalizeHotboardPlatformTypes(hotboardConfig?.platforms || DEFAULT_HOTBOARD_PLATFORM_TYPES.join(','))
   );
-  const [hbPlatformsExpanded, setHbPlatformsExpanded] = useState(false);
 
   const [dailyUseDefaultSources, setDailyUseDefaultSources] = useState(dailyPaperConfig?.useDefaultSources ?? true);
   const [dailyCustomSources, setDailyCustomSources] = useState<DailyPaperSourceConfig[]>(dailyPaperConfig?.customSources || []);
@@ -1629,51 +1626,6 @@ export function ToolConfigTab({ showToast, keyboardBottomInset }: SettingsTabPro
     });
     showToast('设备原生工具开关已保存');
   }
-
-  const nativeToolRows = [
-    {
-      label: '记账管理',
-      hint: '读取今日流水，以及新增、删除收入或支出记录',
-      value: accountingEnabled,
-      onValueChange: (value: boolean) => handleNativeToolEnabledChange('accountingEnabled', value),
-    },
-    {
-      label: '用户设备信息读取',
-      hint: '品牌、型号、系统版本、设备类型、内存等',
-      value: deviceInfoEnabled,
-      onValueChange: (value: boolean) => handleNativeToolEnabledChange('deviceInfoEnabled', value),
-    },
-    {
-      label: '电池状态读取',
-      hint: '电量、充电状态、低电量模式等',
-      value: batteryStatusEnabled,
-      onValueChange: (value: boolean) => handleNativeToolEnabledChange('batteryStatusEnabled', value),
-    },
-    {
-      label: '应用使用时间统计读取',
-      hint: 'Android 使用情况访问权限；首次调用会提示去系统设置授权',
-      value: appUsageStatsEnabled,
-      onValueChange: (value: boolean) => handleNativeToolEnabledChange('appUsageStatsEnabled', value),
-    },
-    {
-      label: '日历日程管理',
-      hint: '读取、创建、修改、删除系统日历日程，需要授权',
-      value: calendarEnabled,
-      onValueChange: (value: boolean) => handleNativeToolEnabledChange('calendarEnabled', value),
-    },
-    {
-      label: 'AI 主动通话',
-      hint: '允许 AI 发起语音、视频或共享屏幕通话',
-      value: aiVoiceCallEnabled,
-      onValueChange: (value: boolean) => handleNativeToolEnabledChange('aiVoiceCallEnabled', value),
-    },
-    {
-      label: 'AI 主动挂断',
-      hint: '仅在通话过程中提供给 AI，用于主动结束当前通话',
-      value: aiVoiceCallHangupEnabled,
-      onValueChange: (value: boolean) => handleNativeToolEnabledChange('aiVoiceCallHangupEnabled', value),
-    },
-  ];
 
   const dailyPaperSourcesCard = {
     key: 'dailyPaperSources',

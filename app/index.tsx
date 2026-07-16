@@ -44,6 +44,7 @@ import { ChatBubble } from '../src/components/ChatBubble';
 import { ChatInput } from '../src/components/ChatInput';
 import { ModelSelector } from '../src/components/ModelSelector';
 import { TimeDivider } from '../src/components/TimeDivider';
+import { IOSToast } from '../src/components/IOSToast';
 import { IncomingLetter, Message } from '../src/types';
 import { formatFullTime, TIME_GAP_THRESHOLD_MS } from '../src/utils/time';
 import { pickGreeting } from '../src/utils/greetings';
@@ -56,9 +57,7 @@ import {
 } from '../src/utils/periods';
 import { showWebViewPanel } from '../src/services/webviewController';
 import {
-  getConversationMessageDates,
   getFirstMessageInDateRange,
-  getDailyPaperDateKeys,
   markIncomingLetterShown,
 } from '../src/db/operations';
 import { ensureTodayIncomingLetters } from '../src/services/incomingLetters';
@@ -408,7 +407,6 @@ export default function ChatScreen() {
   } = useChatStore();
   const {
     periodRecords,
-    loadPeriodRecords,
     addPeriodRecord,
     editPeriodRecord,
     removePeriodRecord,
@@ -418,9 +416,9 @@ export default function ChatScreen() {
   const [calendarMonth, setCalendarMonth] = useState(() => startOfMonth(new Date()));
   const [monthJumpVisible, setMonthJumpVisible] = useState(false);
   const [monthJumpText, setMonthJumpText] = useState('');
-  const [chatDateKeys, setChatDateKeys] = useState<Set<string>>(new Set());
-  const [dailyPaperDateKeys, setDailyPaperDateKeys] = useState<Set<string>>(new Set());
-  const [calendarLoading, setCalendarLoading] = useState(false);
+  const [chatDateKeys] = useState<Set<string>>(new Set());
+  const [dailyPaperDateKeys] = useState<Set<string>>(new Set());
+  const calendarLoading = false;
   const [dateActionKey, setDateActionKey] = useState<string | null>(null);
   const [dismissedDividers, setDismissedDividers] = useState<Set<string>>(new Set());
   const [visibleFloorMessageId, setVisibleFloorMessageId] = useState<string | null>(null);
@@ -569,22 +567,6 @@ export default function ChatScreen() {
   useEffect(() => {
     checkIncomingLetters().catch(() => undefined);
   }, [checkIncomingLetters]);
-
-  const openCalendar = useCallback(async () => {
-    const lastMessage = messages[messages.length - 1];
-    setCalendarMonth(startOfMonth(lastMessage ? new Date(lastMessage.createdAt) : new Date()));
-    setCalendarVisible(true);
-    setCalendarLoading(true);
-    try {
-      const dates = conversationId ? await getConversationMessageDates(conversationId) : [];
-      const paperDates = await getDailyPaperDateKeys();
-      await loadPeriodRecords();
-      setChatDateKeys(new Set(dates));
-      setDailyPaperDateKeys(new Set(paperDates));
-    } finally {
-      setCalendarLoading(false);
-    }
-  }, [conversationId, loadPeriodRecords, messages]);
 
   const jumpToDate = useCallback(async (dateKey: string) => {
     if (!conversationId || !chatDateKeys.has(dateKey)) return;
@@ -1745,11 +1727,7 @@ export default function ChatScreen() {
         <ModelSelector onClose={() => setShowModelSelector(false)} />
       )}
 
-      {toastMessage && (
-        <View pointerEvents="none" style={styles.toast}>
-          <Text style={styles.toastText}>{toastMessage}</Text>
-        </View>
-      )}
+      <IOSToast message={toastMessage} bottom={Math.max(insets.bottom + 18, inputBarHeight + insets.bottom + 14)} />
 
       <Modal visible={!!incomingLetter} transparent animationType="fade" onRequestClose={closeIncomingLetter}>
         <View style={styles.letterOverlay}>
@@ -2162,26 +2140,6 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   errorText: {
     fontSize: 13,
     color: colors.danger,
-  },
-  toast: {
-    position: 'absolute',
-    left: 24,
-    right: 24,
-    bottom: 150,
-    alignItems: 'center',
-    zIndex: 20,
-  },
-  toastText: {
-    maxWidth: '100%',
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-    borderRadius: 18,
-    backgroundColor: colors.text,
-    color: colors.background,
-    fontSize: 13,
-    fontWeight: '600',
-    textAlign: 'center',
-    overflow: 'hidden',
   },
   letterOverlay: {
     flex: 1,

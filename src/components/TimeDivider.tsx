@@ -1,5 +1,5 @@
-import React, { useMemo } from 'react';
-import { View, Text, StyleSheet, Pressable, Alert } from 'react-native';
+import { useMemo } from 'react';
+import { Text, StyleSheet, Pressable, Alert } from 'react-native';
 import { lightColors, useThemeColors, type ThemeColors } from '../theme/colors';
 
 import { formatSmartTime } from '../utils/time';

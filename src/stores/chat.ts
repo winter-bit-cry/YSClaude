@@ -2161,22 +2161,6 @@ async function streamAssistantResponse(
     scheduleStreamContentFlush();
   };
 
-  const setAssistantContent = (content: string) => {
-    pendingStreamContent = '';
-    if (streamFlushTimer !== null) {
-      clearTimeout(streamFlushTimer);
-      streamFlushTimer = null;
-    }
-    set((state) => {
-      const msgs = [...state.messages];
-      const last = msgs[msgs.length - 1];
-      if (last && last.role === 'assistant') {
-        msgs[msgs.length - 1] = { ...last, content };
-      }
-      return { messages: msgs };
-    });
-  };
-
   // 每发生一次工具调用，就把记录追加到当前 assistant 消息上，实时反映到 UI
   const appendToolInvocation = (inv: ToolInvocation) => {
     flushStreamContent();

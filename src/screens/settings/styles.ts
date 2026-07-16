@@ -5,28 +5,6 @@ import type { ThemeColors } from '../../theme/colors';
 
 export const createSettingsStyles = (colors: ThemeColors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  toast: {
-    position: 'absolute',
-    left: 24,
-    right: 24,
-    bottom: 34,
-    alignItems: 'center',
-    zIndex: 20,
-  },
-  toastText: {
-    maxWidth: '100%',
-    overflow: 'hidden',
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    color: colors.primary,
-    fontSize: 14,
-    fontWeight: '500',
-    textAlign: 'center',
-  },
   header: {
     flexDirection: 'row', alignItems: 'center',
     paddingHorizontal: 16, paddingBottom: 14,
@@ -61,22 +39,6 @@ export const createSettingsStyles = (colors: ThemeColors) => StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 14,
     marginBottom: 10,
-  },
-  toolGroupHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: colors.surface,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    marginTop: 8,
-    marginBottom: 12,
-  },
-  toolGroupTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: colors.text,
   },
   toolCardEnabled: {
     borderColor: colors.primary,
@@ -252,11 +214,6 @@ export const createSettingsStyles = (colors: ThemeColors) => StyleSheet.create({
     minHeight: 84,
     textAlignVertical: 'top',
   },
-  platformToggleIcon: {
-    fontSize: 18,
-    color: colors.textSecondary,
-    marginLeft: 12,
-  },
   platformActions: {
     flexDirection: 'row',
     gap: 8,
@@ -309,12 +266,6 @@ export const createSettingsStyles = (colors: ThemeColors) => StyleSheet.create({
   platformChipTypeSelected: {
     color: colors.textSecondary,
   },
-  modelRow: { flexDirection: 'row', gap: 8 },
-  fetchButton: {
-    backgroundColor: colors.primary, borderRadius: 12,
-    paddingHorizontal: 16, justifyContent: 'center', alignItems: 'center',
-  },
-  fetchButtonText: { color: '#FFFFFF', fontSize: 14, fontWeight: '500' },
   actions: { flexDirection: 'row', gap: 12, marginTop: 8, marginBottom: 32 },
   testButton: {
     flex: 1, paddingVertical: 14, borderRadius: 12,
@@ -343,11 +294,6 @@ export const createSettingsStyles = (colors: ThemeColors) => StyleSheet.create({
   modalBody: {
     flexShrink: 1,
   },
-  modelList: { maxHeight: 300 },
-  modelItem: { paddingVertical: 12, paddingHorizontal: 12, borderRadius: 8, marginBottom: 2 },
-  modelItemActive: { backgroundColor: colors.surface },
-  modelItemText: { fontSize: 14, color: colors.text },
-  modelItemTextActive: { color: colors.primary, fontWeight: '500' },
   // Chat settings styles
   hint: { fontSize: 12, color: colors.textTertiary, marginBottom: 12 },
   imageFaceReferenceGrid: {
@@ -773,4 +719,3 @@ export const createSettingsStyles = (colors: ThemeColors) => StyleSheet.create({
   modalConfirm: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 8, backgroundColor: colors.primary },
   modalConfirmText: { fontSize: 15, color: '#FFFFFF', fontWeight: '500' },
 });
-

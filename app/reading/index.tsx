@@ -12,6 +12,7 @@ import {
   Alert,
   ActivityIndicator,
 } from 'react-native';
+import { IOSToast } from '../../src/components/IOSToast';
 import * as ImagePicker from 'expo-image-picker';
 import { randomUUID } from 'expo-crypto';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -97,11 +98,7 @@ export default function ReadingScreen() {
       {activeTab === 1 && <ReadingSummaryTab showToast={showToast} />}
       {activeTab === 2 && <ReadingSettingsTab showToast={showToast} />}
 
-      {toastMessage && (
-        <View pointerEvents="none" style={styles.toast}>
-          <Text style={styles.toastText}>{toastMessage}</Text>
-        </View>
-      )}
+      <IOSToast message={toastMessage} />
     </View>
   );
 }
@@ -836,28 +833,6 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   summaryContent: { flex: 1 },
   summaryContentInner: { paddingHorizontal: 16, paddingTop: 14, paddingBottom: 28 },
   settingsContent: { flex: 1, padding: 20 },
-  toast: {
-    position: 'absolute',
-    left: 24,
-    right: 24,
-    bottom: 34,
-    alignItems: 'center',
-    zIndex: 20,
-  },
-  toastText: {
-    maxWidth: '100%',
-    overflow: 'hidden',
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    color: colors.primary,
-    fontSize: 14,
-    fontWeight: '500',
-    textAlign: 'center',
-  },
   bookshelfActions: { marginBottom: 12 },
   primaryButton: {
     backgroundColor: colors.primary,

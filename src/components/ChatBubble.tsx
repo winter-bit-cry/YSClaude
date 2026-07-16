@@ -10,7 +10,7 @@ import { lightColors, useThemeColors, type ThemeColors } from '../theme/colors';
 import { fonts, fontWeights } from '../theme/fonts';
 import { useChatStore } from '../stores/chat';
 import { useSettingsStore } from '../stores/settings';
-import { getTTSConfigMissingMessage, isTTSConfigReady, playTTS, stopTTS } from '../services/tts';
+import { getTTSConfigMissingMessage, isTTSConfigReady, playTTS } from '../services/tts';
 import { saveGeneratedImageToLibrary } from '../services/imageGeneration';
 import { openWebView } from '../services/webviewController';
 import { getToolLabel } from '../services/tools';

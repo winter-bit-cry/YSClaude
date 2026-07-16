@@ -799,18 +799,6 @@ function mapConversationArtifactRow(row: ConversationArtifactRow): ConversationA
   };
 }
 
-function mapConversationArtifactVersionRow(row: ConversationArtifactVersionRow): ConversationArtifactVersion {
-  return {
-    id: row.id,
-    artifactId: row.artifact_id,
-    version: row.version,
-    content: row.content,
-    createdBy: normalizeArtifactCreator(row.created_by),
-    createdAt: row.created_at,
-    size: row.size,
-  };
-}
-
 export async function insertConversationArtifact(
   artifact: ConversationArtifact,
   version: ConversationArtifactVersion
