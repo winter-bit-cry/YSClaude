@@ -30,6 +30,7 @@ import {
 } from './tool/ToolConfigModals';
 import { BuiltInToolsSection, McpToolsSection, OtherFeaturesSection } from './tool/ToolConfigSections';
 import { McpServerEditor } from './tool/McpServerEditor';
+import { executeShizukuShell, getShizukuStatus, openShizukuManager, requestShizukuPermission } from '../../services/shizukuShell';
 
 type SettingsTabProps = {
   showToast: (message: string) => void;
@@ -268,6 +269,8 @@ export function ToolConfigTab({ showToast, keyboardBottomInset }: SettingsTabPro
   const [shellTimeoutMs, setShellTimeoutMs] = useState(String(nativeToolConfig?.shellTimeoutMs || 30000));
   const [shellMaxOutputChars, setShellMaxOutputChars] = useState(String(nativeToolConfig?.shellMaxOutputChars || 20000));
   const [shellMaxToolCalls, setShellMaxToolCalls] = useState(String(nativeToolConfig?.shellMaxToolCalls || 10));
+  const [shizukuTesting, setShizukuTesting] = useState(false);
+  const [shizukuStatusText, setShizukuStatusText] = useState('尚未检测');
 
   useEffect(() => {
     setLocationEnabled(!!locationShareConfig?.enabled);
@@ -371,6 +374,45 @@ export function ToolConfigTab({ showToast, keyboardBottomInset }: SettingsTabPro
     }
     setNativeToolConfig({ [key]: value });
     showToast(value ? '内置工具已开启' : '内置工具已关闭');
+  }
+
+  async function handleOpenShizukuPairing() {
+    if (Platform.OS !== 'android') {
+      Alert.alert('暂不支持', 'Shizuku 仅支持 Android 原生版本');
+      return;
+    }
+    try {
+      await openShizukuManager();
+      Alert.alert('在 Shizuku 中完成配对', '进入“通过无线调试启动”，按 Shizuku 的提示完成配对并启动服务，然后返回 YSClaude 点击“测试连接”。');
+    } catch (error: any) {
+      Alert.alert('无法打开 Shizuku', error?.message || '请先安装 Shizuku');
+    }
+  }
+
+  async function handleTestShizuku() {
+    setShizukuTesting(true);
+    setShizukuStatusText('正在检测…');
+    try {
+      let status = await getShizukuStatus();
+      if (!status.installed) throw new Error('Shizuku 服务未运行，请先完成无线调试配对并启动服务');
+      if (!status.permissionGranted) {
+        const granted = await requestShizukuPermission();
+        if (!granted) throw new Error('YSClaude 的 Shizuku 授权被拒绝');
+        status = await getShizukuStatus();
+      }
+      const result = await executeShizukuShell('id', 15000, 4000);
+      if (result.timedOut) throw new Error('Shell 测试命令执行超时');
+      if (result.exitCode !== 0) throw new Error(result.stderr || `Shell 返回退出码 ${result.exitCode}`);
+      const identity = result.stdout.trim() || `uid=${status.uid}`;
+      setShizukuStatusText(`已连接 · ${identity}`);
+      Alert.alert('Shizuku 连接成功', identity);
+    } catch (error: any) {
+      const message = error?.message || '无法连接 Shizuku';
+      setShizukuStatusText(`连接失败 · ${message}`);
+      Alert.alert('Shizuku 连接失败', message);
+    } finally {
+      setShizukuTesting(false);
+    }
   }
 
   function handleSaveMemory() {
@@ -1921,7 +1963,7 @@ export function ToolConfigTab({ showToast, keyboardBottomInset }: SettingsTabPro
   function renderBuiltInToolEditor(toolKey: string) {
     switch (toolKey) {
       case 'shizukuShell':
-        return (<><Text style={styles.toolModalDescription}>AI 可通过 Shizuku 在本机执行 /system/bin/sh 命令。终端入口始终由用户手动使用，此开关只控制 AI 工具。</Text><View style={styles.switchRow}><View style={styles.switchText}><Text style={styles.label}>允许 AI 执行本机 Shell</Text><Text style={styles.hint}>实际身份取决于 Shizuku 以 ADB shell 还是 Root 模式启动。</Text></View><Switch value={shizukuShellEnabled} onValueChange={(value) => handleNativeToolEnabledChange('shizukuShellEnabled', value)} trackColor={{ false: colors.inputBorder, true: colors.primary }} /></View><View style={styles.field}><Text style={styles.label}>超时时间（毫秒）</Text><TextInput style={styles.input} value={shellTimeoutMs} onChangeText={setShellTimeoutMs} keyboardType="number-pad" placeholder="30000" placeholderTextColor={colors.textTertiary}/></View><View style={styles.field}><Text style={styles.label}>输出上限（字符）</Text><TextInput style={styles.input} value={shellMaxOutputChars} onChangeText={setShellMaxOutputChars} keyboardType="number-pad" placeholder="20000" placeholderTextColor={colors.textTertiary}/></View><View style={styles.field}><Text style={styles.label}>每轮最大调用次数</Text><TextInput style={styles.input} value={shellMaxToolCalls} onChangeText={setShellMaxToolCalls} keyboardType="number-pad" placeholder="10" placeholderTextColor={colors.textTertiary}/></View></>);
+        return (<><Text style={styles.toolModalDescription}>AI 可通过 Shizuku 在本机执行 /system/bin/sh 命令。终端入口始终由用户手动使用，此开关只控制 AI 工具。</Text><Text style={styles.hint}>连接状态：{shizukuStatusText}</Text><View style={styles.platformActions}><Pressable style={styles.platformActionButton} onPress={handleOpenShizukuPairing}><Text style={styles.platformActionText}>打开 Shizuku 配对/启动</Text></Pressable><Pressable style={[styles.platformActionButton, shizukuTesting && styles.importButtonDisabled]} onPress={handleTestShizuku} disabled={shizukuTesting}>{shizukuTesting ? <ActivityIndicator size="small" color={colors.primary} /> : <Text style={styles.platformActionText}>测试连接</Text>}</Pressable></View><View style={styles.switchRow}><View style={styles.switchText}><Text style={styles.label}>允许 AI 执行本机 Shell</Text><Text style={styles.hint}>实际身份取决于 Shizuku 以 ADB shell 还是 Root 模式启动。</Text></View><Switch value={shizukuShellEnabled} onValueChange={(value) => handleNativeToolEnabledChange('shizukuShellEnabled', value)} trackColor={{ false: colors.inputBorder, true: colors.primary }} /></View><View style={styles.field}><Text style={styles.label}>超时时间（毫秒）</Text><TextInput style={styles.input} value={shellTimeoutMs} onChangeText={setShellTimeoutMs} keyboardType="number-pad" placeholder="30000" placeholderTextColor={colors.textTertiary}/></View><View style={styles.field}><Text style={styles.label}>输出上限（字符）</Text><TextInput style={styles.input} value={shellMaxOutputChars} onChangeText={setShellMaxOutputChars} keyboardType="number-pad" placeholder="20000" placeholderTextColor={colors.textTertiary}/></View><View style={styles.field}><Text style={styles.label}>每轮最大调用次数</Text><TextInput style={styles.input} value={shellMaxToolCalls} onChangeText={setShellMaxToolCalls} keyboardType="number-pad" placeholder="10" placeholderTextColor={colors.textTertiary}/></View></>);
       case 'accounting':
         return (<><Text style={styles.toolModalDescription}>AI 可以读取今天的收入与支出、可用分类和付款方式，并新增或删除流水。新增和删除会同步更新付款方式余额。</Text><View style={styles.switchRow}><View style={styles.switchText}><Text style={styles.label}>启用记账管理</Text><Text style={styles.hint}>关闭后 AI 无法读取或修改任何记账数据。</Text></View><Switch value={accountingEnabled} onValueChange={(value) => handleNativeToolEnabledChange('accountingEnabled', value)} trackColor={{ false: colors.inputBorder, true: colors.primary }} /></View></>);
       case 'memoryVault':

@@ -763,6 +763,20 @@ async function runMigrations(database: SQLite.SQLiteDatabase) {
       PRAGMA user_version = 24;
     `);
   }
+
+  if (version < 25) {
+    await database.execAsync(`
+      DELETE FROM api_usage_events
+       WHERE status = 'error'
+         AND COALESCE(prompt_tokens, 0) <= 0
+         AND COALESCE(completion_tokens, 0) <= 0
+         AND COALESCE(total_tokens, 0) <= 0
+         AND COALESCE(cached_tokens, 0) <= 0
+         AND COALESCE(reasoning_tokens, 0) <= 0;
+
+      PRAGMA user_version = 25;
+    `);
+  }
 }
 
 async function hasColumn(

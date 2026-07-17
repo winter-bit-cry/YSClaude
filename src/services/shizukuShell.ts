@@ -7,6 +7,7 @@ export type ShizukuInputResult = { success: boolean; message: string };
 const module = NativeModules.ShizukuShell as undefined | {
   status(): Promise<ShizukuStatus>;
   requestPermission(): Promise<boolean>;
+  openManager(): Promise<boolean>;
   execute(command: string, timeoutMs: number, maxOutputChars: number): Promise<ShellResult>;
   captureScreen(): Promise<string>;
   isInputMethodReady(): Promise<boolean>;
@@ -24,6 +25,7 @@ function requireModule() {
 
 export const getShizukuStatus = () => requireModule().status();
 export const requestShizukuPermission = () => requireModule().requestPermission();
+export const openShizukuManager = () => requireModule().openManager();
 export const executeShizukuShell = (command: string, timeoutMs = 30000, maxOutputChars = 20000) =>
   requireModule().execute(command, timeoutMs, maxOutputChars);
 export const captureShizukuScreen = () => requireModule().captureScreen();

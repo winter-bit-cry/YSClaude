@@ -46,3 +46,9 @@
 -dontwarn org.slf4j.LoggerFactory
 
 # Add any project specific keep options here:
+
+# Shizuku creates the UserService and its Context constructor reflectively in a
+# separate shell/root process. R8 cannot discover those entry points itself.
+-keep class com.ysclaude.app.ShizukuShellUserService { *; }
+-keep interface com.ysclaude.app.IShizukuShellService { *; }
+-keep class com.ysclaude.app.IShizukuShellService$Stub { *; }

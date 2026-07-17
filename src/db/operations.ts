@@ -3166,6 +3166,15 @@ const API_USAGE_SUMMARY_SELECT = `
 `;
 
 export async function insertApiUsageEvent(event: ApiUsageEvent): Promise<void> {
+  const hasTokenUsage = [
+    event.promptTokens,
+    event.completionTokens,
+    event.totalTokens,
+    event.cachedTokens,
+    event.reasoningTokens,
+  ].some((value) => typeof value === 'number' && value > 0);
+  if (event.status === 'error' && !hasTokenUsage) return;
+
   const db = await getDatabase();
   await db.runAsync(
     `INSERT OR REPLACE INTO api_usage_events

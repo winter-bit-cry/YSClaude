@@ -1,6 +1,6 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Modal, PanResponder, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
-import { Maximize2, Minus, Play, TerminalSquare, X } from 'lucide-react-native';
+import { Eraser, Maximize2, Minus, TerminalSquare, X } from 'lucide-react-native';
 import { executeShizukuShell, getShizukuStatus, requestShizukuPermission } from '../services/shizukuShell';
 import { useSettingsStore } from '../stores/settings';
 import { useThemeColors } from '../theme/colors';
@@ -14,18 +14,38 @@ export function FloatingTerminal({ visible, onClose }: { visible: boolean; onClo
   const [busy, setBusy] = useState(false);
   const [minimized, setMinimized] = useState(false);
   const [frame, setFrame] = useState({ x: 18, y: 80, width: Math.min(420, screen.width - 36), height: Math.min(460, screen.height * .58) });
+  const frameRef = useRef(frame);
   const dragStart = useRef(frame);
   const resizeStart = useRef(frame);
-  const drag = useMemo(() => PanResponder.create({
+  const screenRef = useRef(screen);
+  useEffect(() => { frameRef.current = frame; }, [frame]);
+  useEffect(() => { screenRef.current = screen; }, [screen]);
+  const drag = useRef(PanResponder.create({
+    onStartShouldSetPanResponder: () => false,
+    onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dx) > 3 || Math.abs(g.dy) > 3,
+    onPanResponderGrant: () => { dragStart.current = frameRef.current; },
+    onPanResponderMove: (_, g) => {
+      const bounds = screenRef.current;
+      const start = dragStart.current;
+      setFrame((current) => ({ ...current,
+        x: Math.max(0, Math.min(bounds.width - current.width, start.x + g.dx)),
+        y: Math.max(0, Math.min(bounds.height - 48, start.y + g.dy)),
+      }));
+    },
+  })).current;
+  const resize = useRef(PanResponder.create({
     onStartShouldSetPanResponder: () => true,
-    onPanResponderGrant: () => { dragStart.current = frame; },
-    onPanResponderMove: (_, g) => setFrame((f) => ({ ...f, x: Math.max(0, Math.min(screen.width - f.width, dragStart.current.x + g.dx)), y: Math.max(0, Math.min(screen.height - 60, dragStart.current.y + g.dy)) })),
-  }), [frame, screen.height, screen.width]);
-  const resize = useMemo(() => PanResponder.create({
-    onStartShouldSetPanResponder: () => true,
-    onPanResponderGrant: () => { resizeStart.current = frame; },
-    onPanResponderMove: (_, g) => setFrame((f) => ({ ...f, width: Math.max(280, Math.min(screen.width - f.x, resizeStart.current.width + g.dx)), height: Math.max(220, Math.min(screen.height - f.y, resizeStart.current.height + g.dy)) })),
-  }), [frame, screen.height, screen.width]);
+    onMoveShouldSetPanResponder: () => true,
+    onPanResponderGrant: () => { resizeStart.current = frameRef.current; },
+    onPanResponderMove: (_, g) => {
+      const bounds = screenRef.current;
+      const start = resizeStart.current;
+      setFrame((current) => ({ ...current,
+        width: Math.max(280, Math.min(bounds.width - current.x, start.width + g.dx)),
+        height: Math.max(220, Math.min(bounds.height - current.y, start.height + g.dy)),
+      }));
+    },
+  })).current;
 
   async function run() {
     const value = command.trim(); if (!value || busy) return;
@@ -55,8 +75,8 @@ export function FloatingTerminal({ visible, onClose }: { visible: boolean; onClo
         </View>
         {!minimized && <>
           <ScrollView style={styles.console} contentContainerStyle={styles.consoleContent}><Text selectable style={styles.output}>{output}</Text>{busy && <ActivityIndicator color="#9ee493"/>}</ScrollView>
-          <View style={styles.inputRow}><Text style={styles.prompt}>$</Text><TextInput value={command} onChangeText={setCommand} onSubmitEditing={run} editable={!busy} autoCapitalize="none" autoCorrect={false} placeholder="输入命令" placeholderTextColor="#777" style={styles.input}/><Pressable onPress={run} disabled={busy} style={styles.run}><Play size={17} color="#111" fill="#111"/></Pressable></View>
-          <View style={styles.resize} {...resize.panHandlers}/>
+          <View style={styles.inputRow}><Text style={styles.prompt}>$</Text><TextInput value={command} onChangeText={setCommand} onSubmitEditing={run} editable={!busy} returnKeyType="send" autoCapitalize="none" autoCorrect={false} placeholder="输入命令，按回车执行" placeholderTextColor="#777" style={styles.input}/><Pressable onPress={() => setOutput('')} accessibilityRole="button" accessibilityLabel="清屏" style={styles.clear}><Eraser size={18} color="#111"/></Pressable></View>
+          <View style={styles.resize} {...resize.panHandlers}><Text style={styles.resizeMark}>⌟</Text></View>
         </>}
       </View>
     </View>
@@ -67,6 +87,7 @@ const styles = StyleSheet.create({
   window:{position:'absolute',backgroundColor:'#151515',borderWidth:1,borderRadius:12,overflow:'hidden',elevation:20,shadowColor:'#000',shadowOpacity:.35,shadowRadius:12},
   titlebar:{height:48,backgroundColor:'#252525',flexDirection:'row',alignItems:'center',paddingHorizontal:12,gap:8}, title:{color:'#eee',fontWeight:'600',flex:1},icon:{padding:6},
   console:{flex:1},consoleContent:{padding:12},output:{color:'#d7d7d7',fontFamily:'monospace',fontSize:13,lineHeight:19},
-  inputRow:{height:48,borderTopWidth:1,borderTopColor:'#333',flexDirection:'row',alignItems:'center',paddingHorizontal:10},prompt:{color:'#9ee493',fontFamily:'monospace',fontSize:16},input:{flex:1,color:'#fff',fontFamily:'monospace',paddingHorizontal:8},run:{backgroundColor:'#9ee493',borderRadius:7,padding:8},
-  resize:{position:'absolute',right:0,bottom:0,width:24,height:24,borderRightWidth:3,borderBottomWidth:3,borderColor:'#888'},
+  inputRow:{height:48,borderTopWidth:1,borderTopColor:'#333',flexDirection:'row',alignItems:'center',paddingLeft:10,paddingRight:40},prompt:{color:'#9ee493',fontFamily:'monospace',fontSize:16},input:{flex:1,color:'#fff',fontFamily:'monospace',paddingHorizontal:8},clear:{backgroundColor:'#9ee493',borderRadius:7,padding:8},
+  resize:{position:'absolute',right:0,bottom:0,width:36,height:36,alignItems:'flex-end',justifyContent:'flex-end',paddingRight:2,paddingBottom:1},
+  resizeMark:{color:'#aaa',fontSize:22,lineHeight:24,fontWeight:'700'},
 });

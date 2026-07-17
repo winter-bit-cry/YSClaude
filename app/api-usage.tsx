@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Pressable,
   ScrollView,
@@ -102,12 +103,12 @@ export default function ApiUsageScreen() {
       <View style={styles.summaryPanel}>
         <Text style={styles.sectionTitle}>总数</Text>
         <View style={styles.summaryGrid}>
-          <Metric label="总 tokens" value={formatNumber(summary.totalTokens)} />
-          <Metric label="Prompt" value={formatNumber(summary.promptTokens)} />
-          <Metric label="Completion" value={formatNumber(summary.completionTokens)} />
-          <Metric label="调用次数" value={formatNumber(summary.totalCalls)} />
-          <Metric label="缓存 tokens" value={formatNumber(summary.cachedTokens)} />
-          <Metric label="推理 tokens" value={formatNumber(summary.reasoningTokens)} />
+          <Metric label="总 tokens" value={summary.totalTokens} compact />
+          <Metric label="Prompt" value={summary.promptTokens} compact />
+          <Metric label="Completion" value={summary.completionTokens} compact />
+          <Metric label="调用次数" value={summary.totalCalls} />
+          <Metric label="缓存 tokens" value={summary.cachedTokens} compact />
+          <Metric label="推理 tokens" value={summary.reasoningTokens} compact />
         </View>
         <Text style={styles.metaLine}>
           成功 {summary.successCalls} · 失败 {summary.errorCalls} · 中断 {summary.abortedCalls} · 总耗时 {formatDuration(summary.totalDurationMs)}
@@ -129,11 +130,11 @@ export default function ApiUsageScreen() {
           <Text style={styles.dayCallText}>{formatNumber(daySummary.totalCalls)} 次</Text>
         </View>
         <View style={styles.summaryGrid}>
-          <Metric label="日 tokens" value={formatNumber(daySummary.totalTokens)} />
-          <Metric label="Prompt" value={formatNumber(daySummary.promptTokens)} />
-          <Metric label="Completion" value={formatNumber(daySummary.completionTokens)} />
-          <Metric label="缓存 tokens" value={formatNumber(daySummary.cachedTokens)} />
-          <Metric label="推理 tokens" value={formatNumber(daySummary.reasoningTokens)} />
+          <Metric label="日 tokens" value={daySummary.totalTokens} compact />
+          <Metric label="Prompt" value={daySummary.promptTokens} compact />
+          <Metric label="Completion" value={daySummary.completionTokens} compact />
+          <Metric label="缓存 tokens" value={daySummary.cachedTokens} compact />
+          <Metric label="推理 tokens" value={daySummary.reasoningTokens} compact />
           <Metric label="日耗时" value={formatDuration(daySummary.totalDurationMs)} />
         </View>
         <Text style={styles.metaLine}>
@@ -251,12 +252,39 @@ function HeatmapSection({
   );
 }
 
-function Metric({ label, value }: { label: string; value: string }) {
+function Metric({
+  label,
+  value,
+  compact = false,
+}: {
+  label: string;
+  value: number | string;
+  compact?: boolean;
+}) {
+  const isNumber = typeof value === 'number';
+  const displayValue = isNumber
+    ? (compact ? formatTokenNumber(value) : formatNumber(value))
+    : value;
+  const showExactValue = isNumber && compact && shouldCompactNumber(value);
+
   return (
-    <View style={styles.metric}>
-      <Text style={styles.metricValue}>{value}</Text>
+    <Pressable
+      style={styles.metric}
+      disabled={!showExactValue}
+      accessibilityRole={showExactValue ? 'button' : undefined}
+      accessibilityHint={showExactValue ? '点击查看精确数值' : undefined}
+      onPress={() => showExactValue && showExactNumber(label, value)}
+    >
+      <Text
+        style={styles.metricValue}
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.65}
+      >
+        {displayValue}
+      </Text>
       <Text style={styles.metricLabel}>{label}</Text>
-    </View>
+    </Pressable>
   );
 }
 
@@ -280,7 +308,11 @@ function GroupSection({
             <View key={groupRowKey(row)} style={styles.groupCard}>
               <Text style={styles.groupKey} numberOfLines={1}>{formatGroupKey(row.key)}</Text>
               {!!channelText && <Text style={styles.groupChannel} numberOfLines={2}>渠道：{channelText}</Text>}
-              <Text style={styles.groupValue}>{formatNumber(row.totalTokens)}</Text>
+              <Pressable onPress={() => showExactNumber('Token', row.totalTokens)}>
+                <Text style={styles.groupValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
+                  {formatTokenNumber(row.totalTokens)}
+                </Text>
+              </Pressable>
               <Text style={styles.groupMeta}>
                 {row.totalCalls} 次 · {formatNumber(row.promptTokens)}/{formatNumber(row.completionTokens)}
               </Text>
@@ -324,10 +356,16 @@ function UsageEventRow({ event }: { event: ApiUsageEvent }) {
 }
 
 function TokenChip({ label, value }: { label: string; value: number | undefined }) {
+  const showExactValue = value !== undefined && shouldCompactNumber(value);
   return (
-    <Text style={styles.tokenChip}>
-      {label} {value === undefined ? '-' : formatNumber(value)}
-    </Text>
+    <Pressable
+      disabled={!showExactValue}
+      onPress={() => value !== undefined && showExactNumber(label, value)}
+    >
+      <Text style={styles.tokenChip}>
+        {label} {value === undefined ? '-' : formatTokenNumber(value)}
+      </Text>
+    </Pressable>
   );
 }
 
@@ -337,6 +375,18 @@ function formatNumber(value: number): string {
 
 function formatCompactNumber(value: number): string {
   return new Intl.NumberFormat('zh-CN', { notation: 'compact', maximumFractionDigits: 1 }).format(value);
+}
+
+function shouldCompactNumber(value: number): boolean {
+  return Math.abs(value) >= 100_000_000;
+}
+
+function formatTokenNumber(value: number): string {
+  return shouldCompactNumber(value) ? formatCompactNumber(value) : formatNumber(value);
+}
+
+function showExactNumber(label: string, value: number): void {
+  Alert.alert(label, formatNumber(value));
 }
 
 function dateFromKey(key: string): Date {
@@ -514,8 +564,10 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     gap: 8,
   },
   metric: {
-    minWidth: '31%',
+    flexBasis: '31%',
+    minWidth: 0,
     flexGrow: 1,
+    flexShrink: 1,
     borderRadius: 8,
     backgroundColor: colors.inputBackground,
     borderWidth: 1,
