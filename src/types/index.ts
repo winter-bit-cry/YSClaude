@@ -95,6 +95,7 @@ export interface Conversation {
   model: string;
   createdAt: number;
   updatedAt: number;
+  archivedFromRecents?: boolean;
   hiddenRanges?: HiddenRange[];
   hiddenMessageIds?: string[];
 }

@@ -57,6 +57,7 @@ async function initTables(database: SQLite.SQLiteDatabase) {
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL,
       pending_response_boundary_message_id TEXT,
+      archived_from_recents INTEGER NOT NULL DEFAULT 0,
       hidden_message_ids TEXT NOT NULL DEFAULT '[]'
     );
 
@@ -776,6 +777,16 @@ async function runMigrations(database: SQLite.SQLiteDatabase) {
 
       PRAGMA user_version = 25;
     `);
+  }
+
+  // v26: archived conversations remain in Chats but are hidden from Recents.
+  if (!(await hasColumn(database, 'conversations', 'archived_from_recents'))) {
+    await database.execAsync(
+      `ALTER TABLE conversations ADD COLUMN archived_from_recents INTEGER NOT NULL DEFAULT 0;`
+    );
+  }
+  if (version < 26) {
+    await database.execAsync('PRAGMA user_version = 26;');
   }
 }
 

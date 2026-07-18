@@ -104,6 +104,7 @@ export default function HistoryScreen() {
 
   const [section, setSection] = useState<HistorySection>('menu');
   const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [recentMenuConv, setRecentMenuConv] = useState<Conversation | null>(null);
   const [editingConv, setEditingConv] = useState<Conversation | null>(null);
   const [editTitle, setEditTitle] = useState('');
   const [searchText, setSearchText] = useState('');
@@ -347,11 +348,13 @@ export default function HistoryScreen() {
   }
 
   function handleRecentLongPress(conv: Conversation) {
-    Alert.alert(conv.title || 'Untitled', undefined, [
-      { text: 'Rename', onPress: () => handleLongPress(conv) },
-      { text: 'Delete', style: 'destructive', onPress: () => handleDelete(conv) },
-      { text: 'Cancel', style: 'cancel' },
-    ]);
+    setRecentMenuConv(conv);
+  }
+
+  async function handleArchiveFromRecents(conv: Conversation) {
+    setRecentMenuConv(null);
+    await updateConversation(conv.id, { archivedFromRecents: true });
+    await loadList();
   }
 
   async function handleSaveTitle() {
@@ -522,7 +525,7 @@ export default function HistoryScreen() {
   }
 
   function renderMenu() {
-    const recent = conversations.slice(0, 5);
+    const recent = conversations.filter((conversation) => !conversation.archivedFromRecents).slice(0, 5);
     return (
       <View style={[styles.menuPane, { paddingTop: insets.top + 32, paddingBottom: insets.bottom + 24 }]}>
         <View style={styles.menuTop}>
@@ -919,6 +922,50 @@ export default function HistoryScreen() {
     <View style={styles.container}>
       <Pressable style={styles.dimLayer} onPress={() => router.back()} />
       <View style={styles.drawer}>{renderActiveSection()}</View>
+
+      <Modal
+        visible={!!recentMenuConv}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setRecentMenuConv(null)}
+      >
+        <Pressable style={styles.recentMenuOverlay} onPress={() => setRecentMenuConv(null)}>
+          <View style={styles.recentMenu} onStartShouldSetResponder={() => true}>
+            <Pressable
+              style={({ pressed }) => [styles.recentMenuAction, pressed && styles.recentMenuActionPressed]}
+              onPress={() => {
+                const conv = recentMenuConv;
+                setRecentMenuConv(null);
+                if (conv) handleLongPress(conv);
+              }}
+            >
+              <Text style={styles.recentMenuActionText}>重命名</Text>
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [styles.recentMenuAction, pressed && styles.recentMenuActionPressed]}
+              onPress={() => recentMenuConv && handleArchiveFromRecents(recentMenuConv)}
+            >
+              <Text style={styles.recentMenuActionText}>归档</Text>
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [styles.recentMenuAction, pressed && styles.recentMenuActionPressed]}
+              onPress={() => {
+                const conv = recentMenuConv;
+                setRecentMenuConv(null);
+                if (conv) handleDelete(conv);
+              }}
+            >
+              <Text style={[styles.recentMenuActionText, styles.recentMenuDeleteText]}>删除</Text>
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [styles.recentMenuAction, pressed && styles.recentMenuActionPressed]}
+              onPress={() => setRecentMenuConv(null)}
+            >
+              <Text style={styles.recentMenuCancelText}>取消</Text>
+            </Pressable>
+          </View>
+        </Pressable>
+      </Modal>
 
       <Modal visible={!!editingConv} transparent animationType="fade">
         <Pressable style={styles.overlay} onPress={() => setEditingConv(null)}>
@@ -1563,6 +1610,48 @@ const createStyles = (
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 22,
+  },
+  recentMenuOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(20,20,19,0.18)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 32,
+  },
+  recentMenu: {
+    width: '100%',
+    maxWidth: 360,
+    paddingVertical: 18,
+    paddingHorizontal: 16,
+    borderRadius: 28,
+    backgroundColor: colors.background,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
+    elevation: 10,
+  },
+  recentMenuAction: {
+    minHeight: 64,
+    justifyContent: 'center',
+    paddingHorizontal: 28,
+    borderRadius: 14,
+  },
+  recentMenuActionPressed: {
+    backgroundColor: colors.inputBackground,
+  },
+  recentMenuActionText: {
+    fontSize: 22,
+    lineHeight: 30,
+    color: colors.text,
+  },
+  recentMenuDeleteText: {
+    color: colors.danger,
+  },
+  recentMenuCancelText: {
+    fontSize: 22,
+    lineHeight: 30,
+    color: colors.textSecondary,
   },
   modal: {
     backgroundColor: colors.background,

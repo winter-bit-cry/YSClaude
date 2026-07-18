@@ -174,6 +174,7 @@ interface ConversationRow {
   model: string;
   created_at: number;
   updated_at: number;
+  archived_from_recents: number | null;
   hidden_ranges: string | null;
   hidden_message_ids: string | null;
 }
@@ -301,7 +302,10 @@ export async function importConversation(
   }
 }
 
-export async function updateConversation(id: string, updates: Partial<Pick<Conversation, 'title' | 'updatedAt'>>): Promise<void> {
+export async function updateConversation(
+  id: string,
+  updates: Partial<Pick<Conversation, 'title' | 'updatedAt' | 'archivedFromRecents'>>
+): Promise<void> {
   const db = await getDatabase();
   const sets: string[] = [];
   const values: any[] = [];
@@ -313,6 +317,10 @@ export async function updateConversation(id: string, updates: Partial<Pick<Conve
   if (updates.updatedAt !== undefined) {
     sets.push('updated_at = ?');
     values.push(updates.updatedAt);
+  }
+  if (updates.archivedFromRecents !== undefined) {
+    sets.push('archived_from_recents = ?');
+    values.push(updates.archivedFromRecents ? 1 : 0);
   }
 
   if (sets.length === 0) return;
@@ -416,6 +424,7 @@ export async function getChatGroupsWithConversations(): Promise<ChatGroupWithCon
     model: string | null;
     created_at: number;
     updated_at: number;
+    archived_from_recents: number | null;
     hidden_ranges: string | null;
     hidden_message_ids: string | null;
   }>(
@@ -427,6 +436,7 @@ export async function getChatGroupsWithConversations(): Promise<ChatGroupWithCon
         c.model,
         c.created_at,
         c.updated_at,
+        c.archived_from_recents,
         c.hidden_ranges,
         c.hidden_message_ids
        FROM chat_group_members gm
@@ -444,6 +454,7 @@ export async function getChatGroupsWithConversations(): Promise<ChatGroupWithCon
       model: row.model || '',
       created_at: row.created_at,
       updated_at: row.updated_at,
+      archived_from_recents: row.archived_from_recents,
       hidden_ranges: row.hidden_ranges,
       hidden_message_ids: row.hidden_message_ids,
     }));
@@ -490,6 +501,7 @@ function mapConversationRow(row: ConversationRow): Conversation {
     model: row.model,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    archivedFromRecents: row.archived_from_recents === 1,
     hiddenRanges: parseHiddenRanges(row.hidden_ranges),
     hiddenMessageIds: parseStringArray(row.hidden_message_ids),
   };

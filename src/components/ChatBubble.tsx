@@ -8,7 +8,7 @@ import Svg, { Path } from 'react-native-svg';
 import { Message, type GeneratedPicture, type LocationAttachment, type ToolInvocation, type VoiceAttachment } from '../types';
 import { lightColors, useThemeColors, type ThemeColors } from '../theme/colors';
 import { fonts, fontWeights } from '../theme/fonts';
-import { INTER_MEDIUM } from '../theme/interfaceFonts';
+import { TIKTOK_SANS_REGULAR } from '../theme/interfaceFonts';
 import { useChatStore } from '../stores/chat';
 import { useSettingsStore } from '../stores/settings';
 import { getTTSConfigMissingMessage, isTTSConfigReady, playTTS } from '../services/tts';
@@ -2757,7 +2757,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     alignSelf: 'stretch',
     maxWidth: '100%',
   },
-  // 单行工具调用：左图标 + 中间文字 + 右箭头，左对齐
+  // 单行工具调用：箭头紧跟文字，长文字在可用宽度内收缩。
   toolRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2770,11 +2770,11 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     opacity: 1,
   },
   toolText: {
-    flex: 1,
+    flexShrink: 1,
     minWidth: 0,
     fontSize: 13,
     color: colors.conversationMuted,
-    fontFamily: INTER_MEDIUM,
+    fontFamily: TIKTOK_SANS_REGULAR,
   },
   toolDetailBox: {
     marginLeft: 21,
@@ -2844,7 +2844,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     color: colors.conversationMuted,
     textAlign: 'right',
     lineHeight: 16,
-    fontFamily: INTER_MEDIUM,
+    fontFamily: TIKTOK_SANS_REGULAR,
   },
   overlay: {
     flex: 1, backgroundColor: 'rgba(0,0,0,0.3)',

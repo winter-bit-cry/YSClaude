@@ -28,7 +28,7 @@ google-services.json
 *.woff
 *.woff2
 *.eot
-!assets/Inter-Medium-8.otf
+!assets/TikTok Sans Regular.ttf
 
 # Metro
 .metro-health-check*

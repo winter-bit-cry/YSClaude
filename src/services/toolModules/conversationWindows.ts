@@ -11,8 +11,15 @@ const LIST_WINDOWS: ToolDefinition = {
   type: 'function',
   function: {
     name: 'conversation_windows_list',
-    description: '列出所有对话窗口的总数、名称和 ID。需要查看其他窗口时先调用此工具；隐藏楼层不会影响结果。',
-    parameters: { type: 'object', properties: {}, required: [] },
+    description: '分页列出对话窗口的总数、名称和 ID。需要查看其他窗口时先调用此工具；如 has_more 为 true，使用 next_page 继续获取。隐藏楼层不会影响结果。',
+    parameters: {
+      type: 'object',
+      properties: {
+        page: { type: 'integer', minimum: 1, description: '页码，从 1 开始，默认 1' },
+        page_size: { type: 'integer', minimum: 1, maximum: 50, description: '每页窗口数，默认 20，最大 50' },
+      },
+      required: [],
+    },
   },
 };
 
@@ -261,9 +268,22 @@ export const conversationWindowsTool: ToolModule = {
     }
     if (toolName === 'conversation_windows_list') {
       const conversations = await getAllConversations();
+      const pageSize = Math.min(50, Math.max(1, Number.isInteger(args.page_size) ? args.page_size : 20));
+      const requestedPage = Number.isInteger(args.page) ? args.page : 1;
+      if (requestedPage < 1) throw new Error('page 必须是从 1 开始的正整数');
+      const totalPages = Math.ceil(conversations.length / pageSize);
+      const offset = (requestedPage - 1) * pageSize;
+      const windows = conversations.slice(offset, offset + pageSize);
+      const hasMore = offset + windows.length < conversations.length;
       return JSON.stringify({
         window_count: conversations.length,
-        windows: conversations.map((item) => ({ name: item.title, id: item.id })),
+        page: requestedPage,
+        page_size: pageSize,
+        total_pages: totalPages,
+        returned_count: windows.length,
+        has_more: hasMore,
+        next_page: hasMore ? requestedPage + 1 : null,
+        windows: windows.map((item) => ({ name: item.title, id: item.id })),
       });
     }
 

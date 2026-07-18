@@ -1,5 +1,6 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Animated,
   View,
   TextInput,
   Pressable,
@@ -14,6 +15,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
+  Easing,
   useWindowDimensions,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
@@ -46,7 +48,7 @@ import { randomUUID } from 'expo-crypto';
 import { Directory, File, Paths } from 'expo-file-system';
 import { lightColors, useThemeColors, type ThemeColors } from '../theme/colors';
 import { fonts } from '../theme/fonts';
-import { INTER_MEDIUM } from '../theme/interfaceFonts';
+import { TIKTOK_SANS_REGULAR } from '../theme/interfaceFonts';
 
 import { useSettingsStore } from '../stores/settings';
 import { useChatStore } from '../stores/chat';
@@ -86,6 +88,8 @@ const OPTION_ACTIONS_PER_PAGE = 8;
 const MCP_PANEL_HEIGHT = Math.min(560, Dimensions.get('window').height * 0.68);
 const MAX_IMAGE_REFERENCE_COUNT = 16;
 const CUSTOM_CSS_MAX_LENGTH = 12000;
+const RESPONSE_BUTTON_COLLAPSED_SCALE = 0.56;
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 const CUSTOM_CSS_PLACEHOLDER = `.user-bubble {
   background-color: rgba(255,255,255,0.72);
   border-radius: 22px;
@@ -304,7 +308,12 @@ export function ChatInput({
   const [locationSearchQuery, setLocationSearchQuery] = useState('');
   const [locationSearchResults, setLocationSearchResults] = useState<LocationSearchResult[]>([]);
   const [locationSearchLoading, setLocationSearchLoading] = useState(false);
-  const shouldInvertResponseIcon = isDarkTheme && (isStreaming || !isInputFocused);
+  const shouldShowFocusedResponse = !isStreaming && isInputFocused && text.trim().length > 0;
+  const [displayFocusedResponse, setDisplayFocusedResponse] = useState(shouldShowFocusedResponse);
+  const displayFocusedResponseRef = useRef(shouldShowFocusedResponse);
+  const responseButtonScale = useRef(new Animated.Value(1)).current;
+  const responseAnimationVersionRef = useRef(0);
+  const shouldInvertResponseIcon = isDarkTheme && (isStreaming || !displayFocusedResponse);
   const responseTouchStartedRef = useRef(false);
   const sendInFlightRef = useRef(false);
   const inputRef = useRef<TextInput>(null);
@@ -400,6 +409,56 @@ export function ChatInput({
     : isDarkTheme
         ? 'rgba(32,32,30,0.08)'
         : 'rgba(255,255,255,0.08)';
+
+  useEffect(() => {
+    if (isStreaming) {
+      responseAnimationVersionRef.current += 1;
+      responseButtonScale.stopAnimation();
+      responseButtonScale.setValue(1);
+      displayFocusedResponseRef.current = false;
+      setDisplayFocusedResponse(false);
+      return;
+    }
+    if (shouldShowFocusedResponse === displayFocusedResponseRef.current) {
+      responseButtonScale.stopAnimation();
+      Animated.timing(responseButtonScale, {
+        toValue: 1,
+        duration: 100,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }).start();
+      return;
+    }
+
+    const animationVersion = responseAnimationVersionRef.current + 1;
+    responseAnimationVersionRef.current = animationVersion;
+    responseButtonScale.stopAnimation();
+    Animated.timing(responseButtonScale, {
+      toValue: RESPONSE_BUTTON_COLLAPSED_SCALE,
+      duration: 120,
+      easing: Easing.in(Easing.cubic),
+      useNativeDriver: true,
+    }).start(({ finished }) => {
+      if (!finished || responseAnimationVersionRef.current !== animationVersion) return;
+      displayFocusedResponseRef.current = shouldShowFocusedResponse;
+      setDisplayFocusedResponse(shouldShowFocusedResponse);
+      Animated.timing(responseButtonScale, {
+        toValue: 1,
+        duration: 170,
+        easing: Easing.out(Easing.back(1.15)),
+        useNativeDriver: true,
+      }).start();
+    });
+
+    return () => {
+      responseAnimationVersionRef.current += 1;
+      responseButtonScale.stopAnimation();
+    };
+  }, [
+    isStreaming,
+    responseButtonScale,
+    shouldShowFocusedResponse,
+  ]);
 
   const pickImage = async () => {
     setOptionsMenuVisible(false);
@@ -970,7 +1029,7 @@ export function ChatInput({
     if (isStreaming) {
       return inputIconUris.stop ? { uri: inputIconUris.stop } : require('../../assets/stopsend.png');
     }
-    if (isInputFocused) {
+    if (displayFocusedResponse) {
       return inputIconUris.sendFocused ? { uri: inputIconUris.sendFocused } : require('../../assets/getresponse2.png');
     }
     return inputIconUris.sendIdle ? { uri: inputIconUris.sendIdle } : null;
@@ -995,7 +1054,7 @@ export function ChatInput({
         source={responseIcon}
         style={[
           styles.sendImage,
-          isInputFocused && !isStreaming && styles.focusedResponseImage,
+          displayFocusedResponse && !isStreaming && styles.focusedResponseImage,
           shouldInvertResponseIcon && styles.invertedImageIcon,
         ]}
         resizeMode="contain"
@@ -1005,7 +1064,7 @@ export function ChatInput({
 
   const responseButtonStateStyle = isStreaming
     ? styles.responseUtilityButton
-    : isInputFocused
+    : displayFocusedResponse
       ? styles.responseFocusedButton
       : styles.responseIdleButton;
 
@@ -1237,13 +1296,19 @@ export function ChatInput({
                   resizeMode="contain"
                 />
               </Pressable>
-              <Pressable
-                style={[styles.sendButton, responseButtonStateStyle, cssStyle('.send-button')]}
+              <AnimatedPressable
+                style={[
+                  styles.sendButton,
+                  responseButtonStateStyle,
+                  styles.responseButtonAnimationAnchor,
+                  cssStyle('.send-button'),
+                  { transform: [{ scale: responseButtonScale }] },
+                ]}
                 onPressIn={() => void handleGetResponsePressIn()}
                 onPress={() => void handleGetResponsePress()}
               >
                 {renderResponseIcon()}
-              </Pressable>
+              </AnimatedPressable>
             </View>
           </View>
         ) : (
@@ -1306,13 +1371,19 @@ export function ChatInput({
                 resizeMode="contain"
               />
             </Pressable>
-            <Pressable
-              style={[styles.sendButton, responseButtonStateStyle, cssStyle('.send-button')]}
+            <AnimatedPressable
+              style={[
+                styles.sendButton,
+                responseButtonStateStyle,
+                styles.responseButtonAnimationAnchor,
+                cssStyle('.send-button'),
+                { transform: [{ scale: responseButtonScale }] },
+              ]}
               onPressIn={() => void handleGetResponsePressIn()}
               onPress={() => void handleGetResponsePress()}
             >
               {renderResponseIcon()}
-            </Pressable>
+            </AnimatedPressable>
           </View>
             </View>
           </>
@@ -1956,8 +2027,9 @@ const createStyles = (
   },
   input: {
     fontSize: 16,
+    lineHeight: 22,
     color: colors.text,
-    fontFamily: fonts.regular,
+    fontFamily: TIKTOK_SANS_REGULAR,
     maxHeight: 120,
     minHeight: 28,
     paddingVertical: 0,
@@ -1972,7 +2044,7 @@ const createStyles = (
     zIndex: 1,
     fontSize: 16,
     lineHeight: 22,
-    fontFamily: INTER_MEDIUM,
+    fontFamily: TIKTOK_SANS_REGULAR,
   },
   compactInput: {
     flex: 1,
@@ -2076,6 +2148,9 @@ const createStyles = (
     borderRadius: 16,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  responseButtonAnimationAnchor: {
+    transformOrigin: 'top center',
   },
   responseUtilityButton: {
     backgroundColor: colors.inputControlBackground,
