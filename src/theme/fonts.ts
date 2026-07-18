@@ -24,6 +24,7 @@ export const localFonts: Record<FontKey, boolean> = {
 
 export const fontWeights: Record<'serifBold' | 'serifStrong', FontWeight> = {
   serifBold: 'normal',
+  // 应用自定义字体时会切换为 normal，由独立的 Bold 字体文件提供粗体字形。
   serifStrong: '700',
 };
 

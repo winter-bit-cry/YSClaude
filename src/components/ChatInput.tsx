@@ -46,6 +46,7 @@ import { randomUUID } from 'expo-crypto';
 import { Directory, File, Paths } from 'expo-file-system';
 import { lightColors, useThemeColors, type ThemeColors } from '../theme/colors';
 import { fonts } from '../theme/fonts';
+import { ANTHROPIC_SANS_REGULAR } from '../theme/anthropicFonts';
 
 import { useSettingsStore } from '../stores/settings';
 import { useChatStore } from '../stores/chat';
@@ -1191,14 +1192,26 @@ export function ChatInput({
               style={styles.compactInputPressZone}
               onPress={() => inputRef.current?.focus()}
             >
+              {text.length === 0 && (
+                <Text
+                  accessible={false}
+                  pointerEvents="none"
+                  style={[
+                    styles.inputPlaceholder,
+                    styles.compactInputPlaceholder,
+                    { color: inputPlaceholderTextColor },
+                  ]}
+                >
+                  Reply to Claude...
+                </Text>
+              )}
               <TextInput
                 ref={inputRef}
                 style={[styles.input, styles.compactInput, customCssStyles.inputText, cssStyle('.input-text')]}
                 value={text}
                 onChangeText={handleChangeText}
                 onSubmitEditing={() => void handleSend(text)}
-                placeholder="Reply to Claude..."
-                placeholderTextColor={inputPlaceholderTextColor}
+                accessibilityLabel={text.length === 0 ? 'Reply to Claude...' : undefined}
                 multiline={false}
                 submitBehavior="submit"
                 returnKeyType="send"
@@ -1239,14 +1252,22 @@ export function ChatInput({
               style={styles.inputPressZone}
               onPress={() => inputRef.current?.focus()}
             >
+              {text.length === 0 && (
+                <Text
+                  accessible={false}
+                  pointerEvents="none"
+                  style={[styles.inputPlaceholder, { color: inputPlaceholderTextColor }]}
+                >
+                  Reply to Claude...
+                </Text>
+              )}
               <TextInput
                 ref={inputRef}
                 style={[styles.input, customCssStyles.inputText, cssStyle('.input-text')]}
                 value={text}
                 onChangeText={handleChangeText}
                 onSubmitEditing={() => void handleSend(text)}
-                placeholder="Reply to Claude..."
-                placeholderTextColor={inputPlaceholderTextColor}
+                accessibilityLabel={text.length === 0 ? 'Reply to Claude...' : undefined}
                 multiline
                 submitBehavior="submit"
                 returnKeyType="send"
@@ -1944,6 +1965,15 @@ const createStyles = (
   inputPressZone: {
     width: '100%',
   },
+  inputPlaceholder: {
+    position: 'absolute',
+    top: 3,
+    left: 0,
+    zIndex: 1,
+    fontSize: 16,
+    lineHeight: 22,
+    fontFamily: ANTHROPIC_SANS_REGULAR,
+  },
   compactInput: {
     flex: 1,
     minWidth: 0,
@@ -1956,6 +1986,10 @@ const createStyles = (
   compactInputPressZone: {
     flex: 1,
     minWidth: 0,
+  },
+  compactInputPlaceholder: {
+    top: 7,
+    left: 6,
   },
   voiceRecordingBar: {
     minHeight: 34,

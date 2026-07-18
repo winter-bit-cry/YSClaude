@@ -79,10 +79,10 @@ async function copyAppearanceImage(
   return destination.uri;
 }
 
-async function copyGlobalFont(uri: string, extension: string): Promise<string> {
+async function copyGlobalFont(uri: string, extension: string, weight: 'regular' | 'bold'): Promise<string> {
   const dir = new Directory(Paths.document, 'custom-fonts');
   dir.create({ intermediates: true, idempotent: true });
-  const destination = new File(dir, `global-${randomUUID()}${extension}`);
+  const destination = new File(dir, `global-${weight}-${randomUUID()}${extension}`);
   await copyFileFromUri(uri, destination);
   return destination.uri;
 }
@@ -150,7 +150,7 @@ export function AppearanceTab({ showToast, keyboardBottomInset }: AppearanceTabP
   const [pickingInputIconKey, setPickingInputIconKey] = useState<ChatInputIconKey | null>(null);
   const [pickingBackground, setPickingBackground] = useState<'chat' | 'input' | 'topBar' | null>(null);
   const [pickingAvatar, setPickingAvatar] = useState<'user' | 'assistant' | null>(null);
-  const [pickingFont, setPickingFont] = useState(false);
+  const [pickingFont, setPickingFont] = useState<'regular' | 'bold' | null>(null);
   const [appearanceThemeName, setAppearanceThemeName] = useState('');
   const [appearanceThemesExpanded, setAppearanceThemesExpanded] = useState(false);
   const [userBubbleColorInput, setUserBubbleColorInput] = useState(appearanceConfig?.userBubbleColor || colors.userBubble);
@@ -191,9 +191,9 @@ export function AppearanceTab({ showToast, keyboardBottomInset }: AppearanceTabP
   const assistantFontSize = appearanceConfig?.assistantFontSize ?? 16;
   const assistantTextStrokeWidth = appearanceConfig?.assistantTextStrokeWidth ?? 0;
 
-  async function handlePickFont() {
+  async function handlePickFont(weight: 'regular' | 'bold') {
     if (pickingFont) return;
-    setPickingFont(true);
+    setPickingFont(weight);
     try {
       const result = await DocumentPicker.getDocumentAsync({
         type: ['font/ttf', 'font/otf', 'application/x-font-ttf', 'application/x-font-opentype'],
@@ -215,19 +215,28 @@ export function AppearanceTab({ showToast, keyboardBottomInset }: AppearanceTabP
         Alert.alert('字体文件过大', '字体文件不能超过 100MB');
         return;
       }
-      const uri = await copyGlobalFont(asset.uri, extension);
-      setAppearanceConfig({ globalFontUri: uri, globalFontName: asset.name });
-      showToast('全局字体已应用');
+      const uri = await copyGlobalFont(asset.uri, extension, weight);
+      setAppearanceConfig(weight === 'regular'
+        ? { globalFontUri: uri, globalFontName: asset.name }
+        : { globalBoldFontUri: uri, globalBoldFontName: asset.name });
+      showToast(weight === 'regular' ? '正文字体已应用' : '粗体字体已应用');
     } catch (error: any) {
       Alert.alert('字体上传失败', error?.message || '无法读取所选字体');
     } finally {
-      setPickingFont(false);
+      setPickingFont(null);
     }
   }
 
-  function handleClearFont() {
-    setAppearanceConfig({ globalFontUri: undefined, globalFontName: undefined });
-    showToast('已恢复系统默认字体');
+  function handleClearFont(weight: 'regular' | 'bold') {
+    setAppearanceConfig(weight === 'regular'
+      ? {
+          globalFontUri: undefined,
+          globalFontName: undefined,
+          globalBoldFontUri: undefined,
+          globalBoldFontName: undefined,
+        }
+      : { globalBoldFontUri: undefined, globalBoldFontName: undefined });
+    showToast(weight === 'regular' ? '已恢复系统默认字体' : '粗体将使用正文字体');
   }
   useEffect(() => {
     setUserBubbleColorInput(appearanceConfig?.userBubbleColor || colors.userBubble);
@@ -483,26 +492,48 @@ export function AppearanceTab({ showToast, keyboardBottomInset }: AppearanceTabP
     >
       <Text style={styles.sectionTitle}>全局字体</Text>
       <Text style={styles.hint}>
-        上传 TTF 或 OTF 字体后将在整个应用中使用。此设置独立于美化主题，切换或恢复主题不会改变字体。
+        可分别上传正文和粗体 TTF/OTF 文件。未上传粗体时，加粗文字使用正文字体且不叠加 700，避免回退为系统字体。输入框保持系统字体。
       </Text>
       <View style={styles.field}>
-        <Text style={styles.label}>当前字体</Text>
+        <Text style={styles.label}>正文字体（Regular）</Text>
         <Text style={styles.hint} numberOfLines={1}>
           {appearanceConfig?.globalFontName || '系统默认字体'}
         </Text>
         <View style={styles.platformActions}>
           <Pressable
             style={styles.platformActionButton}
-            onPress={handlePickFont}
-            disabled={pickingFont}
+            onPress={() => handlePickFont('regular')}
+            disabled={!!pickingFont}
           >
             <Text style={styles.platformActionText}>
-              {pickingFont ? '正在读取…' : appearanceConfig?.globalFontUri ? '更换字体' : '上传字体'}
+              {pickingFont === 'regular' ? '正在读取…' : appearanceConfig?.globalFontUri ? '更换字体' : '上传字体'}
             </Text>
           </Pressable>
           {!!appearanceConfig?.globalFontUri && (
-            <Pressable style={styles.platformActionButton} onPress={handleClearFont}>
+            <Pressable style={styles.platformActionButton} onPress={() => handleClearFont('regular')}>
               <Text style={styles.platformActionText}>恢复默认</Text>
+            </Pressable>
+          )}
+        </View>
+      </View>
+      <View style={styles.field}>
+        <Text style={styles.label}>粗体字体（Bold）</Text>
+        <Text style={styles.hint} numberOfLines={1}>
+          {appearanceConfig?.globalBoldFontName || (appearanceConfig?.globalFontUri ? '沿用正文字体（不叠加 700）' : '请先上传正文字体')}
+        </Text>
+        <View style={styles.platformActions}>
+          <Pressable
+            style={styles.platformActionButton}
+            onPress={() => handlePickFont('bold')}
+            disabled={!!pickingFont || !appearanceConfig?.globalFontUri}
+          >
+            <Text style={styles.platformActionText}>
+              {pickingFont === 'bold' ? '正在读取…' : appearanceConfig?.globalBoldFontUri ? '更换粗体' : '上传粗体'}
+            </Text>
+          </Pressable>
+          {!!appearanceConfig?.globalBoldFontUri && (
+            <Pressable style={styles.platformActionButton} onPress={() => handleClearFont('bold')}>
+              <Text style={styles.platformActionText}>移除粗体</Text>
             </Pressable>
           )}
         </View>

@@ -28,6 +28,7 @@ google-services.json
 *.woff
 *.woff2
 *.eot
+!assets/anthropic-sans-regular.ttf
 
 # Metro
 .metro-health-check*

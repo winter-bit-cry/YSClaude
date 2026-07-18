@@ -1,16 +1,18 @@
 import * as Font from 'expo-font';
-import { Text, TextInput } from 'react-native';
-import { fonts } from './fonts';
+import { Text } from 'react-native';
+import { fonts, fontWeights } from './fonts';
+import { ensureAnthropicSansLoaded } from './anthropicFonts';
 
-export const GLOBAL_FONT_FAMILY = 'YSClaudeGlobalFont';
+export const GLOBAL_FONT_REGULAR_FAMILY = 'YSClaudeGlobalFontRegular';
+export const GLOBAL_FONT_BOLD_FAMILY = 'YSClaudeGlobalFontBold';
 
 type ComponentWithDefaultProps = {
   defaultProps?: { style?: unknown };
 };
 
-let loadedFontUri: string | undefined | null = null;
+let loadedRegularFontUri: string | undefined | null = null;
+let loadedBoldFontUri: string | undefined | null = null;
 const textBaseDefaultProps = (Text as unknown as ComponentWithDefaultProps).defaultProps;
-const textInputBaseDefaultProps = (TextInput as unknown as ComponentWithDefaultProps).defaultProps;
 
 function setComponentDefaultFont(
   component: ComponentWithDefaultProps,
@@ -24,32 +26,54 @@ function setComponentDefaultFont(
   };
 }
 
-function setExportedFonts(fontFamily?: string) {
-  fonts.regular = fontFamily;
-  fonts.bold = fontFamily;
-  fonts.serif = fontFamily;
-  fonts.serifBold = fontFamily;
-  fonts.serifStrong = fontFamily;
+function setExportedFonts(regularFontFamily?: string, boldFontFamily?: string) {
+  const resolvedBoldFamily = boldFontFamily || regularFontFamily;
+  fonts.regular = regularFontFamily;
+  fonts.bold = resolvedBoldFamily;
+  fonts.serif = regularFontFamily;
+  fonts.serifBold = resolvedBoldFamily;
+  fonts.serifStrong = resolvedBoldFamily;
+  fontWeights.serifBold = 'normal';
+  fontWeights.serifStrong = regularFontFamily ? 'normal' : '700';
 }
 
-export async function applyGlobalFont(uri?: string): Promise<void> {
-  if (loadedFontUri === uri) return;
-
-  if (Font.isLoaded(GLOBAL_FONT_FAMILY)) {
-    await Font.unloadAsync(GLOBAL_FONT_FAMILY);
+async function unloadFont(fontFamily: string): Promise<void> {
+  if (Font.isLoaded(fontFamily)) {
+    await Font.unloadAsync(fontFamily);
   }
-  loadedFontUri = null;
+}
 
-  if (uri) {
-    await Font.loadAsync({ [GLOBAL_FONT_FAMILY]: uri });
-    setExportedFonts(GLOBAL_FONT_FAMILY);
-    setComponentDefaultFont(Text as unknown as ComponentWithDefaultProps, textBaseDefaultProps, GLOBAL_FONT_FAMILY);
-    setComponentDefaultFont(TextInput as unknown as ComponentWithDefaultProps, textInputBaseDefaultProps, GLOBAL_FONT_FAMILY);
+export async function applyGlobalFont(regularUri?: string, boldUri?: string): Promise<void> {
+  await ensureAnthropicSansLoaded();
+  if (loadedRegularFontUri === regularUri && loadedBoldFontUri === boldUri) return;
+
+  await Promise.all([
+    unloadFont(GLOBAL_FONT_REGULAR_FAMILY),
+    unloadFont(GLOBAL_FONT_BOLD_FAMILY),
+  ]);
+  loadedRegularFontUri = null;
+  loadedBoldFontUri = null;
+
+  if (regularUri) {
+    const fontMap: Record<string, string> = {
+      [GLOBAL_FONT_REGULAR_FAMILY]: regularUri,
+    };
+    if (boldUri) fontMap[GLOBAL_FONT_BOLD_FAMILY] = boldUri;
+    await Font.loadAsync(fontMap);
+    setExportedFonts(
+      GLOBAL_FONT_REGULAR_FAMILY,
+      boldUri ? GLOBAL_FONT_BOLD_FAMILY : undefined
+    );
+    setComponentDefaultFont(
+      Text as unknown as ComponentWithDefaultProps,
+      textBaseDefaultProps,
+      GLOBAL_FONT_REGULAR_FAMILY
+    );
   } else {
-    setExportedFonts(undefined);
+    setExportedFonts();
     setComponentDefaultFont(Text as unknown as ComponentWithDefaultProps, textBaseDefaultProps);
-    setComponentDefaultFont(TextInput as unknown as ComponentWithDefaultProps, textInputBaseDefaultProps);
   }
 
-  loadedFontUri = uri;
+  loadedRegularFontUri = regularUri;
+  loadedBoldFontUri = regularUri ? boldUri : undefined;
 }

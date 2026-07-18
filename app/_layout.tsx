@@ -51,6 +51,7 @@ export default function RootLayout() {
 
   const settingsHydrated = useSettingsStore((state) => state._hydrated);
   const globalFontUri = useSettingsStore((state) => state.appearanceConfig?.globalFontUri);
+  const globalBoldFontUri = useSettingsStore((state) => state.appearanceConfig?.globalBoldFontUri);
   const [fontReady, setFontReady] = useState(false);
   const [fontRenderKey, setFontRenderKey] = useState(0);
   const floatingBallEnabled = useSettingsStore((state) => state.floatingBallConfig.enabled);
@@ -77,8 +78,8 @@ export default function RootLayout() {
     if (!settingsHydrated) return;
     let active = true;
     setFontReady(false);
-    applyGlobalFont(globalFontUri)
-      .catch(() => applyGlobalFont(undefined))
+    applyGlobalFont(globalFontUri, globalBoldFontUri)
+      .catch(() => applyGlobalFont())
       .finally(() => {
         if (!active) return;
         setFontRenderKey((key) => key + 1);
@@ -88,7 +89,7 @@ export default function RootLayout() {
     return () => {
       active = false;
     };
-  }, [settingsHydrated, globalFontUri]);
+  }, [settingsHydrated, globalFontUri, globalBoldFontUri]);
 
   useEffect(() => {
     if (!settingsHydrated) return;

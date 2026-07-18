@@ -8,6 +8,7 @@ import Svg, { Path } from 'react-native-svg';
 import { Message, type GeneratedPicture, type LocationAttachment, type ToolInvocation, type VoiceAttachment } from '../types';
 import { lightColors, useThemeColors, type ThemeColors } from '../theme/colors';
 import { fonts, fontWeights } from '../theme/fonts';
+import { ANTHROPIC_SANS_REGULAR } from '../theme/anthropicFonts';
 import { useChatStore } from '../stores/chat';
 import { useSettingsStore } from '../stores/settings';
 import { getTTSConfigMissingMessage, isTTSConfigReady, playTTS } from '../services/tts';
@@ -373,22 +374,31 @@ function formatVoiceDuration(durationMs: number): string {
   return minutes > 0 ? `${minutes}:${String(seconds).padStart(2, '0')}` : `${seconds}s`;
 }
 
-// 思维链胶囊：白底灰边圆角，左侧 clock 图标 + "Thought process"，点击展开/收起内容。
+// 思维链记录与工具调用保持同一行样式，点击展开/收起内容。
 function ThinkingBlock({ thinking }: { thinking: string }) {
   const [expanded, setExpanded] = useState(false);
   const thinkingRules = createMarkdownRules();
   return (
     <View style={styles.thinkingWrap}>
-      <Pressable style={styles.thinkingPill} onPress={() => setExpanded((v) => !v)}>
-        <Image
-          source={require('../../assets/clock.png')}
-          style={styles.thinkingIcon}
-          resizeMode="contain"
-        />
-        <Text style={styles.thinkingLabel}>Thought process</Text>
+      <Pressable style={styles.toolInlineItem} onPress={() => setExpanded((v) => !v)}>
+        <View style={styles.toolRow}>
+          <Image
+            source={require('../../assets/clock.png')}
+            style={styles.toolIconLeft}
+            resizeMode="contain"
+          />
+          <Text style={styles.toolText} numberOfLines={1}>Thought process</Text>
+          <Image
+            source={expanded
+              ? require('../../assets/arrow-down.png')
+              : require('../../assets/arrow-right.png')}
+            style={styles.toolIconRight}
+            resizeMode="contain"
+          />
+        </View>
       </Pressable>
       {expanded && (
-        <View style={styles.thinkingContent}>
+        <View style={styles.toolDetailBox}>
           <Markdown style={thinkingMarkdownStyles} rules={thinkingRules}>{thinking}</Markdown>
         </View>
       )}
@@ -1573,14 +1583,20 @@ export const ChatBubble = React.memo(function ChatBubble({
       >
         <View style={styles.toolRow}>
           <Image
-            source={require('../../assets/clock.png')}
+            source={require('../../assets/tool.png')}
             style={styles.toolIconLeft}
             resizeMode="contain"
           />
           <Text style={styles.toolText} numberOfLines={1}>
             {formatToolInvocation(inv.name, inv.args)}{inv.status === 'running' ? '（执行中）' : ''}
           </Text>
-          <Text style={styles.toolChevron}>{expandedTools[invocationIndex] ? '⌃' : '⌄'}</Text>
+          <Image
+            source={expandedTools[invocationIndex]
+              ? require('../../assets/arrow-down.png')
+              : require('../../assets/arrow-right.png')}
+            style={styles.toolIconRight}
+            resizeMode="contain"
+          />
         </View>
         {expandedTools[invocationIndex] && (
           <View style={styles.toolDetailBox}>
@@ -2740,11 +2756,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     flexShrink: 1,
     fontSize: 13,
     color: colors.conversationMuted,
-  },
-  toolChevron: {
-    marginLeft: 6,
-    fontSize: 13,
-    color: colors.conversationMuted,
+    fontFamily: ANTHROPIC_SANS_REGULAR,
   },
   toolDetailBox: {
     marginLeft: 21,
@@ -2772,42 +2784,12 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   toolIconRight: {
     width: 11,
     height: 11,
-    marginLeft: 4,
+    marginLeft: 6,
     tintColor: colors.conversationMuted,
   },
-  // 思维链：胶囊 + 展开内容
+  // 思维链记录沿用工具调用行与展开内容样式。
   thinkingWrap: {
     marginBottom: 10,
-    alignItems: 'flex-start',
-  },
-  // 白底灰边圆角胶囊，左侧 clock 图标 + 文字
-  thinkingPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.inputBackground,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 16,
-    paddingVertical: 7,
-    paddingHorizontal: 12,
-  },
-  thinkingIcon: {
-    width: 14,
-    height: 14,
-    marginRight: 7,
-  },
-  thinkingLabel: {
-    fontSize: 13,
-    color: colors.textSecondary,
-  },
-  // 展开后的思维链内容容器
-  thinkingContent: {
-    marginTop: 6,
-    paddingLeft: 4,
-    borderLeftWidth: 2,
-    borderLeftColor: colors.border,
-    paddingHorizontal: 12,
-    paddingVertical: 4,
   },
   actions: {
     flexDirection: 'row',
@@ -2843,6 +2825,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     color: colors.conversationMuted,
     textAlign: 'right',
     lineHeight: 16,
+    fontFamily: ANTHROPIC_SANS_REGULAR,
   },
   overlay: {
     flex: 1, backgroundColor: 'rgba(0,0,0,0.3)',

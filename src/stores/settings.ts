@@ -463,6 +463,8 @@ export interface AppearanceConfig extends AppearanceThemeSnapshot {
   defaultGreetingName?: string;
   globalFontUri?: string;
   globalFontName?: string;
+  globalBoldFontUri?: string;
+  globalBoldFontName?: string;
   appearanceThemes?: AppearanceTheme[];
   activeAppearanceThemeId?: string;
 }
@@ -1462,6 +1464,8 @@ export const useSettingsStore = create<SettingsState>()(
               defaultGreetingName: current.defaultGreetingName,
               globalFontUri: current.globalFontUri,
               globalFontName: current.globalFontName,
+              globalBoldFontUri: current.globalBoldFontUri,
+              globalBoldFontName: current.globalBoldFontName,
               topBarIconUris: { ...(theme.config.topBarIconUris || {}) },
               inputIconUris: { ...(theme.config.inputIconUris || {}) },
               appearanceThemes: themes,
@@ -1494,6 +1498,8 @@ export const useSettingsStore = create<SettingsState>()(
               defaultGreetingName: current.defaultGreetingName || '',
               globalFontUri: current.globalFontUri,
               globalFontName: current.globalFontName,
+              globalBoldFontUri: current.globalBoldFontUri,
+              globalBoldFontName: current.globalBoldFontName,
               appearanceThemes: current.appearanceThemes || [],
               activeAppearanceThemeId: undefined,
             },
