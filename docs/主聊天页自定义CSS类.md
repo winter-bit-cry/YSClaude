@@ -205,8 +205,8 @@ text-align
 
 .input-bar {
   border-width: 0;
-  border-color: rgba(0,0,0,0.1);
-  border-radius: 20px;
+  border-color: transparent;
+  border-radius: 25px;
   box-shadow: 0 0 15px 0 rgba(0,0,0,0.05);
 }
 

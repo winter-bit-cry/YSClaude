@@ -18,7 +18,7 @@ export const lightColors = {
   codeText: '#73726e',
   inputBackground: '#FFFFFF',
   inputBorder: '#f8f8f6',
-  inputPanelBorder: 'rgba(0,0,0,0.1)',
+  inputPanelBorder: 'transparent',
   inputPanelBorderWidth: 0,
   inputPanelShadowOpacity: 0.05,
   inputPanelElevation: 2,

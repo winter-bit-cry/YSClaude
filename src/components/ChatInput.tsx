@@ -92,8 +92,8 @@ const CUSTOM_CSS_PLACEHOLDER = `.user-bubble {
 
 .input-bar {
   border-width: 0;
-  border-color: rgba(0,0,0,0.1);
-  border-radius: 20px;
+  border-color: transparent;
+  border-radius: 25px;
   box-shadow: 0 0 15px 0 rgba(0,0,0,0.05);
 }
 
@@ -384,10 +384,11 @@ export function ChatInput({
   const inputStyle = appearanceConfig?.inputStyle === 'compact' ? 'compact' : 'default';
   const inputBackgroundImageUri = appearanceConfig?.inputBackgroundImageUri;
   const inputBackgroundTransparent = !!appearanceConfig?.inputBackgroundTransparent;
-  const inputBorderRadius = clampNumber(appearanceConfig?.inputBorderRadius, 20, 0, 36);
+  const inputBorderRadius = clampNumber(appearanceConfig?.inputBorderRadius, 25, 0, 36);
   const inputPanelRadius = typeof customCssStyles.inputBar?.borderRadius === 'number'
     ? customCssStyles.inputBar.borderRadius
     : inputBorderRadius;
+  const hasCustomInputBoxShadow = customCssStyles.inputBar?.boxShadow !== undefined;
   const isCompactInput = inputStyle === 'compact';
   const hasCustomInputSurface = !!inputBackgroundImageUri || inputBackgroundTransparent;
   const inputPanelBackground = inputBackgroundTransparent
@@ -1112,6 +1113,7 @@ export function ChatInput({
         style={[
           styles.container,
           { backgroundColor: inputPanelBackground, borderRadius: inputPanelRadius },
+          hasCustomInputBoxShadow && { shadowOpacity: 0, elevation: 0 },
           hasCustomInputSurface && styles.customContainer,
           isCompactInput && styles.compactContainer,
           customCssStyles.inputBar,
@@ -1821,17 +1823,13 @@ const createStyles = (
   container: {
     minHeight: 110,
     backgroundColor: colors.inputBackground,
-    borderRadius: 24,
+    borderRadius: 25,
     borderWidth: colors.inputPanelBorderWidth,
     borderColor: colors.inputPanelBorder,
     paddingTop: 18,
     paddingBottom: 16,
     paddingHorizontal: 16,
-    shadowColor: '#000000',
-    shadowOpacity: colors.inputPanelShadowOpacity,
-    shadowRadius: 15,
-    shadowOffset: { width: 0, height: 0 },
-    elevation: colors.inputPanelElevation,
+    boxShadow: '0 0 15px 0 rgba(0,0,0,0.05)',
   },
   customContainer: {
     overflow: 'hidden',
