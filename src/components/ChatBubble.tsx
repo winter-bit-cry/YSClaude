@@ -1294,32 +1294,6 @@ export const ChatBubble = React.memo(function ChatBubble({
       </Pressable>
     </Modal>
   );
-  const reactionPickerModal = (
-    <Modal
-      transparent
-      visible={reactionPicker !== null}
-      animationType="fade"
-      onRequestClose={() => setReactionPicker(null)}
-    >
-      <Pressable style={styles.reactionPickerOverlay} onPress={() => setReactionPicker(null)}>
-        <View style={styles.reactionPicker} onStartShouldSetResponder={() => true}>
-          {(reactionPicker === 'negative' ? negativeReactions : positiveReactions).map((emoji) => (
-            <Pressable
-              key={emoji}
-              style={styles.reactionPickerButton}
-              onPress={() => {
-                setReactionPicker(null);
-                void setMessageReaction(message.id, 'user', emoji);
-              }}
-            >
-              <Text style={styles.reactionPickerEmoji}>{emoji}</Text>
-            </Pressable>
-          ))}
-        </View>
-      </Pressable>
-    </Modal>
-  );
-
   if (isUser) {
     // 菜单宽度估算，用于让菜单右对齐气泡右缘
     const MENU_WIDTH = 216;
@@ -1740,6 +1714,18 @@ export const ChatBubble = React.memo(function ChatBubble({
     handleAction(index);
   }
 
+  function openAssistantEdit() {
+    setAssistantMenuVisible(false);
+    setEditTargetId(message.id);
+    setEditText(buildVoiceEditText(message.content, message.voiceAttachment));
+    setEditModalVisible(true);
+  }
+
+  function deleteAssistantMessage() {
+    setAssistantMenuVisible(false);
+    void removeMessage(message.id);
+  }
+
   function handleSaveEdit() {
     if (editTargetId && editText.trim()) {
       const editTargetMessage =
@@ -1986,7 +1972,7 @@ export const ChatBubble = React.memo(function ChatBubble({
       >
         <Pressable style={styles.menuDismissOverlay} onPress={() => setAssistantMenuVisible(false)}>
           <View style={[styles.bubbleMenu, styles.assistantActionMenu, { left: assistantMenuLeft, top: assistantMenuTop, width: assistantActionMenuWidth }]}>
-            <Pressable style={[styles.bubbleMenuItem, styles.assistantActionMenuItem]} onPress={() => handleAssistantMenuAction(0)}>
+            <Pressable style={[styles.bubbleMenuItem, styles.assistantActionMenuItem]} onPress={openAssistantEdit}>
               <Text style={styles.bubbleMenuText}>编辑</Text>
             </Pressable>
             <View style={styles.bubbleMenuDivider} />
@@ -2004,7 +1990,7 @@ export const ChatBubble = React.memo(function ChatBubble({
               </Text>
             </Pressable>
             <View style={styles.bubbleMenuDivider} />
-            <Pressable style={[styles.bubbleMenuItem, styles.assistantActionMenuItem]} onPress={() => handleAssistantMenuAction(1)}>
+            <Pressable style={[styles.bubbleMenuItem, styles.assistantActionMenuItem]} onPress={deleteAssistantMessage}>
               <Text style={[styles.bubbleMenuText, styles.bubbleMenuTextDanger]}>删除</Text>
             </Pressable>
             {!remoteActivityCardVisible && (
@@ -2094,8 +2080,18 @@ export const ChatBubble = React.memo(function ChatBubble({
               {chatIcons.map((icon, i) => (
                 <Pressable
                   key={i}
-                  style={[styles.actionButton, (i === 3 || i === 4) && !isLastAssistant && styles.reactionActionDisabled]}
-                  onPress={() => handleAction(i)}
+                  style={styles.actionButton}
+                  onPress={() => {
+                    if (i !== 3 && i !== 4) {
+                      setReactionPicker(null);
+                    } else if (
+                      reactionPicker === (i === 3 ? 'positive' : 'negative')
+                    ) {
+                      setReactionPicker(null);
+                      return;
+                    }
+                    void handleAction(i);
+                  }}
                   disabled={(i === 3 || i === 4) && !isLastAssistant}
                 >
                   {userReaction && (
@@ -2115,6 +2111,35 @@ export const ChatBubble = React.memo(function ChatBubble({
                   )}
                 </Pressable>
               ))}
+              {reactionPicker !== null && isLastAssistant && (
+                <View
+                  style={[
+                    styles.reactionPicker,
+                    reactionPicker === 'negative'
+                      ? styles.reactionPickerBelowNegative
+                      : styles.reactionPickerBelowPositive,
+                  ]}
+                >
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.reactionPickerContent}
+                  >
+                    {(reactionPicker === 'negative' ? negativeReactions : positiveReactions).map((emoji) => (
+                      <Pressable
+                        key={emoji}
+                        style={styles.reactionPickerButton}
+                        onPress={() => {
+                          setReactionPicker(null);
+                          void setMessageReaction(message.id, 'user', emoji);
+                        }}
+                      >
+                        <Text style={styles.reactionPickerEmoji}>{emoji}</Text>
+                      </Pressable>
+                    ))}
+                  </ScrollView>
+                </View>
+              )}
             </View>
           )}
           {!assistantFooterHidden && showAssistantFooter && (
@@ -2130,7 +2155,6 @@ export const ChatBubble = React.memo(function ChatBubble({
 
       {editModal}
       {imagePreviewModal}
-      {reactionPickerModal}
     </View>
   );
 });
@@ -2926,6 +2950,8 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     flexDirection: 'row',
     marginTop: -4,
     gap: 2,
+    position: 'relative',
+    zIndex: 30,
   },
   actionsAfterSticker: {
     marginTop: 6,
@@ -2945,33 +2971,40 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     fontSize: 18,
     lineHeight: 22,
   },
-  reactionActionDisabled: {
-    opacity: 0.28,
-  },
-  reactionPickerOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.18)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
   reactionPicker: {
-    flexDirection: 'row',
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderRadius: 24,
+    position: 'absolute',
+    top: 30,
+    width: 236,
+    maxWidth: SCREEN_WIDTH - 32,
+    borderRadius: 18,
     backgroundColor: colors.surface,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
     elevation: 8,
+    zIndex: 40,
+    shadowColor: '#000',
+    shadowOpacity: 0.14,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+  },
+  reactionPickerBelowPositive: {
+    left: 62,
+  },
+  reactionPickerBelowNegative: {
+    left: 90,
+  },
+  reactionPickerContent: {
+    paddingHorizontal: 7,
+    paddingVertical: 6,
   },
   reactionPickerButton: {
-    width: 42,
-    height: 42,
+    width: 38,
+    height: 38,
     alignItems: 'center',
     justifyContent: 'center',
   },
   reactionPickerEmoji: {
-    fontSize: 28,
+    fontSize: 25,
   },
   userReactionBadge: {
     position: 'absolute',
