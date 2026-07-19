@@ -116,6 +116,22 @@ export function ToolConfigTab({ showToast, keyboardBottomInset }: SettingsTabPro
   );
   const [wechatLoginBusy, setWechatLoginBusy] = useState(false);
 
+  function handleLocalQqBotToolsEnabledChange(value: boolean) {
+    setLocalQqEnabled(value);
+    setQqBotToolConfig({ enabled: value });
+    showToast(value
+      ? 'QQ Bot 工具已开启，重启应用后生效'
+      : 'QQ Bot 工具已关闭，重启应用后生效');
+  }
+
+  function handleWechatClawBotToolsEnabledChange(value: boolean) {
+    setWechatClawEnabled(value);
+    setWechatClawBotToolConfig({ enabled: value });
+    showToast(value
+      ? '微信 ClawBot 工具已开启，重启应用后生效'
+      : '微信 ClawBot 工具已关闭，重启应用后生效');
+  }
+
   function saveLocalQqBotTools() {
     const defaultReadLimit = Math.max(1, Math.min(100, parseInt(localQqReadLimit, 10) || 20));
     setQqBotToolConfig({
@@ -1833,8 +1849,8 @@ export function ToolConfigTab({ showToast, keyboardBottomInset }: SettingsTabPro
     { key: 'webSearch', name: '联网搜索', intro: '通过 Tavily 搜索互联网，补充实时信息。', enabled: wsEnabled, onValueChange: handleWebSearchEnabledChange, meta: '1 个工具' },
     { key: 'hotboard', name: '热榜查询', intro: '从已选择的平台列表中查询热门话题。', enabled: hbEnabled, onValueChange: handleHotboardEnabledChange, meta: hbPlatformTypes.length + ' 个平台' },
     { key: 'runCommand', name: '远程命令', intro: '通过 SSH 连接专用 AI 服务器执行 shell 命令。与「对话文件」同时开启时，自动激活对话文件与服务器互传工具。', enabled: rcEnabled, onValueChange: handleRunCommandEnabledChange, meta: '最多 ' + (rcMaxCalls || '20') + ' 次' },
-    { key: 'qqBotTools', name: 'QQ Bot 工具', intro: '本机连接 QQ 官方 Bot，AI 可读取本地历史并向绑定账号发消息。', enabled: localQqEnabled, onValueChange: (value: boolean) => { setLocalQqEnabled(value); setQqBotToolConfig({ enabled: value }); }, meta: '2 个工具' },
-    { key: 'wechatClawBotTools', name: '微信 ClawBot 工具', intro: '本机连接微信 ClawBot，AI 可读取本地历史并向绑定账号发消息。', enabled: wechatClawEnabled, onValueChange: (value: boolean) => { setWechatClawEnabled(value); setWechatClawBotToolConfig({ enabled: value }); }, meta: '2 个工具' },
+    { key: 'qqBotTools', name: 'QQ Bot 工具', intro: '本机连接 QQ 官方 Bot，AI 可读取本地历史并向绑定账号发消息。', enabled: localQqEnabled, onValueChange: handleLocalQqBotToolsEnabledChange, meta: '2 个工具' },
+    { key: 'wechatClawBotTools', name: '微信 ClawBot 工具', intro: '本机连接微信 ClawBot，AI 可读取本地历史并向绑定账号发消息。', enabled: wechatClawEnabled, onValueChange: handleWechatClawBotToolsEnabledChange, meta: '2 个工具' },
     { key: 'webInteraction', name: '网页交互', intro: '允许 AI 打开、观察并操作应用内网页面板。', enabled: wiEnabled, onValueChange: handleWebInteractionEnabledChange, meta: '最多 ' + (wiMaxCalls || '8') + ' 次' },
     { key: 'conversationArtifact', name: '对话文件', intro: '允许 AI 读取、创建、修改、删除当前对话绑定的文本文件，并显式显示文件卡片。与「远程命令」同时开启时，自动激活对话文件与服务器互传工具。', enabled: conversationArtifactEnabled, onValueChange: handleConversationArtifactEnabledChange, meta: '7 个工具' },
     { key: 'conversationWindow', name: '对话窗口查看', intro: '允许 AI 分页查看对话窗口、读取指定楼层，并在单个或全部窗口内进行单关键词、多关键词分页搜索。读取不受隐藏楼层影响。', enabled: conversationWindowEnabled, onValueChange: handleConversationWindowEnabledChange, meta: '7 个工具' },
@@ -2321,7 +2337,7 @@ export function ToolConfigTab({ showToast, keyboardBottomInset }: SettingsTabPro
         return (
           <>
             <Text style={styles.toolModalDescription}>YSClaude 直接连接 QQ 官方 Bot，不需要自建或云端后端。只能读取启用后由 YSClaude 收到和发出的消息。</Text>
-            <View style={styles.switchRow}><View style={styles.switchText}><Text style={styles.label}>启用 QQ Bot AI 工具</Text><Text style={styles.hint}>提供“读取最近消息”和“发送消息”两个工具。</Text></View><Switch value={localQqEnabled} onValueChange={setLocalQqEnabled} trackColor={{ false: colors.inputBorder, true: colors.primary }} /></View>
+            <View style={styles.switchRow}><View style={styles.switchText}><Text style={styles.label}>启用 QQ Bot AI 工具</Text><Text style={styles.hint}>提供“读取最近消息”和“发送消息”两个工具。</Text></View><Switch value={localQqEnabled} onValueChange={handleLocalQqBotToolsEnabledChange} trackColor={{ false: colors.inputBorder, true: colors.primary }} /></View>
             <View style={styles.field}><Text style={styles.label}>QQ Bot App ID</Text><TextInput style={styles.input} value={localQqAppId} onChangeText={setLocalQqAppId} autoCapitalize="none" placeholder="App ID" placeholderTextColor={colors.textTertiary} /></View>
             <View style={styles.field}><Text style={styles.label}>QQ Bot App Secret</Text><TextInput style={styles.input} value={localQqSecret} onChangeText={setLocalQqSecret} autoCapitalize="none" secureTextEntry placeholder="App Secret" placeholderTextColor={colors.textTertiary} /></View>
             <View style={styles.switchRow}><Text style={styles.label}>沙箱环境</Text><Switch value={localQqSandbox} onValueChange={setLocalQqSandbox} trackColor={{ false: colors.inputBorder, true: colors.primary }} /></View>
@@ -2348,7 +2364,7 @@ export function ToolConfigTab({ showToast, keyboardBottomInset }: SettingsTabPro
                 <Text style={styles.hint}>请用绑定账号的微信扫码，并在微信中确认登录。</Text>
               </View>
             )}
-            <View style={styles.switchRow}><View style={styles.switchText}><Text style={styles.label}>启用微信 ClawBot AI 工具</Text><Text style={styles.hint}>提供“读取最近消息”和“发送消息”两个工具。</Text></View><Switch value={wechatClawEnabled} onValueChange={setWechatClawEnabled} trackColor={{ false: colors.inputBorder, true: colors.primary }} /></View>
+            <View style={styles.switchRow}><View style={styles.switchText}><Text style={styles.label}>启用微信 ClawBot AI 工具</Text><Text style={styles.hint}>提供“读取最近消息”和“发送消息”两个工具。</Text></View><Switch value={wechatClawEnabled} onValueChange={handleWechatClawBotToolsEnabledChange} trackColor={{ false: colors.inputBorder, true: colors.primary }} /></View>
             <View style={styles.field}><Text style={styles.label}>ClawBot Bot Token</Text><TextInput style={styles.input} value={wechatClawToken} onChangeText={setWechatClawToken} autoCapitalize="none" secureTextEntry placeholder="扫码登录获得的 bot_token" placeholderTextColor={colors.textTertiary} /></View>
             <View style={styles.field}><Text style={styles.label}>iLink Base URL</Text><TextInput style={styles.input} value={wechatClawBaseUrl} onChangeText={setWechatClawBaseUrl} autoCapitalize="none" placeholder="https://ilinkai.weixin.qq.com" placeholderTextColor={colors.textTertiary} /></View>
             <View style={styles.field}><Text style={styles.label}>Bot Account ID（可选）</Text><TextInput style={styles.input} value={wechatClawAccountId} onChangeText={setWechatClawAccountId} autoCapitalize="none" placeholder="...@im.bot" placeholderTextColor={colors.textTertiary} /></View>

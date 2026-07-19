@@ -1617,18 +1617,28 @@ export const ChatBubble = React.memo(function ChatBubble({
           />
         </Pressable>
         {expandedTools[invocationIndex] && (
-          <View style={styles.toolDetailBox}>
-            <ScrollView
-              style={styles.toolDetailScroll}
-              contentContainerStyle={styles.toolDetailScrollContent}
-              nestedScrollEnabled
-              showsVerticalScrollIndicator
-            >
-              <Text style={styles.toolDetailLabel}>参数</Text>
-              <Text style={styles.toolDetailText} selectable>{formatDebugJson(inv.args)}</Text>
-              <Text style={styles.toolDetailLabel}>结果</Text>
-              <Text style={styles.toolDetailText} selectable>{inv.result || '尚未返回结果'}</Text>
-            </ScrollView>
+          <View
+            style={styles.toolDetailBox}
+            onTouchStart={(event) => event.stopPropagation()}
+          >
+            <NativeViewGestureHandler shouldActivateOnStart disallowInterruption>
+              <GestureScrollView
+                style={styles.toolDetailScroll}
+                contentContainerStyle={styles.toolDetailScrollContent}
+                nestedScrollEnabled
+                showsVerticalScrollIndicator
+                persistentScrollbar
+                disallowInterruption
+                keyboardShouldPersistTaps="handled"
+                scrollEventThrottle={16}
+                onTouchStart={(event) => event.stopPropagation()}
+              >
+                <Text style={styles.toolDetailLabel}>参数</Text>
+                <Text style={styles.toolDetailText} selectable>{formatDebugJson(inv.args)}</Text>
+                <Text style={styles.toolDetailLabel}>结果</Text>
+                <Text style={styles.toolDetailText} selectable>{inv.result || '尚未返回结果'}</Text>
+              </GestureScrollView>
+            </NativeViewGestureHandler>
           </View>
         )}
       </View>
