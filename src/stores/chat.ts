@@ -55,6 +55,7 @@ import { consumePendingAndroidAccessibilityContext } from '../services/androidAc
 import {
   buildReactionSystemContent,
   getReactionContextContent,
+  getReactionContextRole,
   getLatestUserMessageGroup,
   isReactionSystemMessage,
   type MessageReactionActor,
@@ -1645,7 +1646,10 @@ async function buildPromptCacheKeepaliveRequest(
         return { role: m.role, content: buildVisionContent(textContent, dataUrl) };
       }
     }
-    return { role: m.role, content: textContent };
+    return {
+      role: getReactionContextRole(m) ?? m.role,
+      content: textContent,
+    };
   }));
 
   const stablePromptMessages = await buildStablePromptMessages(settings);
@@ -2039,7 +2043,10 @@ async function streamAssistantResponse(
         return { role: m.role, content: buildVisionContent(textContent, dataUrl) };
       }
     }
-    return { role: m.role, content: textContent };
+    return {
+      role: getReactionContextRole(m) ?? m.role,
+      content: textContent,
+    };
   });
 
   const apiMessages = await Promise.all(apiMessagesPromises);

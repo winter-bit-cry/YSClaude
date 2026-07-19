@@ -1234,10 +1234,9 @@ export default function ChatScreen() {
   );
 
   const visibleMessages = useMemo(
-    () => messages.filter((message) => !(
-      message.role === 'system' &&
-      message.content.startsWith('[YS_REACTION]')
-    )),
+    () => messages.filter(
+      (message) => !message.content.startsWith('[YS_REACTION]')
+    ),
     [messages]
   );
 

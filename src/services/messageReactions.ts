@@ -46,6 +46,14 @@ export function getReactionContextContent(message: Message): string {
   return message.content.split('\n').slice(1).join('\n').trim();
 }
 
+export function getReactionContextRole(
+  message: Message
+): 'user' | 'assistant' | null {
+  const event = parseReactionSystemMessage(message);
+  if (!event) return null;
+  return event.reactor === 'user' ? 'user' : 'assistant';
+}
+
 export function buildReactionMap(messages: Message[]): Map<string, MessageReactionEvent> {
   const map = new Map<string, MessageReactionEvent>();
   for (const message of messages) {
