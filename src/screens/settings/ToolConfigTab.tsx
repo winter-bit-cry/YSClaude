@@ -2326,7 +2326,7 @@ export function ToolConfigTab({ showToast, keyboardBottomInset }: SettingsTabPro
             <View style={styles.field}><Text style={styles.label}>QQ Bot App Secret</Text><TextInput style={styles.input} value={localQqSecret} onChangeText={setLocalQqSecret} autoCapitalize="none" secureTextEntry placeholder="App Secret" placeholderTextColor={colors.textTertiary} /></View>
             <View style={styles.switchRow}><Text style={styles.label}>沙箱环境</Text><Switch value={localQqSandbox} onValueChange={setLocalQqSandbox} trackColor={{ false: colors.inputBorder, true: colors.primary }} /></View>
             <View style={styles.field}><Text style={styles.label}>默认读取消息数（1–100）</Text><TextInput style={styles.input} value={localQqReadLimit} onChangeText={setLocalQqReadLimit} keyboardType="number-pad" placeholder="20" placeholderTextColor={colors.textTertiary} /></View>
-            <Text style={styles.hint}>QQ 不提供任意拉取既有聊天记录；应用关闭期间的消息可能无法保存。发送目标固定为最近给 Bot 发消息的绑定账号。</Text>
+            <Text style={styles.hint}>启用后 Android 会显示“YSClaude Bot 正在运行”的常驻通知，以便切到 QQ/微信时继续接收和回复。QQ 不提供任意拉取既有聊天记录；强制停止应用期间的消息可能无法保存。</Text>
           </>
         );
       case 'wechatClawBotTools':
@@ -2353,7 +2353,7 @@ export function ToolConfigTab({ showToast, keyboardBottomInset }: SettingsTabPro
             <View style={styles.field}><Text style={styles.label}>iLink Base URL</Text><TextInput style={styles.input} value={wechatClawBaseUrl} onChangeText={setWechatClawBaseUrl} autoCapitalize="none" placeholder="https://ilinkai.weixin.qq.com" placeholderTextColor={colors.textTertiary} /></View>
             <View style={styles.field}><Text style={styles.label}>Bot Account ID（可选）</Text><TextInput style={styles.input} value={wechatClawAccountId} onChangeText={setWechatClawAccountId} autoCapitalize="none" placeholder="...@im.bot" placeholderTextColor={colors.textTertiary} /></View>
             <View style={styles.field}><Text style={styles.label}>默认读取消息数（1–100）</Text><TextInput style={styles.input} value={wechatClawReadLimit} onChangeText={setWechatClawReadLimit} keyboardType="number-pad" placeholder="20" placeholderTextColor={colors.textTertiary} /></View>
-            <Text style={styles.hint}>微信发送依赖最近入站消息的 context_token。绑定账号至少先给 ClawBot 发过一条消息，AI 才能发送新消息。</Text>
+            <Text style={styles.hint}>启用后 Android 会显示“YSClaude Bot 正在运行”的常驻通知。微信发送依赖最近入站消息的 context_token，绑定账号至少先给 ClawBot 发过一条消息。</Text>
           </>
         );
       case 'qqBot':

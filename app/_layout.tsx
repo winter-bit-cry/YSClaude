@@ -34,6 +34,7 @@ import { useVoiceCallStore } from '../src/stores/voiceCall';
 import { startIncomingCallRingtone, stopIncomingCallRingtone } from '../src/services/incomingCallRingtone';
 import { applyGlobalFont } from '../src/theme/globalFont';
 import { startLocalBotChannels } from '../src/services/localBotChannels';
+import { syncBotForegroundService } from '../src/services/botForegroundService';
 
 
 SplashScreen.preventAutoHideAsync();
@@ -51,6 +52,8 @@ export default function RootLayout() {
   const statusBarStyle = colors.background === '#20201e' ? 'light' : 'dark';
 
   const settingsHydrated = useSettingsStore((state) => state._hydrated);
+  const qqBotToolsEnabled = useSettingsStore((state) => !!state.qqBotToolConfig?.enabled);
+  const wechatClawBotToolsEnabled = useSettingsStore((state) => !!state.wechatClawBotToolConfig?.enabled);
   const globalFontUri = useSettingsStore((state) => state.appearanceConfig?.globalFontUri);
   const globalBoldFontUri = useSettingsStore((state) => state.appearanceConfig?.globalBoldFontUri);
   const [fontReady, setFontReady] = useState(false);
@@ -163,7 +166,14 @@ export default function RootLayout() {
   useEffect(() => {
     if (!settingsHydrated) return;
     return startLocalBotChannels();
-  }, [settingsHydrated]);
+  }, [settingsHydrated, qqBotToolsEnabled, wechatClawBotToolsEnabled]);
+
+  useEffect(() => {
+    if (!settingsHydrated) return;
+    syncBotForegroundService(qqBotToolsEnabled, wechatClawBotToolsEnabled).catch((error) => {
+      console.warn('[Bot] 后台服务状态同步失败:', error);
+    });
+  }, [settingsHydrated, qqBotToolsEnabled, wechatClawBotToolsEnabled]);
 
   useEffect(() => {
     // 必须等 settings 完成持久化恢复：否则 getRemoteConfig() 拿不到远程服务地址，

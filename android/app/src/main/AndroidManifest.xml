@@ -48,6 +48,9 @@
       </intent-filter>
     </service>
     <service android:name=".VoiceCallForegroundService" android:exported="false" android:stopWithTask="false" android:foregroundServiceType="microphone|camera|mediaPlayback"/>
+    <service android:name=".BotForegroundService" android:exported="false" android:stopWithTask="false" android:foregroundServiceType="specialUse">
+      <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="bot_message_polling_and_ai_reply"/>
+    </service>
     <service android:name=".YSClaudeInputMethodService" android:permission="android.permission.BIND_INPUT_METHOD" android:exported="true">
       <intent-filter>
         <action android:name="android.view.InputMethod"/>

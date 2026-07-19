@@ -700,6 +700,7 @@ interface ChatState {
 interface ChatTriggerResponseOptions {
   skipStickerInstruction?: boolean;
   additionalRuntimeSections?: string[];
+  ephemeralUserMessage?: string;
 }
 
 interface VoiceRecordingInput {
@@ -2116,9 +2117,15 @@ async function streamAssistantResponse(
       lastHistoryMessage.content.startsWith(ANDROID_SCREENSHOT_CAPTURE_NOTICE_PREFIX)
     );
 
-  const suffixMessages: ChatMessage[] = shouldUseSyntheticAccessibilityRequest
-    ? [{ role: 'user', content: runtimeContext }]
-    : prependRuntimeContextToFirstMessage(pendingApiMessages, runtimeContext);
+  const ephemeralUserMessage = options.ephemeralUserMessage?.trim();
+  const suffixMessages: ChatMessage[] = ephemeralUserMessage
+    ? [{
+        role: 'user',
+        content: `${runtimeContext}\n\n---\n\n本次临时任务：\n${ephemeralUserMessage}`,
+      }]
+    : shouldUseSyntheticAccessibilityRequest
+      ? [{ role: 'user', content: runtimeContext }]
+      : prependRuntimeContextToFirstMessage(pendingApiMessages, runtimeContext);
 
   if (pendingAndroidContext?.imageUri && suffixMessages[0]) {
     const dataUrl = await readImageAsDataUrl(pendingAndroidContext.imageUri);

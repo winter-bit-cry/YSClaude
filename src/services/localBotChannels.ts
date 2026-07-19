@@ -13,6 +13,7 @@ import { triggerBotInboundMessage } from './botInboundTrigger';
 const WECHAT_CHANNEL_VERSION = '1.0.0';
 let wechatCursor = '';
 let stopped = true;
+let lifecycleId = 0;
 let qqSocket: WebSocket | null = null;
 let qqHeartbeat: ReturnType<typeof setInterval> | null = null;
 let qqSequence: number | null = null;
@@ -288,8 +289,8 @@ async function startQqSocket(config: QQBotToolConfig): Promise<void> {
   };
 }
 
-async function runWechatLoop(): Promise<void> {
-  while (!stopped) {
+async function runWechatLoop(runId: number): Promise<void> {
+  while (!stopped && runId === lifecycleId) {
     const config = useSettingsStore.getState().wechatClawBotToolConfig;
     if (!config?.enabled || !config.botToken?.trim()) {
       await new Promise((resolve) => setTimeout(resolve, 3000));
@@ -304,12 +305,15 @@ async function runWechatLoop(): Promise<void> {
 }
 
 export function startLocalBotChannels(): () => void {
+  const runId = ++lifecycleId;
   stopped = false;
   const settings = useSettingsStore.getState();
-  startQqSocket(settings.qqBotToolConfig).catch(() => undefined);
-  runWechatLoop().catch(() => undefined);
+  if (settings.qqBotToolConfig) startQqSocket(settings.qqBotToolConfig).catch(() => undefined);
+  runWechatLoop(runId).catch(() => undefined);
   return () => {
+    if (runId !== lifecycleId) return;
     stopped = true;
+    lifecycleId += 1;
     qqSocket?.close();
     qqSocket = null;
     if (qqHeartbeat) clearInterval(qqHeartbeat);

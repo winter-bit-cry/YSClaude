@@ -32,7 +32,7 @@ async function ensureConversation(): Promise<Conversation> {
   return conversation;
 }
 
-async function triggerNow(platform: 'qq' | 'wechat', content: string): Promise<void> {
+async function triggerNow(platform: 'qq' | 'wechat'): Promise<void> {
   await waitForChatIdle();
   const conversation = await ensureConversation();
   const chat = useChatStore.getState();
@@ -40,17 +40,16 @@ async function triggerNow(platform: 'qq' | 'wechat', content: string): Promise<v
 
   const platformName = platform === 'qq' ? 'QQ Bot' : '微信 ClawBot';
   const toolName = platform === 'qq' ? 'qq_bot_send_message' : 'wechat_clawbot_send_message';
-  const message = await useChatStore.getState().addUserMessage(content);
-  if (!message) return;
   await useChatStore.getState().triggerResponse({
     additionalRuntimeSections: [
-      `这是一次性平台事件：用户刚刚从 ${platformName} 发来一条新消息。请正常理解并回复该消息；如果需要向用户作出回复，必须调用 ${toolName} 工具把回复发送回 ${platformName}。不要把本段事件提示视为用户消息，也不要在后续轮次延续本提示。`,
+      `这是一次性平台事件：用户刚刚从 ${platformName} 发来一条新消息。消息正文没有写入 YSClaude 对话，也不会直接提供在本提示中。`,
     ],
+    ephemeralUserMessage: `请先调用 ${platform === 'qq' ? 'qq_bot_read_messages' : 'wechat_clawbot_read_messages'} 工具查看用户刚发来的消息，再根据消息内容作出回复，并调用 ${toolName} 工具把回复发送回 ${platformName}。不要询问 YSClaude 当前对话中的用户，也不要假设消息正文。`,
   });
 }
 
-export function triggerBotInboundMessage(platform: 'qq' | 'wechat', content: string): Promise<void> {
-  const next = inboundQueue.catch(() => undefined).then(() => triggerNow(platform, content));
+export function triggerBotInboundMessage(platform: 'qq' | 'wechat', _content: string): Promise<void> {
+  const next = inboundQueue.catch(() => undefined).then(() => triggerNow(platform));
   inboundQueue = next.catch(() => undefined);
   return next;
 }
