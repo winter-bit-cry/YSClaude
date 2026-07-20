@@ -6,6 +6,9 @@ const DEFAULT_COMMON_GREETINGS = [
   'user returns!',
   'Back at it,user',
   'Coffee and Claude time?',
+  "Let's noodle",
+  "Let's jump in,user",
+  'Golden hour thinking',
   DEFAULT_GREETING,
 ];
 
@@ -24,6 +27,7 @@ const DEFAULT_EVENING_GREETINGS = [
   'Up late,user?',
   'Hello,night owl',
   'Moonlit chat?',
+  'Burning the midnight tokens',
 ];
 
 const WEEKDAYS = [
