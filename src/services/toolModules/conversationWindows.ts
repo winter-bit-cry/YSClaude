@@ -11,7 +11,7 @@ const LIST_WINDOWS: ToolDefinition = {
   type: 'function',
   function: {
     name: 'conversation_windows_list',
-    description: '分页列出对话窗口的总数、名称和 ID。需要查看其他窗口时先调用此工具；如 has_more 为 true，使用 next_page 继续获取。隐藏楼层不会影响结果。',
+    description: '分页列出未归档对话窗口的总数、名称和 ID。已归档窗口不可见；如 has_more 为 true，使用 next_page 继续获取。隐藏楼层不会影响结果。',
     parameters: {
       type: 'object',
       properties: {
@@ -76,7 +76,7 @@ const SEARCH_ALL_WINDOWS: ToolDefinition = {
   type: 'function',
   function: {
     name: 'conversation_windows_search_all',
-    description: '在所有对话窗口的全部楼层内搜索关键词。总命中数不超过 10 时直接返回全部完整正文；超过 10 时分页返回短摘要。隐藏楼层仍参与搜索，继续搜索时原样传回 next_cursor。',
+    description: '在所有未归档对话窗口的全部楼层内搜索关键词。已归档窗口不可见；总命中数不超过 10 时直接返回全部完整正文，超过 10 时分页返回短摘要。隐藏楼层仍参与搜索。',
     parameters: {
       type: 'object',
       properties: {
@@ -108,7 +108,7 @@ const SEARCH_ALL_WINDOWS_MULTI_KEYWORD: ToolDefinition = {
   type: 'function',
   function: {
     name: 'conversation_windows_search_multi',
-    description: '在所有对话窗口内搜索多个关键词。可选择交集（同一楼层包含全部关键词）或并集（包含任一关键词）；总命中数不超过 10 时直接返回全部完整正文，超过 10 时分页返回短摘要。隐藏楼层仍参与搜索。',
+    description: '在所有未归档对话窗口内搜索多个关键词。已归档窗口不可见；可选择交集或并集，总命中数不超过 10 时返回完整正文，超过 10 时分页返回短摘要。',
     parameters: {
       type: 'object',
       properties: {
@@ -149,7 +149,7 @@ async function resolveWindow(rawName: unknown): Promise<Conversation> {
   const name = String(rawName ?? '').trim();
   if (!name) throw new Error('window_name 不能为空');
 
-  const conversations = await getAllConversations();
+  const conversations = (await getAllConversations()).filter((item) => !item.archivedFromRecents);
   const exact = conversations.filter((item) => item.title.trim() === name);
   const matches = exact.length > 0
     ? exact
@@ -267,7 +267,7 @@ export const conversationWindowsTool: ToolModule = {
       throw new Error('对话窗口查看工具未开启');
     }
     if (toolName === 'conversation_windows_list') {
-      const conversations = await getAllConversations();
+      const conversations = (await getAllConversations()).filter((item) => !item.archivedFromRecents);
       const pageSize = Math.min(50, Math.max(1, Number.isInteger(args.page_size) ? args.page_size : 20));
       const requestedPage = Number.isInteger(args.page) ? args.page : 1;
       if (requestedPage < 1) throw new Error('page 必须是从 1 开始的正整数');
@@ -369,9 +369,9 @@ export const conversationWindowsTool: ToolModule = {
 
     if (toolName === 'conversation_search_result_read') {
       const resultId = decodeResultId(args.result_id);
-      const conversations = await getAllConversations();
+      const conversations = (await getAllConversations()).filter((item) => !item.archivedFromRecents);
       const conversation = conversations.find((item) => item.id === resultId.conversationId);
-      if (!conversation) throw new Error('搜索结果对应的窗口已不存在');
+      if (!conversation) throw new Error('搜索结果对应的窗口已不存在或已归档');
       const floors = await getFloors(conversation.id);
       const message = floors.find((item) => item.id === resultId.messageId);
       if (!message) throw new Error('搜索结果对应的楼层已不存在');

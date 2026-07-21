@@ -1521,11 +1521,13 @@ export async function searchConversationFloorsByKeywordsGlobally(
   const db = await getDatabase();
   const patterns = normalizedKeywords.map(likePattern);
   const keywordOperator = mode === 'union' ? ' OR ' : ' AND ';
-  const countKeywordWhere = patterns.map(() => `content LIKE ? ESCAPE '\\'`).join(keywordOperator);
+  const countKeywordWhere = patterns.map(() => `m.content LIKE ? ESCAPE '\\'`).join(keywordOperator);
   const countRow = await db.getFirstAsync<{ count: number }>(
     `SELECT COUNT(*) AS count
-       FROM messages
-      WHERE role IN ('user', 'assistant')
+       FROM messages m
+       JOIN conversations c ON c.id = m.conversation_id
+      WHERE c.archived_from_recents = 0
+        AND m.role IN ('user', 'assistant')
         AND (${countKeywordWhere})`,
     patterns
   );
@@ -1568,7 +1570,8 @@ export async function searchConversationFloorsByKeywordsGlobally(
         ) AS floor_number
        FROM messages m
       JOIN conversations c ON c.id = m.conversation_id
-      WHERE m.role IN ('user', 'assistant')
+      WHERE c.archived_from_recents = 0
+        AND m.role IN ('user', 'assistant')
         AND (${searchKeywordWhere})
         ${cursorWhere}
       ORDER BY m.created_at DESC, m.id DESC

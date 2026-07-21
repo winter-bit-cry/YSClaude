@@ -19,6 +19,8 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   ChevronLeft,
+  Archive,
+  ArchiveRestore,
   Download,
   Edit3,
   FileText,
@@ -71,6 +73,7 @@ let colors = lightColors;
 type HistorySection = 'menu' | 'chats' | 'groups' | 'artifacts' | 'pictures' | 'letters' | 'favorites';
 type GroupEditorMode = 'create' | 'edit';
 type SearchScope = 'global' | 'current';
+type ChatsPage = 'active' | 'archived';
 
 const GALLERY_COLUMNS = 3;
 const GALLERY_GAP = 8;
@@ -113,6 +116,7 @@ export default function HistoryScreen() {
   const [editTitle, setEditTitle] = useState('');
   const [searchText, setSearchText] = useState('');
   const [searchScope, setSearchScope] = useState<SearchScope>('global');
+  const [chatsPage, setChatsPage] = useState<ChatsPage>('active');
   const [searchResults, setSearchResults] = useState<ChatSearchResult[]>([]);
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
@@ -386,6 +390,11 @@ export default function HistoryScreen() {
     await loadList();
   }
 
+  async function handleSetArchived(conv: Conversation, archived: boolean) {
+    await updateConversation(conv.id, { archivedFromRecents: archived });
+    await Promise.all([loadList(), loadGroups()]);
+  }
+
   async function handleSaveTitle() {
     if (!editingConv) return;
     await updateConversation(editingConv.id, { title: editTitle.trim(), updatedAt: Date.now() });
@@ -646,6 +655,17 @@ export default function HistoryScreen() {
             {item.model || 'model'} · {formatTime(item.createdAt)}
           </Text>
         </View>
+        <Pressable
+          style={styles.iconActionButton}
+          onPress={() => handleSetArchived(item, !item.archivedFromRecents)}
+          accessibilityLabel={item.archivedFromRecents ? '取消归档' : '归档'}
+        >
+          {item.archivedFromRecents ? (
+            <ArchiveRestore size={18} color={isActive ? colors.primary : colors.textTertiary} strokeWidth={2} />
+          ) : (
+            <Archive size={18} color={isActive ? colors.primary : colors.textTertiary} strokeWidth={2} />
+          )}
+        </Pressable>
         {options?.showDelete !== false && (
           <Pressable style={styles.iconActionButton} onPress={() => handleDelete(item)}>
             <Trash2 size={18} color={isActive ? colors.primary : colors.textTertiary} strokeWidth={2} />
@@ -656,6 +676,11 @@ export default function HistoryScreen() {
   }
 
   function renderChats() {
+    const visibleConversations = conversations.filter((item) =>
+      chatsPage === 'archived' ? item.archivedFromRecents : !item.archivedFromRecents
+    );
+    const visibleConversationIds = new Set(visibleConversations.map((item) => item.id));
+    const visibleSearchResults = searchResults.filter((item) => visibleConversationIds.has(item.conversationId));
     return (
       <View style={styles.screen}>
         {renderSectionHeader(
@@ -673,6 +698,20 @@ export default function HistoryScreen() {
             )}
           </Pressable>
         )}
+        <View style={styles.chatsPageRow}>
+          <Pressable
+            style={[styles.chatsPageButton, chatsPage === 'active' && styles.chatsPageButtonActive]}
+            onPress={() => setChatsPage('active')}
+          >
+            <Text style={[styles.chatsPageButtonText, chatsPage === 'active' && styles.chatsPageButtonTextActive]}>未归档</Text>
+          </Pressable>
+          <Pressable
+            style={[styles.chatsPageButton, chatsPage === 'archived' && styles.chatsPageButtonActive]}
+            onPress={() => setChatsPage('archived')}
+          >
+            <Text style={[styles.chatsPageButtonText, chatsPage === 'archived' && styles.chatsPageButtonTextActive]}>已归档</Text>
+          </Pressable>
+        </View>
         <View style={styles.searchPanel}>
           <Search size={19} color={colors.textTertiary} strokeWidth={2} />
           <TextInput
@@ -721,7 +760,7 @@ export default function HistoryScreen() {
         </View>
         {isSearchActive ? (
           <FlatList
-            data={searchResults}
+            data={visibleSearchResults}
             keyExtractor={(item) => item.messageId}
             renderItem={({ item }) => (
               <Pressable style={styles.listItem} onPress={() => handleOpenSearchResult(item)}>
@@ -746,7 +785,7 @@ export default function HistoryScreen() {
           />
         ) : (
           <FlatList
-            data={conversations}
+            data={visibleConversations}
             keyExtractor={(item) => item.id}
             renderItem={({ item }) => renderConversationRow(item)}
             contentContainerStyle={styles.list}
@@ -1432,6 +1471,34 @@ const createStyles = (
     backgroundColor: colors.inputBackground,
     borderWidth: 1,
     borderColor: colors.inputBorder,
+  },
+  chatsPageRow: {
+    flexDirection: 'row',
+    marginHorizontal: 16,
+    marginTop: 14,
+    padding: 3,
+    borderRadius: 9,
+    backgroundColor: colors.inputBackground,
+  },
+  chatsPageButton: {
+    flex: 1,
+    minHeight: 34,
+    borderRadius: 7,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  chatsPageButtonActive: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  chatsPageButtonText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.textTertiary,
+  },
+  chatsPageButtonTextActive: {
+    color: colors.text,
   },
   searchInput: {
     flex: 1,

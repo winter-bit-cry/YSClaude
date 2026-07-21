@@ -77,7 +77,7 @@ export type { PromptCacheCompatibility, PromptCacheTtl, ThinkingCompatibility, T
 // HiddenRange 已迁移到 src/types，这里 re-export 保持旧的 import 路径兼容。
 export type { HiddenRange } from '../types';
 
-export type TTSProvider = 'minimax' | 'fish' | 'deepgram' | 'cartesia' | 'elevenlabs';
+export type TTSProvider = 'minimax' | 'fish' | 'deepgram' | 'mossland' | 'cartesia' | 'elevenlabs';
 
 export interface TTSConfig {
   provider: TTSProvider;
@@ -98,6 +98,10 @@ export interface TTSConfig {
   deepgramBaseUrl: string;
   deepgramApiKey: string;
   deepgramModel: string;
+  mosslandBaseUrl: string;
+  mosslandApiKey: string;
+  mosslandModel: string;
+  mosslandVoice: string;
   cartesiaBaseUrl: string;
   cartesiaApiKey: string;
   cartesiaModel: string;
@@ -633,7 +637,7 @@ function normalizeSTTConfig(config?: Partial<STTConfig>): STTConfig {
 
 function normalizeTTSConfig(config?: Partial<TTSConfig>): TTSConfig {
   const provider =
-    config?.provider === 'fish' || config?.provider === 'deepgram' || config?.provider === 'cartesia' || config?.provider === 'elevenlabs'
+    config?.provider === 'fish' || config?.provider === 'deepgram' || config?.provider === 'mossland' || config?.provider === 'cartesia' || config?.provider === 'elevenlabs'
       ? config.provider
       : 'minimax';
   return {
@@ -658,6 +662,10 @@ function normalizeTTSConfig(config?: Partial<TTSConfig>): TTSConfig {
     deepgramBaseUrl: config?.deepgramBaseUrl || 'https://api.deepgram.com/v1',
     deepgramApiKey: config?.deepgramApiKey || '',
     deepgramModel: config?.deepgramModel || 'aura-2-thalia-en',
+    mosslandBaseUrl: config?.mosslandBaseUrl || '',
+    mosslandApiKey: config?.mosslandApiKey || '',
+    mosslandModel: config?.mosslandModel || 'MOSS-TTS-v1.5',
+    mosslandVoice: config?.mosslandVoice || '',
     cartesiaBaseUrl: config?.cartesiaBaseUrl || 'https://api.cartesia.ai',
     cartesiaApiKey: config?.cartesiaApiKey || '',
     cartesiaModel: config?.cartesiaModel || 'sonic-3.5',

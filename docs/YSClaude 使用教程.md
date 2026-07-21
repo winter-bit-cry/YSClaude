@@ -185,7 +185,7 @@ android\app\build\outputs\apk\release\app-release.apk
 ### 语音配置
 
 - 普通语音：聊天窗口中长按语音按键发送语音消息，TTS播放AI生成的回复
-  - 聊天TTS：支持MiniMax、Fish Audio、Deepgram
+- 聊天TTS：支持MiniMax、Fish Audio、Deepgram、Mossland
   - 聊天STT：OpenAI Whisper、Fish Audio、Deepgram
 - 语音通话：
   - LiveKit Agents通话：需要部署云端服务。效果见本人小红书笔记（AI流式通话：全双工语音/视频通话），实现详见https://github.com/winter-bit-cry/ysclaude-livekit-brain，目前只支持Aliyun+Cartesia

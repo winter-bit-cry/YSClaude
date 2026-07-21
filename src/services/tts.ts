@@ -13,6 +13,10 @@ export function isTTSConfigReady(config: TTSConfig): boolean {
   if (config.provider === 'deepgram') {
     return !!config.deepgramApiKey.trim() && !!config.deepgramModel.trim();
   }
+  if (config.provider === 'mossland') {
+    return !!config.mosslandBaseUrl.trim() && !!config.mosslandApiKey.trim()
+      && !!config.mosslandModel.trim() && !!config.mosslandVoice.trim();
+  }
   if (config.provider === 'cartesia') {
     return !!config.cartesiaApiKey.trim() && !!config.cartesiaVoiceId.trim();
   }
@@ -20,6 +24,9 @@ export function isTTSConfigReady(config: TTSConfig): boolean {
 }
 
 export function getTTSConfigMissingMessage(config: TTSConfig): string {
+  if (config.provider === 'mossland') {
+    return '请先配置 Mossland Base URL、API Key、模型和 Voice';
+  }
   if (config.provider === 'cartesia') {
     return '请先配置 Cartesia API Key 和 Voice ID';
   }
@@ -42,6 +49,9 @@ async function createTTSPlayer(text: string, config: TTSConfig): Promise<ReturnT
   }
   if (config.provider === 'deepgram') {
     return createDeepgramTTSPlayer(speakableText, config);
+  }
+  if (config.provider === 'mossland') {
+    return createMosslandTTSPlayer(speakableText, config);
   }
   if (config.provider === 'cartesia') {
     return createCartesiaTTSPlayer(speakableText, config);
@@ -200,6 +210,38 @@ async function createDeepgramTTSPlayer(speakableText: string, config: TTSConfig)
   return createAudioPlayer(file.uri);
 }
 
+async function createMosslandTTSPlayer(speakableText: string, config: TTSConfig): Promise<ReturnType<typeof createAudioPlayer>> {
+  const baseUrl = config.mosslandBaseUrl.trim();
+  const apiKey = config.mosslandApiKey.trim();
+  const model = config.mosslandModel.trim();
+  const voice = config.mosslandVoice.trim();
+  if (!baseUrl || !apiKey || !model || !voice) {
+    throw new Error('请先配置 Mossland Base URL、API Key、模型和 Voice');
+  }
+
+  const response = await fetch(buildOpenAISpeechEndpoint(baseUrl), {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+      Accept: 'audio/mpeg',
+    },
+    body: JSON.stringify({ model, input: speakableText, voice, response_format: 'mp3' }),
+  });
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`Mossland TTS Error ${response.status}: ${errText.slice(0, 200)}`);
+  }
+
+  const audioBytes = new Uint8Array(await response.arrayBuffer());
+  if (audioBytes.length === 0) throw new Error('Mossland 未返回音频数据');
+  const file = new File(Paths.cache, 'tts_audio_mossland.mp3');
+  const writer = file.writableStream().getWriter();
+  await writer.write(audioBytes);
+  await writer.close();
+  return createAudioPlayer(file.uri);
+}
+
 async function createCartesiaTTSPlayer(speakableText: string, config: TTSConfig): Promise<ReturnType<typeof createAudioPlayer>> {
   const apiKey = config.cartesiaApiKey.trim();
   const voiceId = config.cartesiaVoiceId.trim();
@@ -268,6 +310,13 @@ function buildDeepgramSpeakEndpoint(baseUrl: string, model: string): string {
     url.pathname = `${path}/speak`;
   }
   url.searchParams.set('model', model.trim() || 'aura-2-thalia-en');
+  return url.toString();
+}
+
+function buildOpenAISpeechEndpoint(baseUrl: string): string {
+  const url = new URL(baseUrl);
+  const path = url.pathname.replace(/\/$/, '');
+  url.pathname = path.endsWith('/audio/speech') ? path : `${path || ''}/audio/speech`;
   return url.toString();
 }
 

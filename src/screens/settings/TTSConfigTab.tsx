@@ -29,6 +29,7 @@ const TTS_PROVIDERS: Array<{ value: TTSProvider; label: string }> = [
   { value: 'minimax', label: 'MiniMax' },
   { value: 'fish', label: 'Fish Audio' },
   { value: 'deepgram', label: 'Deepgram' },
+  { value: 'mossland', label: 'Mossland' },
   { value: 'cartesia', label: 'Cartesia' },
   { value: 'elevenlabs', label: 'ElevenLabs' },
 ];
@@ -148,6 +149,12 @@ export function TTSConfigTab({ showToast, keyboardBottomInset }: TTSConfigTabPro
             ? { Authorization: `Token ${ttsConfig.deepgramApiKey.trim()}` }
             : {};
           extractModels = (data) => uniqueModelIds((data?.tts || []).flatMap((item: any) => [item?.canonical_name, item?.name]));
+        } else if (editingTTSProvider === 'mossland') {
+          if (!ttsConfig.mosslandBaseUrl.trim() || !ttsConfig.mosslandApiKey.trim()) {
+            throw new Error('请先填写 Mossland Base URL 和 API Key');
+          }
+          endpoint = joinUrl(ttsConfig.mosslandBaseUrl, '/models');
+          headers = { Authorization: `Bearer ${ttsConfig.mosslandApiKey.trim()}` };
         } else if (editingTTSProvider === 'cartesia') {
           if (!ttsConfig.cartesiaApiKey.trim()) throw new Error('请先填写 Cartesia API Key');
           endpoint = joinUrl(ttsConfig.cartesiaBaseUrl || 'https://api.cartesia.ai', '/models');
@@ -205,6 +212,7 @@ export function TTSConfigTab({ showToast, keyboardBottomInset }: TTSConfigTabPro
       if (editingTTSProvider === 'minimax') patchTTS({ model: value });
       else if (editingTTSProvider === 'fish') patchTTS({ fishModel: value });
       else if (editingTTSProvider === 'deepgram') patchTTS({ deepgramModel: value });
+      else if (editingTTSProvider === 'mossland') patchTTS({ mosslandModel: value });
       else if (editingTTSProvider === 'cartesia') patchTTS({ cartesiaModel: value });
     } else {
       if (editingSTTProvider === 'openai') setSTTConfig({ openAiModel: value });
@@ -441,6 +449,15 @@ export function TTSConfigTab({ showToast, keyboardBottomInset }: TTSConfigTabPro
         </SettingsGroup>
       )}
 
+      {editingTTSProvider === 'mossland' && (
+        <SettingsGroup header="Mossland TTS" footer="使用 OpenAI 兼容的 /audio/speech 接口；Base URL 填到 API 版本层级。">
+          <TextEditRow label="Base URL" value={ttsConfig.mosslandBaseUrl} inputPlaceholder="https://example.com/v1" onSave={(mosslandBaseUrl) => patchTTS({ mosslandBaseUrl: mosslandBaseUrl.trim().replace(/\/+$/, '') })} />
+          <TextEditRow label="API Key" value={ttsConfig.mosslandApiKey} secure onSave={(mosslandApiKey) => patchTTS({ mosslandApiKey: mosslandApiKey.trim() })} />
+          <TextEditRow label="模型" value={ttsConfig.mosslandModel} inputPlaceholder="MOSS-TTS-v1.5" onSave={(mosslandModel) => patchTTS({ mosslandModel: mosslandModel.trim() || 'MOSS-TTS-v1.5' })} />
+          <TextEditRow label="Voice" value={ttsConfig.mosslandVoice} inputPlaceholder="音色 ID / 名称" onSave={(mosslandVoice) => patchTTS({ mosslandVoice: mosslandVoice.trim() })} />
+        </SettingsGroup>
+      )}
+
       <SettingsGroup>
         <ButtonRow
           label="拉取 TTS 模型列表"
@@ -521,7 +538,8 @@ export function TTSConfigTab({ showToast, keyboardBottomInset }: TTSConfigTabPro
           ? (editingTTSProvider === 'minimax' ? ttsConfig.model
             : editingTTSProvider === 'fish' ? ttsConfig.fishModel
               : editingTTSProvider === 'deepgram' ? ttsConfig.deepgramModel
-                : ttsConfig.cartesiaModel)
+                : editingTTSProvider === 'mossland' ? ttsConfig.mosslandModel
+                  : ttsConfig.cartesiaModel)
           : (editingSTTProvider === 'openai' ? sttConfig.openAiModel
             : editingSTTProvider === 'deepgram' ? sttConfig.deepgramModel
               : sttConfig.aliyunModel)}
