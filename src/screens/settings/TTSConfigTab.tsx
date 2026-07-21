@@ -58,7 +58,7 @@ const MINIMAX_MODELS = [
   'speech-01-turbo',
 ].map((value) => ({ value, label: value }));
 
-const FISH_MODELS = ['s2-pro', 's1'].map((value) => ({ value, label: value }));
+const FISH_MODELS = ['s2.1-pro-free', 's2-pro', 's1'].map((value) => ({ value, label: value }));
 const CARTESIA_MODELS = ['sonic-3.5', 'sonic-3', 'sonic-latest'].map((value) => ({ value, label: value }));
 const FISH_FORMATS = ['mp3', 'wav', 'pcm'].map((value) => ({ value, label: value.toUpperCase() }));
 
