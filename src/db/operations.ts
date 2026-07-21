@@ -2158,6 +2158,7 @@ function mapDiaryRow(row: {
   id: string;
   title: string;
   content: string;
+  date_key: string;
   is_favorite: number;
   created_at: number;
   updated_at: number;
@@ -2166,6 +2167,7 @@ function mapDiaryRow(row: {
     id: row.id,
     title: row.title,
     content: row.content,
+    date: row.date_key,
     isFavorite: row.is_favorite === 1,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -2175,12 +2177,13 @@ function mapDiaryRow(row: {
 export async function createDiary(diary: Diary): Promise<void> {
   const db = await getDatabase();
   await db.runAsync(
-    `INSERT INTO diaries (id, title, content, is_favorite, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO diaries (id, title, content, date_key, is_favorite, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
     [
       diary.id,
       diary.title,
       diary.content,
+      diary.date,
       diary.isFavorite ? 1 : 0,
       diary.createdAt,
       diary.updatedAt,
@@ -2190,7 +2193,7 @@ export async function createDiary(diary: Diary): Promise<void> {
 
 export async function updateDiary(
   id: string,
-  updates: Partial<Pick<Diary, 'title' | 'content' | 'isFavorite' | 'updatedAt'>>
+  updates: Partial<Pick<Diary, 'title' | 'content' | 'date' | 'isFavorite' | 'updatedAt'>>
 ): Promise<void> {
   const db = await getDatabase();
   const sets: string[] = [];
@@ -2203,6 +2206,10 @@ export async function updateDiary(
   if (updates.content !== undefined) {
     sets.push('content = ?');
     values.push(updates.content);
+  }
+  if (updates.date !== undefined) {
+    sets.push('date_key = ?');
+    values.push(updates.date);
   }
   if (updates.isFavorite !== undefined) {
     sets.push('is_favorite = ?');
@@ -2229,6 +2236,7 @@ export async function getAllDiaries(): Promise<Diary[]> {
     id: string;
     title: string;
     content: string;
+    date_key: string;
     is_favorite: number;
     created_at: number;
     updated_at: number;
@@ -2242,6 +2250,7 @@ export async function getFavoriteDiaries(): Promise<Diary[]> {
     id: string;
     title: string;
     content: string;
+    date_key: string;
     is_favorite: number;
     created_at: number;
     updated_at: number;

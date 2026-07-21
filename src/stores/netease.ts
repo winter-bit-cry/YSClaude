@@ -5,8 +5,10 @@ import {
   checkNeteaseQrLogin,
   createNeteaseQrLogin,
   getNeteaseLoginProfile,
+  getNeteaseUserOverview,
   getNeteasePlaylists,
   importNeteasePlaylist,
+  type NeteaseRecommendedPlaylist,
   type NeteasePlaylistSummary,
   type NeteaseProfile,
   type NeteaseQrLogin,
@@ -24,6 +26,15 @@ interface NeteaseState {
   importingPlaylistId: number | null;
   lastImportSummary: string | null;
   error: string | null;
+  profileBackgroundUri: string;
+  avatarFrameUri: string;
+  homeCache: {
+    date: string;
+    sourceKey: string;
+    publicPlaylists: NeteaseRecommendedPlaylist[];
+    personalPlaylists: NeteaseRecommendedPlaylist[];
+    recommendedSongs: ReturnType<typeof useMusicStore.getState>['tracks'];
+  } | null;
 
   setBaseUrl: (baseUrl: string) => void;
   startQrLogin: () => Promise<void>;
@@ -33,6 +44,9 @@ interface NeteaseState {
   importPlaylist: (playlistId: number) => Promise<void>;
   logout: () => void;
   clearError: () => void;
+  setHomeCache: (cache: NeteaseState['homeCache']) => void;
+  setProfileBackgroundUri: (uri: string) => void;
+  setAvatarFrameUri: (uri: string) => void;
 }
 
 export const useNeteaseStore = create<NeteaseState>()(
@@ -48,8 +62,11 @@ export const useNeteaseStore = create<NeteaseState>()(
       importingPlaylistId: null,
       lastImportSummary: null,
       error: null,
+      profileBackgroundUri: '',
+      avatarFrameUri: '',
+      homeCache: null,
 
-      setBaseUrl: (baseUrl) => set({ baseUrl, error: null }),
+      setBaseUrl: (baseUrl) => set({ baseUrl, error: null, homeCache: null }),
 
       startQrLogin: async () => {
         set({ loading: true, error: null, lastImportSummary: null });
@@ -70,13 +87,16 @@ export const useNeteaseStore = create<NeteaseState>()(
         try {
           const result = await checkNeteaseQrLogin(baseUrl, qrLogin.key);
           if (result.code === 803 && result.cookie) {
-            const profile = await getNeteaseLoginProfile(baseUrl, result.cookie);
+            const basicProfile = await getNeteaseLoginProfile(baseUrl, result.cookie);
+            const overview = await getNeteaseUserOverview(baseUrl, result.cookie, basicProfile.userId);
+            const profile = { ...basicProfile, ...overview };
             set({
               cookie: result.cookie,
               profile,
               qrLogin: null,
               playlists: [],
               lastImportSummary: null,
+              homeCache: null,
             });
             await get().loadPlaylists();
           } else {
@@ -94,7 +114,9 @@ export const useNeteaseStore = create<NeteaseState>()(
         if (!cookie) return;
         set({ loading: true, error: null });
         try {
-          const profile = await getNeteaseLoginProfile(baseUrl, cookie);
+          const basicProfile = await getNeteaseLoginProfile(baseUrl, cookie);
+          const overview = await getNeteaseUserOverview(baseUrl, cookie, basicProfile.userId);
+          const profile = { ...basicProfile, ...overview };
           set({ profile });
           await get().loadPlaylists();
         } catch (error) {
@@ -147,10 +169,14 @@ export const useNeteaseStore = create<NeteaseState>()(
           playlists: [],
           lastImportSummary: null,
           error: null,
+          homeCache: null,
         });
       },
 
       clearError: () => set({ error: null }),
+      setHomeCache: (homeCache) => set({ homeCache }),
+      setProfileBackgroundUri: (profileBackgroundUri) => set({ profileBackgroundUri }),
+      setAvatarFrameUri: (avatarFrameUri) => set({ avatarFrameUri }),
     }),
     {
       name: 'ysclaude-netease',
@@ -159,6 +185,9 @@ export const useNeteaseStore = create<NeteaseState>()(
         baseUrl: state.baseUrl,
         cookie: state.cookie,
         profile: state.profile,
+        homeCache: state.homeCache,
+        profileBackgroundUri: state.profileBackgroundUri,
+        avatarFrameUri: state.avatarFrameUri,
       }),
       onRehydrateStorage: () => () => {
         useNeteaseStore.setState({ _hydrated: true });

@@ -12,7 +12,7 @@ export interface StickerDefinition {
 
 const STICKER_PATTERN = /\[Sticker:([^\]\r\n]+)\]/g;
 
-type StickerContentChunk =
+export type StickerContentChunk =
   | { type: 'text'; text: string }
   | { type: 'sticker'; sticker: StickerDefinition };
 
@@ -55,7 +55,7 @@ export function getStickerByName(
   return stickers.find((sticker) => sticker.name === normalizedName);
 }
 
-function splitStickerContent(
+export function splitStickerContent(
   content: string,
   stickers: StickerDefinition[]
 ): StickerContentChunk[] {

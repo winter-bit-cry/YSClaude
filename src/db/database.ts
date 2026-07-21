@@ -107,6 +107,7 @@ async function initTables(database: SQLite.SQLiteDatabase) {
       id TEXT PRIMARY KEY,
       title TEXT NOT NULL DEFAULT '',
       content TEXT NOT NULL DEFAULT '',
+      date_key TEXT NOT NULL DEFAULT '',
       is_favorite INTEGER NOT NULL DEFAULT 0,
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL
@@ -868,6 +869,18 @@ async function runMigrations(database: SQLite.SQLiteDatabase) {
         ON memory_items(active, date DESC);
       PRAGMA user_version = 30;
     `);
+  }
+  if (!(await hasColumn(database, 'diaries', 'date_key'))) {
+    await database.execAsync(`ALTER TABLE diaries ADD COLUMN date_key TEXT NOT NULL DEFAULT '';`);
+  }
+  await database.execAsync(`
+    UPDATE diaries
+       SET date_key = strftime('%Y-%m-%d', created_at / 1000, 'unixepoch', 'localtime')
+     WHERE date_key = '';
+    CREATE INDEX IF NOT EXISTS idx_diaries_date_key ON diaries(date_key);
+  `);
+  if (version < 31) {
+    await database.execAsync('PRAGMA user_version = 31;');
   }
 }
 

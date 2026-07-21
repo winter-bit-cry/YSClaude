@@ -1740,6 +1740,7 @@ async function runToolLoop(
 
   const tools = getToolDefinitions({
     memoryVault: memoryEnabled,
+    memoryVaultConfig: settings.memoryVaultConfig,
     webSearch: webEnabled,
     webInteraction: webInteractionEnabled,
     conversationArtifacts: conversationArtifactToolsEnabled,

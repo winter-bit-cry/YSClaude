@@ -253,14 +253,12 @@ export async function deleteLocalMemory(id: string): Promise<void> {
 
 export async function getLocalDiaryByDate(date: string): Promise<string | null> {
   const database = await getDatabase();
-  const start = new Date(`${date}T00:00:00`).getTime();
-  const end = new Date(`${date}T23:59:59.999`).getTime();
-  if (!Number.isFinite(start) || !Number.isFinite(end)) return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
   const rows = await database.getAllAsync<{ title: string; content: string }>(
     `SELECT title, content FROM diaries
-      WHERE created_at BETWEEN ? AND ? OR updated_at BETWEEN ? AND ?
+      WHERE date_key = ?
       ORDER BY created_at ASC`,
-    [start, end, start, end]
+    [date]
   );
   if (!rows.length) return null;
   return rows.map((row) => [row.title, row.content].filter(Boolean).join('\n')).join('\n\n');
@@ -294,12 +292,13 @@ export async function importMemoryVaultData(data: unknown): Promise<{
     if (!diary?.date || !diary?.content) continue;
     const timestamp = Number(diary.created_at) || new Date(`${diary.date}T12:00:00`).getTime();
     const result = await database.runAsync(
-      `INSERT OR IGNORE INTO diaries (id, title, content, is_favorite, created_at, updated_at)
-       VALUES (?, ?, ?, 0, ?, ?)`,
+      `INSERT OR IGNORE INTO diaries (id, title, content, date_key, is_favorite, created_at, updated_at)
+       VALUES (?, ?, ?, ?, 0, ?, ?)`,
       [
         diary.id || `memory-vault:${diary.date}`,
         diary.title || diary.date,
         diary.content,
+        diary.date,
         timestamp,
         Number(diary.updated_at) || timestamp,
       ]
@@ -333,10 +332,11 @@ export async function exportMemoryVaultData(): Promise<{
     content: string;
     created_at: number;
     updated_at: number;
-  }>('SELECT id, title, content, created_at, updated_at FROM diaries ORDER BY created_at DESC');
+    date_key: string;
+  }>('SELECT id, title, content, date_key, created_at, updated_at FROM diaries ORDER BY created_at DESC');
   const diaries = diaryRows.map((item) => ({
     id: item.id,
-    date: new Date(item.created_at).toISOString().slice(0, 10),
+    date: item.date_key,
     title: item.title,
     content: item.content,
     preview: item.content.slice(0, 100),
@@ -413,12 +413,13 @@ async function importMemoryVaultFileStreaming(file: File): Promise<{
     if (!item?.date || typeof item.content !== 'string') return;
     const timestamp = Number(item.created_at) || new Date(`${item.date}T12:00:00`).getTime();
     const result = await database.runAsync(
-      `INSERT OR IGNORE INTO diaries (id, title, content, is_favorite, created_at, updated_at)
-       VALUES (?, ?, ?, 0, ?, ?)`,
+      `INSERT OR IGNORE INTO diaries (id, title, content, date_key, is_favorite, created_at, updated_at)
+       VALUES (?, ?, ?, ?, 0, ?, ?)`,
       [
         item.id || `memory-vault:${item.date}`,
         item.title || item.date,
         item.content,
+        item.date,
         timestamp,
         Number(item.updated_at) || timestamp,
       ]

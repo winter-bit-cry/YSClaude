@@ -1,5 +1,5 @@
 import React from 'react';
-import { Image, StyleSheet } from 'react-native';
+import { Image, StyleSheet, useColorScheme } from 'react-native';
 import {
   BookOpen,
   CalendarDays,
@@ -39,6 +39,7 @@ interface TopBarIconProps {
   iconKey: TopBarIconKey;
   color: string;
   customUri?: string;
+  darkCustomUri?: string;
   size?: number;
   strokeWidth?: number;
 }
@@ -47,14 +48,18 @@ export function TopBarIcon({
   iconKey,
   color,
   customUri,
+  darkCustomUri,
   size = 22,
   strokeWidth = 1.9,
 }: TopBarIconProps) {
-  if (customUri) {
+  const isDark = useColorScheme() === 'dark';
+  const themedUri = isDark ? (darkCustomUri || customUri) : (customUri || darkCustomUri);
+  const usesFallbackTheme = isDark ? !darkCustomUri && !!customUri : !customUri && !!darkCustomUri;
+  if (themedUri) {
     return (
       <Image
-        source={{ uri: customUri }}
-        style={[styles.customIcon, { width: size, height: size }]}
+        source={{ uri: themedUri }}
+        style={[styles.customIcon, { width: size, height: size }, usesFallbackTheme && { tintColor: color }]}
         resizeMode="contain"
       />
     );

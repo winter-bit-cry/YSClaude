@@ -353,6 +353,7 @@ export default function ChatScreen() {
   const settingsHydrated = useSettingsStore((state) => state._hydrated);
   const incomingLetterEnabled = useSettingsStore((state) => !!state.incomingLetterConfig?.enabled);
   const topBarIconUris = appearanceConfig?.topBarIconUris || {};
+  const topBarIconDarkUris = appearanceConfig?.topBarIconDarkUris || {};
   const topBarIconHidden = appearanceConfig?.topBarIconHidden || {};
   const topBarIconsHidden = !!appearanceConfig?.topBarIconsHidden;
   const topBarFadeHidden = !!appearanceConfig?.topBarFadeHidden;
@@ -488,6 +489,7 @@ export default function ChatScreen() {
           iconKey={iconKey}
           color={iconStyle.color}
           customUri={topBarIconUris[iconKey]}
+          darkCustomUri={topBarIconDarkUris[iconKey]}
           size={iconStyle.size ?? topBarResponsiveMetrics.iconSize}
         />
       </View>

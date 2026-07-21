@@ -150,6 +150,7 @@ export interface Diary {
   id: string;
   title: string;
   content: string;
+  date: string;
   isFavorite: boolean;
   createdAt: number;
   updatedAt: number;

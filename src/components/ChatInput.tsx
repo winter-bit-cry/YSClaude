@@ -50,7 +50,7 @@ import { lightColors, useThemeColors, type ThemeColors } from '../theme/colors';
 import { fonts } from '../theme/fonts';
 import { TIKTOK_SANS_REGULAR } from '../theme/interfaceFonts';
 
-import { useSettingsStore } from '../stores/settings';
+import { useSettingsStore, type ChatInputIconKey } from '../stores/settings';
 import { useChatStore } from '../stores/chat';
 import type { ConversationArtifact, ConversationArtifactVersion, LocationAttachment } from '../types';
 import { buildStickerDefinitions, normalizeStickerName, type StickerDefinition } from '../utils/stickers';
@@ -390,7 +390,14 @@ export function ChatInput({
     userStickers,
   ]);
 
-  const inputIconUris = appearanceConfig?.inputIconUris || {};
+  const lightInputIconUris = appearanceConfig?.inputIconUris || {};
+  const darkInputIconUris = appearanceConfig?.inputIconDarkUris || {};
+  const inputIconUris = isDarkTheme
+    ? { ...lightInputIconUris, ...darkInputIconUris }
+    : { ...darkInputIconUris, ...lightInputIconUris };
+  const usesFallbackInputIcon = (key: ChatInputIconKey) => isDarkTheme
+    ? !darkInputIconUris[key] && !!lightInputIconUris[key]
+    : !lightInputIconUris[key] && !!darkInputIconUris[key];
   const inputStyle = appearanceConfig?.inputStyle === 'compact' ? 'compact' : 'default';
   const inputBackgroundImageUri = appearanceConfig?.inputBackgroundImageUri;
   const inputBackgroundTransparent = !!appearanceConfig?.inputBackgroundTransparent;
@@ -1056,6 +1063,7 @@ export function ChatInput({
           styles.sendImage,
           displayFocusedResponse && !isStreaming && styles.focusedResponseImage,
           shouldInvertResponseIcon && styles.invertedImageIcon,
+          usesFallbackInputIcon(isStreaming ? 'stop' : displayFocusedResponse ? 'sendFocused' : 'sendIdle') && { tintColor: colors.idleResponseIcon },
         ]}
         resizeMode="contain"
       />
@@ -1227,7 +1235,7 @@ export function ChatInput({
             <Pressable style={[styles.optionsButton, cssStyle('.options-button')]} onPress={handleOptionsButtonPress}>
               <Image
                 source={inputIconUris.options ? { uri: inputIconUris.options } : require('../../assets/optionsbutton.png')}
-                style={styles.optionsImage}
+                style={[styles.optionsImage, usesFallbackInputIcon('options') && { tintColor: colors.inputControlIcon }]}
                 resizeMode="contain"
               />
             </Pressable>
@@ -1293,7 +1301,7 @@ export function ChatInput({
               >
                 <Image
                   source={inputIconUris.sticker ? { uri: inputIconUris.sticker } : require('../../assets/sticker.png')}
-                  style={styles.stickerButtonImage}
+                  style={[styles.stickerButtonImage, usesFallbackInputIcon('sticker') && { tintColor: colors.inputControlIcon }]}
                   resizeMode="contain"
                 />
               </Pressable>
@@ -1352,7 +1360,7 @@ export function ChatInput({
           <Pressable style={[styles.optionsButton, cssStyle('.options-button')]} onPress={handleOptionsButtonPress}>
             <Image
               source={inputIconUris.options ? { uri: inputIconUris.options } : require('../../assets/optionsbutton.png')}
-              style={styles.optionsImage}
+              style={[styles.optionsImage, usesFallbackInputIcon('options') && { tintColor: colors.inputControlIcon }]}
               resizeMode="contain"
             />
           </Pressable>
@@ -1372,7 +1380,7 @@ export function ChatInput({
             >
               <Image
                 source={inputIconUris.sticker ? { uri: inputIconUris.sticker } : require('../../assets/sticker.png')}
-                style={styles.stickerButtonImage}
+                style={[styles.stickerButtonImage, usesFallbackInputIcon('sticker') && { tintColor: colors.inputControlIcon }]}
                 resizeMode="contain"
               />
             </Pressable>

@@ -28,6 +28,7 @@ export interface ToolDefinition {
 
 export interface ToolDefinitionConfig {
   memoryVault: boolean;
+  memoryVaultConfig?: MemoryVaultConfig;
   webSearch: boolean;
   webInteraction?: boolean;
   conversationArtifacts?: boolean;

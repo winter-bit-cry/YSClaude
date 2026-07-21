@@ -33,6 +33,7 @@ export function DiaryTab({ showToast, keyboardBottomInset }: SettingsTabProps) {
   const [creatingDiary, setCreatingDiary] = useState(false);
   const [diaryTitle, setDiaryTitle] = useState('');
   const [diaryContent, setDiaryContent] = useState('');
+  const [diaryEntryDate, setDiaryEntryDate] = useState(formatDateOnly(Date.now()));
   const [splittingId, setSplittingId] = useState<string | null>(null);
   const [editingMemory, setEditingMemory] = useState<LocalMemory | null>(null);
   const [creatingMemory, setCreatingMemory] = useState(false);
@@ -42,13 +43,18 @@ export function DiaryTab({ showToast, keyboardBottomInset }: SettingsTabProps) {
   const [memoryTags, setMemoryTags] = useState('');
   const [transferring, setTransferring] = useState(false);
   const [section, setSection] = useState<'config' | 'diaries' | 'memories'>('config');
-  const [diaryDate, setDiaryDate] = useState('');
+  const [diarySearchDate, setDiarySearchDate] = useState('');
   const [memorySearchDate, setMemorySearchDate] = useState('');
   const [diaryPage, setDiaryPage] = useState(1);
   const [memoryPage, setMemoryPage] = useState(1);
   const pageSize = 10;
 
   const [enabled, setEnabled] = useState(memoryVaultConfig.enabled);
+  const [searchMemoryEnabled, setSearchMemoryEnabled] = useState(memoryVaultConfig.searchMemoryEnabled !== false);
+  const [keywordSearchMemoryEnabled, setKeywordSearchMemoryEnabled] = useState(memoryVaultConfig.keywordSearchMemoryEnabled !== false);
+  const [queryDiaryEnabled, setQueryDiaryEnabled] = useState(memoryVaultConfig.queryDiaryEnabled !== false);
+  const [saveMemoryEnabled, setSaveMemoryEnabled] = useState(memoryVaultConfig.saveMemoryEnabled !== false);
+  const [addDiaryEnabled, setAddDiaryEnabled] = useState(memoryVaultConfig.addDiaryEnabled !== false);
   const [provider, setProvider] = useState<'openai' | 'google'>(memoryVaultConfig.embeddingProvider || 'openai');
   const [embeddingBaseUrl, setEmbeddingBaseUrl] = useState(memoryVaultConfig.embeddingBaseUrl || 'https://api.openai.com/v1');
   const [embeddingApiKey, setEmbeddingApiKey] = useState(memoryVaultConfig.embeddingApiKey || '');
@@ -67,8 +73,8 @@ export function DiaryTab({ showToast, keyboardBottomInset }: SettingsTabProps) {
   }, []);
 
   const filteredDiaries = useMemo(
-    () => diaries.filter((diary) => !diaryDate.trim() || formatDateOnly(diary.createdAt) === diaryDate.trim()),
-    [diaries, diaryDate],
+    () => diaries.filter((diary) => !diarySearchDate.trim() || diary.date === diarySearchDate.trim()),
+    [diaries, diarySearchDate],
   );
   const filteredMemories = useMemo(
     () => memories.filter((memory) => !memorySearchDate.trim() || memory.date === memorySearchDate.trim()),
@@ -79,7 +85,7 @@ export function DiaryTab({ showToast, keyboardBottomInset }: SettingsTabProps) {
   const visibleDiaries = filteredDiaries.slice((diaryPage - 1) * pageSize, diaryPage * pageSize);
   const visibleMemories = filteredMemories.slice((memoryPage - 1) * pageSize, memoryPage * pageSize);
 
-  useEffect(() => setDiaryPage(1), [diaryDate]);
+  useEffect(() => setDiaryPage(1), [diarySearchDate]);
   useEffect(() => setMemoryPage(1), [memorySearchDate]);
   useEffect(() => {
     if (diaryPage > diaryPageCount) setDiaryPage(diaryPageCount);
@@ -92,6 +98,11 @@ export function DiaryTab({ showToast, keyboardBottomInset }: SettingsTabProps) {
     return {
       ...memoryVaultConfig,
       enabled,
+      searchMemoryEnabled,
+      keywordSearchMemoryEnabled,
+      queryDiaryEnabled,
+      saveMemoryEnabled,
+      addDiaryEnabled,
       embeddingProvider: provider,
       embeddingBaseUrl: embeddingBaseUrl.trim(),
       embeddingApiKey: embeddingApiKey.trim(),
@@ -122,6 +133,7 @@ export function DiaryTab({ showToast, keyboardBottomInset }: SettingsTabProps) {
   function openCreateDiary() {
     setDiaryTitle('');
     setDiaryContent('');
+    setDiaryEntryDate(formatDateOnly(Date.now()));
     setCreatingDiary(true);
   }
 
@@ -129,15 +141,21 @@ export function DiaryTab({ showToast, keyboardBottomInset }: SettingsTabProps) {
     setEditingDiary(diary);
     setDiaryTitle(diary.title);
     setDiaryContent(diary.content);
+    setDiaryEntryDate(diary.date);
   }
 
   async function saveDiary() {
     if (!diaryTitle.trim() && !diaryContent.trim()) return;
+    const date = diaryEntryDate.trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(new Date(`${date}T12:00:00`).getTime())) {
+      Alert.alert('提示', '日期格式应为 YYYY-MM-DD');
+      return;
+    }
     if (editingDiary) {
-      await editDiary(editingDiary.id, { title: diaryTitle.trim(), content: diaryContent.trim() });
+      await editDiary(editingDiary.id, { title: diaryTitle.trim(), content: diaryContent.trim(), date });
       setEditingDiary(null);
     } else {
-      await addDiary(diaryTitle.trim() || `日记 ${formatFullTime(Date.now())}`, diaryContent.trim());
+      await addDiary(diaryTitle.trim() || `日记 ${formatFullTime(Date.now())}`, diaryContent.trim(), date);
       setCreatingDiary(false);
     }
   }
@@ -146,7 +164,7 @@ export function DiaryTab({ showToast, keyboardBottomInset }: SettingsTabProps) {
     setSplittingId(diary.id);
     try {
       const content = [diary.title, diary.content].filter(Boolean).join('\n');
-      const count = await splitDiaryToLocalMemories(formatDateOnly(diary.createdAt), content, currentConfig());
+      const count = await splitDiaryToLocalMemories(diary.date, content, currentConfig());
       setMemories(await listLocalMemories());
       Alert.alert('拆分完成', `已写入 ${count} 条向量记忆。`);
     } catch (error: any) {
@@ -263,6 +281,11 @@ export function DiaryTab({ showToast, keyboardBottomInset }: SettingsTabProps) {
 
       <SettingsGroup header="记忆库配置">
         <SettingsRow label="启用聊天记忆" right={<Switch value={enabled} onValueChange={setEnabled} trackColor={{ false: colors.inputBorder, true: colors.primary }} />} />
+        <SettingsRow label="语义搜索记忆" sublabel="search_memory_vault" right={<Switch value={searchMemoryEnabled} onValueChange={setSearchMemoryEnabled} trackColor={{ false: colors.inputBorder, true: colors.primary }} />} />
+        <SettingsRow label="关键词搜索记忆" sublabel="keyword_search_memory_vault" right={<Switch value={keywordSearchMemoryEnabled} onValueChange={setKeywordSearchMemoryEnabled} trackColor={{ false: colors.inputBorder, true: colors.primary }} />} />
+        <SettingsRow label="按日期查询日记" sublabel="query_diary" right={<Switch value={queryDiaryEnabled} onValueChange={setQueryDiaryEnabled} trackColor={{ false: colors.inputBorder, true: colors.primary }} />} />
+        <SettingsRow label="保存长期记忆" sublabel="save_memory" right={<Switch value={saveMemoryEnabled} onValueChange={setSaveMemoryEnabled} trackColor={{ false: colors.inputBorder, true: colors.primary }} />} />
+        <SettingsRow label="添加日记" sublabel="add_diary" right={<Switch value={addDiaryEnabled} onValueChange={setAddDiaryEnabled} trackColor={{ false: colors.inputBorder, true: colors.primary }} />} />
         <SettingsRow label="Google 向量格式" sublabel="关闭时使用 OpenAI 兼容格式" right={<Switch value={provider === 'google'} onValueChange={(value) => {
           setProvider(value ? 'google' : 'openai');
           setEmbeddingBaseUrl(value ? 'https://generativelanguage.googleapis.com' : 'https://api.openai.com/v1');
@@ -282,12 +305,12 @@ export function DiaryTab({ showToast, keyboardBottomInset }: SettingsTabProps) {
 
       {section === 'diaries' && <>
       <View style={{ paddingHorizontal: 16, marginBottom: 8 }}>
-        <TextInput style={styles.input} value={diaryDate} onChangeText={setDiaryDate} placeholder="按日期检索（YYYY-MM-DD）" placeholderTextColor={colors.textTertiary} autoCapitalize="none" />
+        <TextInput style={styles.input} value={diarySearchDate} onChangeText={setDiarySearchDate} placeholder="按日期检索（YYYY-MM-DD）" placeholderTextColor={colors.textTertiary} autoCapitalize="none" />
       </View>
       <SettingsGroup header={`日记（${diaries.length}）`} footer="点击编辑；右侧按钮调用拆分 API 并写入向量记忆。">
         <ButtonRow label="＋ 新增日记" onPress={openCreateDiary} />
         {visibleDiaries.map((diary) => (
-          <SettingsRow key={diary.id} label={diary.title || '无标题'} sublabel={`${diary.content.slice(0, 80)}\n${formatFullTime(diary.createdAt)}`} onPress={() => openEditDiary(diary)} onLongPress={() => Alert.alert('删除日记', '确定删除这篇日记吗？', [
+          <SettingsRow key={diary.id} label={diary.title || '无标题'} sublabel={`${diary.date} · ${diary.content.slice(0, 80)}\n${formatFullTime(diary.createdAt)}`} onPress={() => openEditDiary(diary)} onLongPress={() => Alert.alert('删除日记', '确定删除这篇日记吗？', [
             { text: '取消', style: 'cancel' },
             { text: '删除', style: 'destructive', onPress: () => void removeDiary(diary.id) },
           ])} left={<Pressable onPress={() => void toggleFavorite(diary.id)}><Text style={styles.diaryStarText}>{diary.isFavorite ? '★' : '☆'}</Text></Pressable>} right={<Pressable onPress={() => void splitDiary(diary)} disabled={splittingId === diary.id}>{splittingId === diary.id ? <ActivityIndicator size="small" color={colors.primary} /> : <Text style={styles.diaryUploadText}>拆分</Text>}</Pressable>} />
@@ -311,7 +334,7 @@ export function DiaryTab({ showToast, keyboardBottomInset }: SettingsTabProps) {
       </SettingsGroup>
       </>}
 
-      <DiaryEditor visible={creatingDiary || !!editingDiary} title={diaryTitle} content={diaryContent} setTitle={setDiaryTitle} setContent={setDiaryContent} onCancel={() => { setCreatingDiary(false); setEditingDiary(null); }} onSave={() => void saveDiary()} styles={styles} colors={colors} />
+      <DiaryEditor visible={creatingDiary || !!editingDiary} title={diaryTitle} content={diaryContent} date={diaryEntryDate} setTitle={setDiaryTitle} setContent={setDiaryContent} setDate={setDiaryEntryDate} onCancel={() => { setCreatingDiary(false); setEditingDiary(null); }} onSave={() => void saveDiary()} styles={styles} colors={colors} />
 
       <Modal visible={!!editingMemory || creatingMemory} transparent animationType="fade">
         <Pressable style={styles.overlay} onPress={() => { setEditingMemory(null); setCreatingMemory(false); }}>
@@ -348,13 +371,14 @@ function Pagination({ page, pageCount, setPage, colors }: {
   );
 }
 
-function DiaryEditor({ visible, title, content, setTitle, setContent, onCancel, onSave, styles, colors }: any) {
+function DiaryEditor({ visible, title, content, date, setTitle, setContent, setDate, onCancel, onSave, styles, colors }: any) {
   return (
     <Modal visible={visible} transparent animationType="fade">
       <Pressable style={styles.overlay} onPress={onCancel}>
         <View style={styles.modal} onStartShouldSetResponder={() => true}>
           <Text style={styles.modalTitle}>编辑日记</Text>
           <TextInput style={styles.input} value={title} onChangeText={setTitle} placeholder="标题" placeholderTextColor={colors.textTertiary} />
+          <TextInput style={styles.input} value={date} onChangeText={setDate} placeholder="YYYY-MM-DD" placeholderTextColor={colors.textTertiary} autoCapitalize="none" />
           <TextInput style={[styles.summaryContentInput, styles.diaryModalContentInput]} value={content} onChangeText={setContent} placeholder="日记内容" placeholderTextColor={colors.textTertiary} multiline />
           <View style={styles.modalButtons}><Pressable style={styles.modalCancel} onPress={onCancel}><Text style={styles.modalCancelText}>取消</Text></Pressable><Pressable style={styles.modalConfirm} onPress={onSave}><Text style={styles.modalConfirmText}>保存</Text></Pressable></View>
         </View>

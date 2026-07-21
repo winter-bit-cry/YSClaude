@@ -4,6 +4,16 @@ export interface NeteaseProfile {
   userId: number;
   nickname: string;
   avatarUrl?: string;
+  backgroundUrl?: string;
+  signature?: string;
+  follows?: number;
+  followeds?: number;
+  eventCount?: number;
+  playlistCount?: number;
+  listenSongs?: number;
+  level?: number;
+  listenTimeSeconds?: number;
+  createDays?: number;
 }
 
 export interface NeteasePlaylistSummary {
@@ -11,6 +21,13 @@ export interface NeteasePlaylistSummary {
   name: string;
   trackCount: number;
   coverImgUrl?: string;
+}
+
+export interface NeteaseRecommendedPlaylist extends NeteasePlaylistSummary {
+  picUrl?: string;
+  description?: string;
+  copywriter?: string;
+  playCount?: number;
 }
 
 export interface NeteaseQrLogin {
@@ -29,6 +46,8 @@ export interface NeteaseImportResult {
   playableCount: number;
   skippedCount: number;
 }
+
+let publicPlaylistPageCursor = Math.floor(Math.random() * 20);
 
 interface NeteaseSong {
   id: number;
@@ -128,6 +147,52 @@ export async function getNeteaseLoginProfile(baseUrl: string, cookie: string): P
   return profile;
 }
 
+export async function getNeteaseUserOverview(
+  baseUrl: string,
+  cookie: string,
+  userId: number
+): Promise<Partial<NeteaseProfile>> {
+  const [detailResult, levelResult, listenResult] = await Promise.allSettled([
+    fetchJson<{
+      profile?: Partial<NeteaseProfile>;
+      level?: number;
+      listenSongs?: number;
+      createDays?: number;
+    }>(baseUrl, '/user/detail', { uid: userId, cookie }),
+    fetchJson<{ data?: { level?: number; listenSongs?: number } }>(baseUrl, '/user/level', { cookie }),
+    fetchJson<unknown>(baseUrl, '/listen/data/total', { cookie }),
+  ]);
+
+  const detail = detailResult.status === 'fulfilled' ? detailResult.value : {};
+  const level = levelResult.status === 'fulfilled' ? levelResult.value.data : undefined;
+  const listenTimeSeconds = listenResult.status === 'fulfilled'
+    ? extractListenTimeSeconds(listenResult.value)
+    : undefined;
+  return {
+    ...detail.profile,
+    level: level?.level ?? detail.level,
+    listenSongs: detail.listenSongs ?? level?.listenSongs,
+    createDays: detail.createDays,
+    listenTimeSeconds,
+  };
+}
+
+function extractListenTimeSeconds(value: unknown): number | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const record = value as Record<string, unknown>;
+  for (const key of ['totalDuration', 'totalTime', 'listenTime', 'duration']) {
+    const candidate = record[key];
+    if (typeof candidate === 'number' && Number.isFinite(candidate) && candidate >= 0) {
+      return candidate > 100_000_000 ? Math.round(candidate / 1000) : Math.round(candidate);
+    }
+  }
+  for (const child of Object.values(record)) {
+    const result = extractListenTimeSeconds(child);
+    if (result !== undefined) return result;
+  }
+  return undefined;
+}
+
 export async function getNeteasePlaylists(
   baseUrl: string,
   cookie: string,
@@ -139,6 +204,98 @@ export async function getNeteasePlaylists(
     cookie,
   });
   return result.playlist ?? [];
+}
+
+export async function getPublicRecommendedPlaylists(
+  baseUrl: string,
+  limit = 12,
+  offset?: number
+): Promise<NeteaseRecommendedPlaylist[]> {
+  const resolvedOffset = offset ?? (publicPlaylistPageCursor++ % 20) * limit;
+  const result = await fetchJson<{ playlists?: NeteaseRecommendedPlaylist[] }>(baseUrl, '/top/playlist', {
+    order: 'hot',
+    limit,
+    offset: resolvedOffset,
+  });
+  return (result.playlists ?? []).map((item) => ({
+    ...item,
+    coverImgUrl: item.coverImgUrl ?? item.picUrl,
+  }));
+}
+
+export async function getDailyRecommendedPlaylists(
+  baseUrl: string,
+  cookie: string
+): Promise<NeteaseRecommendedPlaylist[]> {
+  if (!cookie) return [];
+  const result = await fetchJson<{ recommend?: NeteaseRecommendedPlaylist[] }>(
+    baseUrl,
+    '/recommend/resource',
+    { cookie }
+  );
+  return (result.recommend ?? []).map((item) => ({
+    ...item,
+    coverImgUrl: item.coverImgUrl ?? item.picUrl,
+  }));
+}
+
+export async function getRefreshedRecommendedPlaylists(
+  baseUrl: string,
+  cookie: string,
+  limit = 12
+): Promise<NeteaseRecommendedPlaylist[]> {
+  if (!cookie) return [];
+  const result = await fetchJson<unknown>(baseUrl, '/homepage/block/page', {
+    refresh: 'true',
+    cookie,
+  });
+  const playlists = extractHomepagePlaylists(result);
+  return playlists.slice(0, limit);
+}
+
+function extractHomepagePlaylists(value: unknown): NeteaseRecommendedPlaylist[] {
+  const found = new Map<number, NeteaseRecommendedPlaylist>();
+  const visit = (candidate: unknown): void => {
+    if (!candidate || typeof candidate !== 'object') return;
+    if (Array.isArray(candidate)) {
+      candidate.forEach(visit);
+      return;
+    }
+    const item = candidate as Record<string, unknown>;
+    const resourceType = String(item.resourceType ?? item.resourceTypeCode ?? '').toLowerCase();
+    const playlistData = item.playlistData && typeof item.playlistData === 'object'
+      ? item.playlistData as Record<string, unknown>
+      : undefined;
+    const uiElement = item.uiElement && typeof item.uiElement === 'object'
+      ? item.uiElement as Record<string, unknown>
+      : undefined;
+    const mainTitle = uiElement?.mainTitle && typeof uiElement.mainTitle === 'object'
+      ? uiElement.mainTitle as Record<string, unknown>
+      : undefined;
+    const image = uiElement?.image && typeof uiElement.image === 'object'
+      ? uiElement.image as Record<string, unknown>
+      : undefined;
+    const rawId = playlistData?.id ?? item.resourceId;
+    const id = typeof rawId === 'number' ? rawId : Number(rawId);
+    const name = playlistData?.name ?? mainTitle?.title;
+    const looksLikePlaylist = resourceType.includes('playlist') || !!playlistData;
+    if (looksLikePlaylist && Number.isFinite(id) && typeof name === 'string' && name.trim()) {
+      found.set(id, {
+        id,
+        name,
+        trackCount: typeof playlistData?.trackCount === 'number' ? playlistData.trackCount : 0,
+        coverImgUrl: normalizeNeteaseMediaUrl(
+          typeof playlistData?.coverImgUrl === 'string'
+            ? playlistData.coverImgUrl
+            : typeof image?.imageUrl === 'string' ? image.imageUrl : undefined
+        ),
+        playCount: typeof playlistData?.playCount === 'number' ? playlistData.playCount : undefined,
+      });
+    }
+    Object.values(item).forEach(visit);
+  };
+  visit(value);
+  return [...found.values()];
 }
 
 async function getPlaylistSongs(baseUrl: string, cookie: string, playlistId: number): Promise<NeteaseSong[]> {
@@ -172,6 +329,50 @@ async function getLyrics(baseUrl: string, cookie: string, songId: number): Promi
   } catch {
     return [];
   }
+}
+
+async function resolveSongs(
+  baseUrl: string,
+  cookie: string,
+  songs: NeteaseSong[]
+): Promise<MusicTrack[]> {
+  const urls = await getSongUrls(baseUrl, cookie, songs.map((song) => song.id));
+  const playableSongs = songs.filter((song) => {
+    const url = urls.get(song.id);
+    return !!url?.url && !url.freeTrialInfo;
+  });
+  const lyricPairs = await Promise.all(
+    playableSongs.map(async (song) => [song.id, await getLyrics(baseUrl, cookie, song.id)] as const)
+  );
+  const lyricsBySongId = new Map(lyricPairs);
+  return playableSongs.map((song) => {
+    const source = urls.get(song.id);
+    return {
+      id: `netease-${song.id}`,
+      title: song.name,
+      artist: song.ar?.map((artist) => artist.name).filter(Boolean).join(' / ') || '未知歌手',
+      album: song.al?.name,
+      artworkUrl: song.al?.picUrl,
+      sourceUrl: normalizeNeteaseMediaUrl(source?.url),
+      durationMs: source?.time ?? song.dt,
+      lyrics: lyricsBySongId.get(song.id) ?? [],
+      source: 'netease',
+      availability: 'playable',
+    } satisfies MusicTrack;
+  });
+}
+
+export async function getDailyRecommendedSongs(
+  baseUrl: string,
+  cookie: string
+): Promise<MusicTrack[]> {
+  if (!cookie) return [];
+  const result = await fetchJson<{ data?: { dailySongs?: NeteaseSong[] } }>(
+    baseUrl,
+    '/recommend/songs',
+    { cookie }
+  );
+  return resolveSongs(baseUrl, cookie, result.data?.dailySongs ?? []);
 }
 
 export async function importNeteasePlaylist(
@@ -212,6 +413,31 @@ export async function importNeteasePlaylist(
     playableCount: tracks.length,
     skippedCount: Math.max(0, songs.length - tracks.length),
   };
+}
+
+export async function searchNeteaseTracks(
+  baseUrl: string,
+  cookie: string,
+  query: string,
+  limit = 10
+): Promise<MusicTrack[]> {
+  const text = query.trim();
+  if (!text) return [];
+  const result = await fetchJson<{ result?: { songs?: NeteaseSearchSong[] } }>(baseUrl, '/search', {
+    keywords: text,
+    type: 1,
+    limit,
+    cookie,
+  });
+  const rawSongs = result.result?.songs ?? [];
+  const songs: NeteaseSong[] = rawSongs.map((song) => ({
+    id: song.id,
+    name: song.name,
+    dt: song.duration,
+    ar: song.ar ?? song.artists,
+    al: song.al ?? song.album,
+  }));
+  return resolveSongs(baseUrl, cookie, songs);
 }
 
 function getSearchSongArtists(song: NeteaseSearchSong): string {

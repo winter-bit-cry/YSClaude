@@ -395,6 +395,7 @@ function buildVoiceToolDefinitions(settings: ReturnType<typeof useSettingsStore.
     && !!(settings.runCommandConfig.sshPassword || settings.runCommandConfig.sshPrivateKey);
   return getToolDefinitions({
     memoryVault,
+    memoryVaultConfig: settings.memoryVaultConfig,
     webSearch,
     webInteraction: !!settings.webInteractionConfig.enabled,
     conversationArtifacts: !!settings.conversationArtifactToolConfig.enabled,

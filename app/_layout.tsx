@@ -230,6 +230,10 @@ export default function RootLayout() {
           options={{ animation: 'slide_from_right', presentation: 'modal' }}
         />
         <Stack.Screen
+          name="music-player"
+          options={{ animation: 'slide_from_bottom', presentation: 'modal' }}
+        />
+        <Stack.Screen
           name="music-playlists"
           options={{ animation: 'slide_from_right', presentation: 'modal' }}
         />

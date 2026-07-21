@@ -57,6 +57,7 @@ interface MusicState {
   togetherRingEnabled: boolean;
   togetherRecordBorderEnabled: boolean;
   togetherBackgroundOverlayEnabled: boolean;
+  togetherBackgroundOverlayOpacity: number;
   togetherElapsedMs: number;
   togetherStartedAt: number | null;
   currentTimeMs: number;
@@ -85,6 +86,7 @@ interface MusicState {
   setTogetherRingEnabled: (enabled: boolean) => void;
   setTogetherRecordBorderEnabled: (enabled: boolean) => void;
   setTogetherBackgroundOverlayEnabled: (enabled: boolean) => void;
+  setTogetherBackgroundOverlayOpacity: (opacity: number) => void;
   replaceTracks: (tracks: MusicTrack[]) => void;
   getListeningContextPrompt: () => string | null;
   preloadTrackWindow: (centerIndex: number) => Promise<void>;
@@ -324,6 +326,7 @@ export const useMusicStore = create<MusicState>()(
   togetherRingEnabled: true,
   togetherRecordBorderEnabled: true,
   togetherBackgroundOverlayEnabled: false,
+  togetherBackgroundOverlayOpacity: 0.58,
   togetherElapsedMs: 0,
   togetherStartedAt: null,
   currentTimeMs: 0,
@@ -486,6 +489,10 @@ export const useMusicStore = create<MusicState>()(
     set({ togetherBackgroundOverlayEnabled: enabled });
   },
 
+  setTogetherBackgroundOverlayOpacity: (opacity: number) => {
+    set({ togetherBackgroundOverlayOpacity: Math.max(0, Math.min(1, opacity)) });
+  },
+
   replaceTracks: (tracks: MusicTrack[]) => {
     releasePlayer();
     const playableTracks = tracks.filter((track) => track.sourceUrl);
@@ -577,6 +584,7 @@ export const useMusicStore = create<MusicState>()(
         togetherRingEnabled: state.togetherRingEnabled,
         togetherRecordBorderEnabled: state.togetherRecordBorderEnabled,
         togetherBackgroundOverlayEnabled: state.togetherBackgroundOverlayEnabled,
+        togetherBackgroundOverlayOpacity: state.togetherBackgroundOverlayOpacity,
         togetherElapsedMs: state.togetherElapsedMs,
         togetherStartedAt: state.togetherStartedAt,
       }),
@@ -614,6 +622,10 @@ export const useMusicStore = create<MusicState>()(
             persistedState?.togetherRecordBorderEnabled ?? current.togetherRecordBorderEnabled,
           togetherBackgroundOverlayEnabled:
             persistedState?.togetherBackgroundOverlayEnabled ?? current.togetherBackgroundOverlayEnabled,
+          togetherBackgroundOverlayOpacity:
+            typeof persistedState?.togetherBackgroundOverlayOpacity === 'number'
+              ? Math.max(0, Math.min(1, persistedState.togetherBackgroundOverlayOpacity))
+              : current.togetherBackgroundOverlayOpacity,
           togetherElapsedMs: Math.max(0, persistedState?.togetherElapsedMs ?? 0),
           togetherStartedAt:
             typeof persistedState?.togetherStartedAt === 'number'

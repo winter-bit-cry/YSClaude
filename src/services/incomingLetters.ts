@@ -73,6 +73,7 @@ async function generateLetterContent(
   const memoryEnabled = settings.memoryVaultConfig.enabled && !!settings.memoryVaultConfig.baseUrl;
   const tools = getToolDefinitions({
     memoryVault: memoryEnabled,
+    memoryVaultConfig: settings.memoryVaultConfig,
     webSearch: false,
     webInteraction: false,
     conversationWindows: false,

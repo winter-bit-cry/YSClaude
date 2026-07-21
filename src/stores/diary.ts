@@ -11,8 +11,8 @@ import {
 interface DiaryState {
   diaries: Diary[];
   loadDiaries: () => Promise<void>;
-  addDiary: (title: string, content: string) => Promise<void>;
-  editDiary: (id: string, updates: { title?: string; content?: string }) => Promise<void>;
+  addDiary: (title: string, content: string, date: string) => Promise<void>;
+  editDiary: (id: string, updates: { title?: string; content?: string; date?: string }) => Promise<void>;
   toggleFavorite: (id: string) => Promise<void>;
   removeDiary: (id: string) => Promise<void>;
 }
@@ -25,12 +25,13 @@ export const useDiaryStore = create<DiaryState>((set, get) => ({
     set({ diaries });
   },
 
-  addDiary: async (title: string, content: string) => {
+  addDiary: async (title: string, content: string, date: string) => {
     const now = Date.now();
     const diary: Diary = {
       id: randomUUID(),
       title,
       content,
+      date,
       isFavorite: false,
       createdAt: now,
       updatedAt: now,
@@ -39,7 +40,7 @@ export const useDiaryStore = create<DiaryState>((set, get) => ({
     set((state) => ({ diaries: [diary, ...state.diaries] }));
   },
 
-  editDiary: async (id: string, updates: { title?: string; content?: string }) => {
+  editDiary: async (id: string, updates: { title?: string; content?: string; date?: string }) => {
     const now = Date.now();
     await updateDiary(id, { ...updates, updatedAt: now });
     set((state) => ({

@@ -146,8 +146,8 @@ export function AppearanceTab({ showToast, keyboardBottomInset }: AppearanceTabP
     removeAppearanceTheme,
     resetAppearanceConfig,
   } = useSettingsStore();
-  const [pickingKey, setPickingKey] = useState<TopBarIconKey | null>(null);
-  const [pickingInputIconKey, setPickingInputIconKey] = useState<ChatInputIconKey | null>(null);
+  const [pickingKey, setPickingKey] = useState<string | null>(null);
+  const [pickingInputIconKey, setPickingInputIconKey] = useState<string | null>(null);
   const [pickingBackground, setPickingBackground] = useState<'chat' | 'input' | 'topBar' | null>(null);
   const [pickingAvatar, setPickingAvatar] = useState<'user' | 'assistant' | null>(null);
   const [pickingFont, setPickingFont] = useState<'regular' | 'bold' | null>(null);
@@ -162,11 +162,13 @@ export function AppearanceTab({ showToast, keyboardBottomInset }: AppearanceTabP
   const appearanceThemes = appearanceConfig?.appearanceThemes || [];
   const activeAppearanceThemeId = appearanceConfig?.activeAppearanceThemeId;
   const topBarIconUris = appearanceConfig?.topBarIconUris || {};
+  const topBarIconDarkUris = appearanceConfig?.topBarIconDarkUris || {};
   const topBarIconHidden = appearanceConfig?.topBarIconHidden || {};
   const topBarIconsHidden = !!appearanceConfig?.topBarIconsHidden;
   const topBarFadeHidden = !!appearanceConfig?.topBarFadeHidden;
   const topBarBackgroundImageUri = appearanceConfig?.topBarBackgroundImageUri;
   const inputIconUris = appearanceConfig?.inputIconUris || {};
+  const inputIconDarkUris = appearanceConfig?.inputIconDarkUris || {};
   const inputStyle = appearanceConfig?.inputStyle === 'compact' ? 'compact' : 'default';
   const inputBorderRadius = appearanceConfig?.inputBorderRadius ?? 20;
   const inputBackgroundTransparent = !!appearanceConfig?.inputBackgroundTransparent;
@@ -254,9 +256,9 @@ export function AppearanceTab({ showToast, keyboardBottomInset }: AppearanceTabP
     appearanceConfig?.userTextColor,
   ]);
 
-  async function handlePickIcon(key: TopBarIconKey) {
+  async function handlePickIcon(key: TopBarIconKey, variant: 'light' | 'dark') {
     if (pickingKey) return;
-    setPickingKey(key);
+    setPickingKey(`${key}-${variant}`);
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
@@ -274,8 +276,8 @@ export function AppearanceTab({ showToast, keyboardBottomInset }: AppearanceTabP
       }
 
       const uri = await copyTopBarIcon(asset, key);
-      setTopBarIconUri(key, uri);
-      showToast('顶栏图标已更新');
+      setTopBarIconUri(key, uri, variant);
+      showToast(`${variant === 'light' ? '日间' : '夜间'}顶栏图标已更新`);
     } catch (error: any) {
       Alert.alert('更换图标失败', error?.message || '无法读取所选图片');
     } finally {
@@ -367,9 +369,9 @@ export function AppearanceTab({ showToast, keyboardBottomInset }: AppearanceTabP
     }
   }
 
-  async function handlePickInputIcon(key: ChatInputIconKey) {
+  async function handlePickInputIcon(key: ChatInputIconKey, variant: 'light' | 'dark') {
     if (pickingInputIconKey) return;
-    setPickingInputIconKey(key);
+    setPickingInputIconKey(`${key}-${variant}`);
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
@@ -387,8 +389,8 @@ export function AppearanceTab({ showToast, keyboardBottomInset }: AppearanceTabP
       }
 
       const uri = await copyAppearanceImage(asset, 'chat-input-icons', key);
-      setChatInputIconUri(key, uri);
-      showToast('输入框图标已更新');
+      setChatInputIconUri(key, uri, variant);
+      showToast(`${variant === 'light' ? '日间' : '夜间'}输入框图标已更新`);
     } catch (error: any) {
       Alert.alert('替换图标失败', error?.message || '无法读取所选图片');
     } finally {
@@ -653,6 +655,7 @@ export function AppearanceTab({ showToast, keyboardBottomInset }: AppearanceTabP
                 iconKey={item.key}
                 color={colors.text}
                 customUri={topBarIconUris[item.key]}
+                darkCustomUri={topBarIconDarkUris[item.key]}
                 size={22}
               />
             )}
@@ -725,8 +728,10 @@ export function AppearanceTab({ showToast, keyboardBottomInset }: AppearanceTabP
 
       {TOP_BAR_ICON_ITEMS.map((item) => {
         const customUri = topBarIconUris[item.key];
+        const darkCustomUri = topBarIconDarkUris[item.key];
         const isVisible = !topBarIconHidden[item.key];
-        const isPicking = pickingKey === item.key;
+        const isPickingLight = pickingKey === `${item.key}-light`;
+        const isPickingDark = pickingKey === `${item.key}-dark`;
         return (
           <View key={item.key} style={styles.appearanceIconRow}>
             <View style={styles.appearanceIconPreview}>
@@ -734,13 +739,14 @@ export function AppearanceTab({ showToast, keyboardBottomInset }: AppearanceTabP
                 iconKey={item.key}
                 color={colors.text}
                 customUri={customUri}
+                darkCustomUri={darkCustomUri}
                 size={24}
               />
             </View>
             <View style={styles.appearanceIconText}>
               <Text style={styles.label}>{item.label}</Text>
               <Text style={styles.hint}>
-                {isVisible ? (customUri ? '显示 · 自定义图片' : '显示 · 默认 SVG 图标') : '已单独隐藏'}
+                {isVisible ? (customUri || darkCustomUri ? `日间${customUri ? '✓' : '自动反色'} · 夜间${darkCustomUri ? '✓' : '自动反色'}` : '显示 · 默认 SVG 图标') : '已单独隐藏'}
               </Text>
             </View>
             <Switch
@@ -758,25 +764,32 @@ export function AppearanceTab({ showToast, keyboardBottomInset }: AppearanceTabP
             />
             <View style={styles.appearanceIconActions}>
               <Pressable
-                style={[styles.smallActionButton, isPicking && styles.smallActionButtonDisabled]}
-                onPress={() => handlePickIcon(item.key)}
+                style={[styles.smallActionButton, isPickingLight && styles.smallActionButtonDisabled]}
+                onPress={() => handlePickIcon(item.key, 'light')}
                 disabled={!!pickingKey}
               >
-                {isPicking ? (
+                {isPickingLight ? (
                   <ActivityIndicator size="small" color={colors.primary} />
                 ) : (
-                  <Text style={styles.smallActionText}>替换</Text>
+                  <Text style={styles.smallActionText}>日间</Text>
                 )}
               </Pressable>
               <Pressable
-                style={[styles.smallActionButton, !customUri && styles.smallActionButtonDisabled]}
+                style={[styles.smallActionButton, isPickingDark && styles.smallActionButtonDisabled]}
+                onPress={() => handlePickIcon(item.key, 'dark')}
+                disabled={!!pickingKey}
+              >
+                {isPickingDark ? <ActivityIndicator size="small" color={colors.primary} /> : <Text style={styles.smallActionText}>夜间</Text>}
+              </Pressable>
+              <Pressable
+                style={[styles.smallActionButton, !customUri && !darkCustomUri && styles.smallActionButtonDisabled]}
                 onPress={() => {
                   clearTopBarIconUri(item.key);
                   showToast('已恢复默认图标');
                 }}
-                disabled={!customUri}
+                disabled={!customUri && !darkCustomUri}
               >
-                <Text style={[styles.smallActionText, !customUri && styles.smallActionTextDisabled]}>
+                <Text style={[styles.smallActionText, !customUri && !darkCustomUri && styles.smallActionTextDisabled]}>
                   默认
                 </Text>
               </Pressable>
@@ -1321,37 +1334,42 @@ export function AppearanceTab({ showToast, keyboardBottomInset }: AppearanceTabP
 
       {CHAT_INPUT_ICON_ITEMS.map((item) => {
         const customUri = inputIconUris[item.key];
-        const isPicking = pickingInputIconKey === item.key;
+        const darkCustomUri = inputIconDarkUris[item.key];
+        const isPickingLight = pickingInputIconKey === `${item.key}-light`;
+        const isPickingDark = pickingInputIconKey === `${item.key}-dark`;
         return (
           <View key={item.key} style={styles.appearanceIconRow}>
             <View style={styles.appearanceIconPreview}>
-              {customUri ? (
-                <Image source={{ uri: customUri }} style={styles.customInputIconPreview} resizeMode="contain" />
+              {customUri || darkCustomUri ? (
+                <Image source={{ uri: customUri || darkCustomUri }} style={[styles.customInputIconPreview, !customUri && { tintColor: colors.text }]} resizeMode="contain" />
               ) : (
                 <Text style={styles.appearanceImagePlaceholder}>IC</Text>
               )}
             </View>
             <View style={styles.appearanceIconText}>
               <Text style={styles.label}>{item.label}</Text>
-              <Text style={styles.hint}>{customUri ? '已使用自定义图片' : '使用默认按钮图标'}</Text>
+              <Text style={styles.hint}>{customUri || darkCustomUri ? `日间${customUri ? '✓' : '自动反色'} · 夜间${darkCustomUri ? '✓' : '自动反色'}` : '使用默认按钮图标'}</Text>
             </View>
             <View style={styles.appearanceIconActions}>
               <Pressable
-                style={[styles.smallActionButton, isPicking && styles.smallActionButtonDisabled]}
-                onPress={() => handlePickInputIcon(item.key)}
+                style={[styles.smallActionButton, isPickingLight && styles.smallActionButtonDisabled]}
+                onPress={() => handlePickInputIcon(item.key, 'light')}
                 disabled={!!pickingInputIconKey}
               >
-                {isPicking ? <ActivityIndicator size="small" color={colors.primary} /> : <Text style={styles.smallActionText}>替换</Text>}
+                {isPickingLight ? <ActivityIndicator size="small" color={colors.primary} /> : <Text style={styles.smallActionText}>日间</Text>}
+              </Pressable>
+              <Pressable style={[styles.smallActionButton, isPickingDark && styles.smallActionButtonDisabled]} onPress={() => handlePickInputIcon(item.key, 'dark')} disabled={!!pickingInputIconKey}>
+                {isPickingDark ? <ActivityIndicator size="small" color={colors.primary} /> : <Text style={styles.smallActionText}>夜间</Text>}
               </Pressable>
               <Pressable
-                style={[styles.smallActionButton, !customUri && styles.smallActionButtonDisabled]}
+                style={[styles.smallActionButton, !customUri && !darkCustomUri && styles.smallActionButtonDisabled]}
                 onPress={() => {
                   clearChatInputIconUri(item.key);
                   showToast('已恢复默认输入框图标');
                 }}
-                disabled={!customUri}
+                disabled={!customUri && !darkCustomUri}
               >
-                <Text style={[styles.smallActionText, !customUri && styles.smallActionTextDisabled]}>默认</Text>
+                <Text style={[styles.smallActionText, !customUri && !darkCustomUri && styles.smallActionTextDisabled]}>默认</Text>
               </Pressable>
             </View>
           </View>

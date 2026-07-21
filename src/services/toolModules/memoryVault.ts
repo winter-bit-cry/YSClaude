@@ -1,4 +1,7 @@
 import { MemoryVaultConfig } from '../../stores/settings';
+import { randomUUID } from 'expo-crypto';
+import { createDiary } from '../../db/operations';
+import { formatDateOnly } from '../../utils/time';
 import {
   getLocalDiaryByDate,
   keywordSearchLocalMemories,
@@ -48,6 +51,22 @@ const definitions: ToolDefinition[] = [
   {
     type: 'function',
     function: {
+      name: 'add_diary',
+      description: '在设备本地新增一篇日记。仅在用户明确要求记录或添加日记时使用。',
+      parameters: {
+        type: 'object',
+        properties: {
+          title: { type: 'string', description: '日记标题，可选' },
+          content: { type: 'string', description: '日记正文' },
+          date: { type: 'string', description: '日记所属日期，格式 YYYY-MM-DD；省略时使用今天' },
+        },
+        required: ['content'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'save_memory',
       description: '把值得长期保留且用户明确提供的信息保存到设备本地记忆库。',
       parameters: {
@@ -87,9 +106,21 @@ export const memoryVaultTool: ToolModule = {
     search_memory_vault: '搜索本地记忆',
     keyword_search_memory_vault: '关键词搜索本地记忆',
     query_diary: '查询本地日记',
+    add_diary: '添加本地日记',
     save_memory: '保存本地记忆',
   },
-  getDefinitions: (config) => (config.memoryVault ? definitions : []),
+  getDefinitions: (config) => {
+    if (!config.memoryVault) return [];
+    const memoryConfig = config.memoryVaultConfig;
+    const enabledByName: Record<string, boolean> = {
+      search_memory_vault: memoryConfig?.searchMemoryEnabled !== false,
+      keyword_search_memory_vault: memoryConfig?.keywordSearchMemoryEnabled !== false,
+      query_diary: memoryConfig?.queryDiaryEnabled !== false,
+      save_memory: memoryConfig?.saveMemoryEnabled !== false,
+      add_diary: memoryConfig?.addDiaryEnabled !== false,
+    };
+    return definitions.filter((definition) => enabledByName[definition.function.name]);
+  },
   execute: async (toolName, args, context) => {
     const topK = context.memoryVaultConfig.topK || 5;
     switch (toolName) {
@@ -108,6 +139,25 @@ export const memoryVaultTool: ToolModule = {
         const date = String(args.date || '');
         const content = await getLocalDiaryByDate(date);
         return content ? `【${date} 的日记】\n${content}` : `未找到 ${date} 的日记。`;
+      }
+      case 'add_diary': {
+        const content = String(args.content || '').trim();
+        if (!content) return '添加失败：日记正文不能为空。';
+        const date = args.date ? String(args.date).trim() : formatDateOnly(Date.now());
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(new Date(`${date}T12:00:00`).getTime())) {
+          return '添加失败：日期格式应为 YYYY-MM-DD。';
+        }
+        const now = Date.now();
+        await createDiary({
+          id: randomUUID(),
+          title: String(args.title || '').trim() || `日记 ${date}`,
+          content,
+          date,
+          isFavorite: false,
+          createdAt: now,
+          updatedAt: now,
+        });
+        return `已添加 ${date} 的本地日记。`;
       }
       case 'save_memory': {
         const summary = String(args.summary || '').trim();

@@ -18,6 +18,7 @@ export type MessageAvatarLayout = 'header' | 'side';
 
 export interface AppearanceThemeSnapshot {
   topBarIconUris: Partial<Record<TopBarIconKey, string>>;
+  topBarIconDarkUris?: Partial<Record<TopBarIconKey, string>>;
   topBarIconHidden?: Partial<Record<TopBarIconKey, boolean>>;
   topBarIconsHidden?: boolean;
   topBarFadeHidden?: boolean;
@@ -57,6 +58,7 @@ export interface AppearanceThemeSnapshot {
   inputStyle?: ChatInputAppearanceStyle;
   inputBorderRadius?: number;
   inputIconUris?: Partial<Record<ChatInputIconKey, string>>;
+  inputIconDarkUris?: Partial<Record<ChatInputIconKey, string>>;
 }
 
 interface AppearanceTheme {
@@ -139,6 +141,11 @@ export interface STTConfig {
 
 export interface MemoryVaultConfig {
   enabled: boolean;
+  searchMemoryEnabled: boolean;
+  keywordSearchMemoryEnabled: boolean;
+  queryDiaryEnabled: boolean;
+  saveMemoryEnabled: boolean;
+  addDiaryEnabled: boolean;
   baseUrl: string;
   adminToken: string;
   topK: number;
@@ -734,6 +741,7 @@ function normalizeDailyPaperConfig(config?: Partial<DailyPaperConfig>): DailyPap
 
 const DEFAULT_APPEARANCE_CONFIG: AppearanceConfig = {
   topBarIconUris: {},
+  topBarIconDarkUris: {},
   topBarIconHidden: {},
   topBarIconsHidden: false,
   customGreetings: '',
@@ -751,6 +759,7 @@ const DEFAULT_APPEARANCE_CONFIG: AppearanceConfig = {
   assistantBubbleWidthPercent: 75,
   assistantActionsHidden: false,
   inputIconUris: {},
+  inputIconDarkUris: {},
   inputStyle: 'default',
   inputBorderRadius: 20,
   customCss: '',
@@ -761,8 +770,10 @@ function createDefaultAppearanceConfig(): AppearanceConfig {
   return {
     ...DEFAULT_APPEARANCE_CONFIG,
     topBarIconUris: {},
+    topBarIconDarkUris: {},
     topBarIconHidden: {},
     inputIconUris: {},
+    inputIconDarkUris: {},
     appearanceThemes: [],
     activeAppearanceThemeId: undefined,
   };
@@ -776,6 +787,7 @@ function snapshotAppearanceConfig(config?: AppearanceConfig): AppearanceThemeSna
   const source = config || DEFAULT_APPEARANCE_CONFIG;
   return {
     topBarIconUris: { ...(source.topBarIconUris || {}) },
+    topBarIconDarkUris: { ...(source.topBarIconDarkUris || {}) },
     topBarIconHidden: { ...(source.topBarIconHidden || {}) },
     topBarIconsHidden: source.topBarIconsHidden,
     topBarFadeHidden: source.topBarFadeHidden,
@@ -813,6 +825,7 @@ function snapshotAppearanceConfig(config?: AppearanceConfig): AppearanceThemeSna
     inputStyle: source.inputStyle === 'compact' ? 'compact' : 'default',
     inputBorderRadius: source.inputBorderRadius,
     inputIconUris: { ...(source.inputIconUris || {}) },
+    inputIconDarkUris: { ...(source.inputIconDarkUris || {}) },
   };
 }
 
@@ -920,11 +933,11 @@ interface SettingsState {
   updateSticker: (owner: StickerOwner, id: string, patch: Partial<Pick<CustomSticker, 'name' | 'uri'>>) => void;
   removeSticker: (owner: StickerOwner, id: string) => void;
   setAppearanceConfig: (config: Partial<AppearanceConfig>) => void;
-  setTopBarIconUri: (key: TopBarIconKey, uri: string) => void;
-  clearTopBarIconUri: (key: TopBarIconKey) => void;
+  setTopBarIconUri: (key: TopBarIconKey, uri: string, variant?: 'light' | 'dark') => void;
+  clearTopBarIconUri: (key: TopBarIconKey, variant?: 'light' | 'dark' | 'all') => void;
   resetTopBarIcons: () => void;
-  setChatInputIconUri: (key: ChatInputIconKey, uri: string) => void;
-  clearChatInputIconUri: (key: ChatInputIconKey) => void;
+  setChatInputIconUri: (key: ChatInputIconKey, uri: string, variant?: 'light' | 'dark') => void;
+  clearChatInputIconUri: (key: ChatInputIconKey, variant?: 'light' | 'dark' | 'all') => void;
   resetChatInputIcons: () => void;
   saveAppearanceTheme: (name: string) => string;
   updateAppearanceTheme: (id: string) => void;
@@ -963,6 +976,11 @@ export const useSettingsStore = create<SettingsState>()(
       voiceCallBackgroundImageUri: undefined,
       memoryVaultConfig: {
         enabled: false,
+        searchMemoryEnabled: true,
+        keywordSearchMemoryEnabled: true,
+        queryDiaryEnabled: true,
+        saveMemoryEnabled: true,
+        addDiaryEnabled: true,
         baseUrl: '',
         adminToken: '',
         topK: 5,
@@ -1443,6 +1461,10 @@ export const useSettingsStore = create<SettingsState>()(
               ...(state.appearanceConfig?.topBarIconUris || {}),
               ...(config.topBarIconUris || {}),
             },
+            topBarIconDarkUris: {
+              ...(state.appearanceConfig?.topBarIconDarkUris || {}),
+              ...(config.topBarIconDarkUris || {}),
+            },
             topBarIconHidden: {
               ...(state.appearanceConfig?.topBarIconHidden || {}),
               ...(config.topBarIconHidden || {}),
@@ -1451,26 +1473,33 @@ export const useSettingsStore = create<SettingsState>()(
               ...(state.appearanceConfig?.inputIconUris || {}),
               ...(config.inputIconUris || {}),
             },
+            inputIconDarkUris: {
+              ...(state.appearanceConfig?.inputIconDarkUris || {}),
+              ...(config.inputIconDarkUris || {}),
+            },
           },
         })),
-      setTopBarIconUri: (key, uri) =>
+      setTopBarIconUri: (key, uri, variant = 'light') =>
         set((state) => ({
           appearanceConfig: {
             ...(state.appearanceConfig || { topBarIconUris: {}, inputIconUris: {}, inputStyle: 'default' }),
-            topBarIconUris: {
-              ...(state.appearanceConfig?.topBarIconUris || {}),
+            [variant === 'dark' ? 'topBarIconDarkUris' : 'topBarIconUris']: {
+              ...(variant === 'dark' ? state.appearanceConfig?.topBarIconDarkUris : state.appearanceConfig?.topBarIconUris || {}),
               [key]: uri,
             },
           },
         })),
-      clearTopBarIconUri: (key) =>
+      clearTopBarIconUri: (key, variant = 'all') =>
         set((state) => {
           const nextUris = { ...(state.appearanceConfig?.topBarIconUris || {}) };
-          delete nextUris[key];
+          const nextDarkUris = { ...(state.appearanceConfig?.topBarIconDarkUris || {}) };
+          if (variant === 'light' || variant === 'all') delete nextUris[key];
+          if (variant === 'dark' || variant === 'all') delete nextDarkUris[key];
           return {
             appearanceConfig: {
               ...(state.appearanceConfig || { topBarIconUris: {}, inputIconUris: {}, inputStyle: 'default' }),
               topBarIconUris: nextUris,
+              topBarIconDarkUris: nextDarkUris,
             },
           };
         }),
@@ -1479,26 +1508,30 @@ export const useSettingsStore = create<SettingsState>()(
           appearanceConfig: {
             ...(state.appearanceConfig || { topBarIconUris: {}, inputIconUris: {}, inputStyle: 'default' }),
             topBarIconUris: {},
+            topBarIconDarkUris: {},
           },
         })),
-      setChatInputIconUri: (key, uri) =>
+      setChatInputIconUri: (key, uri, variant = 'light') =>
         set((state) => ({
           appearanceConfig: {
             ...(state.appearanceConfig || { topBarIconUris: {}, inputIconUris: {}, inputStyle: 'default' }),
-            inputIconUris: {
-              ...(state.appearanceConfig?.inputIconUris || {}),
+            [variant === 'dark' ? 'inputIconDarkUris' : 'inputIconUris']: {
+              ...(variant === 'dark' ? state.appearanceConfig?.inputIconDarkUris : state.appearanceConfig?.inputIconUris || {}),
               [key]: uri,
             },
           },
         })),
-      clearChatInputIconUri: (key) =>
+      clearChatInputIconUri: (key, variant = 'all') =>
         set((state) => {
           const nextUris = { ...(state.appearanceConfig?.inputIconUris || {}) };
-          delete nextUris[key];
+          const nextDarkUris = { ...(state.appearanceConfig?.inputIconDarkUris || {}) };
+          if (variant === 'light' || variant === 'all') delete nextUris[key];
+          if (variant === 'dark' || variant === 'all') delete nextDarkUris[key];
           return {
             appearanceConfig: {
               ...(state.appearanceConfig || { topBarIconUris: {}, inputIconUris: {}, inputStyle: 'default' }),
               inputIconUris: nextUris,
+              inputIconDarkUris: nextDarkUris,
             },
           };
         }),
@@ -1507,6 +1540,7 @@ export const useSettingsStore = create<SettingsState>()(
           appearanceConfig: {
             ...(state.appearanceConfig || { topBarIconUris: {}, inputIconUris: {}, inputStyle: 'default' }),
             inputIconUris: {},
+            inputIconDarkUris: {},
           },
         })),
       saveAppearanceTheme: (name) => {
@@ -1565,7 +1599,9 @@ export const useSettingsStore = create<SettingsState>()(
               globalBoldFontUri: current.globalBoldFontUri,
               globalBoldFontName: current.globalBoldFontName,
               topBarIconUris: { ...(theme.config.topBarIconUris || {}) },
+              topBarIconDarkUris: { ...(theme.config.topBarIconDarkUris || {}) },
               inputIconUris: { ...(theme.config.inputIconUris || {}) },
+              inputIconDarkUris: { ...(theme.config.inputIconDarkUris || {}) },
               appearanceThemes: themes,
               activeAppearanceThemeId: id,
             },
