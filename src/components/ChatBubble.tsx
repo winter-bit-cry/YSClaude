@@ -12,7 +12,7 @@ import { fonts, fontWeights } from '../theme/fonts';
 import { TIKTOK_SANS_REGULAR } from '../theme/interfaceFonts';
 import { useChatStore } from '../stores/chat';
 import { useSettingsStore } from '../stores/settings';
-import { getTTSConfigMissingMessage, isTTSConfigReady, playTTS } from '../services/tts';
+import { getTTSConfigMissingMessage, isTTSConfigReady, playTTSAndWait } from '../services/tts';
 import { saveGeneratedImageToLibrary } from '../services/imageGeneration';
 import { openWebView } from '../services/webviewController';
 import { getToolLabel } from '../services/tools';
@@ -353,6 +353,7 @@ const chatIcons = [
   require('../../assets/chat5.png'),
   require('../../assets/chat6.png'),
 ];
+const chatTTSPlayingIcon = require('../../assets/chat3-2.png');
 interface Props {
   message: Message;
   previousUserMessage?: Message | null;
@@ -1053,6 +1054,7 @@ export const ChatBubble = React.memo(function ChatBubble({
   const [reactionPicker, setReactionPicker] = useState<'positive' | 'negative' | null>(null);
   const [reactionPickerAnchor, setReactionPickerAnchor] = useState({ x: 0, y: 0 });
   const [playingVoiceId, setPlayingVoiceId] = useState<string | null>(null);
+  const [isTTSPlaying, setIsTTSPlaying] = useState(false);
   // 长按时测量得到的气泡屏幕坐标，用于把菜单锚定到气泡上方
   const [menuAnchor, setMenuAnchor] = useState({ x: 0, y: 0, width: 0, height: 0 });
   const [expandedTools, setExpandedTools] = useState<Record<number, boolean>>({});
@@ -1599,9 +1601,14 @@ export const ChatBubble = React.memo(function ChatBubble({
         if (!isTTSConfigReady(ttsConfig)) {
           Alert.alert('提示', getTTSConfigMissingMessage(ttsConfig));
         } else {
-          playTTS(message.content, ttsConfig).catch((e) =>
-            Alert.alert('TTS 失败', e.message)
-          );
+          setIsTTSPlaying(true);
+          try {
+            await playTTSAndWait(message.content, ttsConfig);
+          } catch (e: any) {
+            Alert.alert('TTS 失败', e?.message || '无法播放这条回复');
+          } finally {
+            setIsTTSPlaying(false);
+          }
         }
         break;
       case 3: // 正面 reaction
@@ -2127,7 +2134,7 @@ export const ChatBubble = React.memo(function ChatBubble({
                     <Text style={styles.reactionActionEmoji}>{userReaction.emoji}</Text>
                   ) : (
                     <Image
-                      source={icon}
+                      source={i === 2 && isTTSPlaying ? chatTTSPlayingIcon : icon}
                       style={[
                         styles.actionImage,
                         { tintColor: i === 1 && isFavorite ? colors.primary : assistantFooterColor },
