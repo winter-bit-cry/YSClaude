@@ -226,7 +226,13 @@ async function createMosslandTTSPlayer(speakableText: string, config: TTSConfig)
       'Content-Type': 'application/json',
       Accept: 'audio/mpeg',
     },
-    body: JSON.stringify({ model, input: speakableText, voice, response_format: 'mp3' }),
+    body: JSON.stringify({
+      model,
+      input: speakableText,
+      voice_id: voice,
+      response_format: 'mp3',
+      delivery_method: 'audio',
+    }),
   });
   if (!response.ok) {
     const errText = await response.text();

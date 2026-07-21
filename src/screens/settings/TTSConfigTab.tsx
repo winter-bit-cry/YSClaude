@@ -450,11 +450,11 @@ export function TTSConfigTab({ showToast, keyboardBottomInset }: TTSConfigTabPro
       )}
 
       {editingTTSProvider === 'mossland' && (
-        <SettingsGroup header="Mossland TTS" footer="使用 OpenAI 兼容的 /audio/speech 接口；Base URL 填到 API 版本层级。">
-          <TextEditRow label="Base URL" value={ttsConfig.mosslandBaseUrl} inputPlaceholder="https://example.com/v1" onSave={(mosslandBaseUrl) => patchTTS({ mosslandBaseUrl: mosslandBaseUrl.trim().replace(/\/+$/, '') })} />
+        <SettingsGroup header="Mossland TTS" footer="使用 Mossland /v1/audio/speech 接口；Voice ID 可从 Mossland 音色库复制。">
+          <TextEditRow label="Base URL" value={ttsConfig.mosslandBaseUrl} inputPlaceholder="https://api.mosi.cn/v1" onSave={(mosslandBaseUrl) => patchTTS({ mosslandBaseUrl: mosslandBaseUrl.trim().replace(/\/+$/, '') || 'https://api.mosi.cn/v1' })} />
           <TextEditRow label="API Key" value={ttsConfig.mosslandApiKey} secure onSave={(mosslandApiKey) => patchTTS({ mosslandApiKey: mosslandApiKey.trim() })} />
-          <TextEditRow label="模型" value={ttsConfig.mosslandModel} inputPlaceholder="MOSS-TTS-v1.5" onSave={(mosslandModel) => patchTTS({ mosslandModel: mosslandModel.trim() || 'MOSS-TTS-v1.5' })} />
-          <TextEditRow label="Voice" value={ttsConfig.mosslandVoice} inputPlaceholder="音色 ID / 名称" onSave={(mosslandVoice) => patchTTS({ mosslandVoice: mosslandVoice.trim() })} />
+          <TextEditRow label="模型" value={ttsConfig.mosslandModel} inputPlaceholder="moss-tts" onSave={(mosslandModel) => patchTTS({ mosslandModel: mosslandModel.trim() || 'moss-tts' })} />
+          <TextEditRow label="Voice ID" value={ttsConfig.mosslandVoice} inputPlaceholder="从 Mossland 音色库复制" onSave={(mosslandVoice) => patchTTS({ mosslandVoice: mosslandVoice.trim() })} />
         </SettingsGroup>
       )}
 
