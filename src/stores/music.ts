@@ -74,6 +74,7 @@ interface MusicState {
   next: () => Promise<void>;
   previous: () => Promise<void>;
   playTrackAt: (index: number) => Promise<void>;
+  removeTrackAt: (index: number) => Promise<void>;
   seekTo: (timeMs: number) => Promise<void>;
   setOrder: (order: PlayOrder) => void;
   setAutoAdvanceEnabled: (enabled: boolean) => void;
@@ -433,6 +434,37 @@ export const useMusicStore = create<MusicState>()(
     }
 
     await loadTrack(index, true);
+  },
+
+  removeTrackAt: async (index: number) => {
+    const state = get();
+    if (index < 0 || index >= state.tracks.length) return;
+    const nextTracks = state.tracks.filter((_, trackIndex) => trackIndex !== index);
+
+    if (nextTracks.length === 0) {
+      releasePlayer();
+      await deactivateAudioSession();
+      set({
+        tracks: [], currentIndex: 0, isOpen: false, isPlaying: false, isBuffering: false,
+        currentTimeMs: 0, durationMs: 0, currentLyricIndex: -1,
+        lastFinishedTrackId: null, error: null,
+      });
+      return;
+    }
+
+    if (index !== state.currentIndex) {
+      set({
+        tracks: nextTracks,
+        currentIndex: index < state.currentIndex ? state.currentIndex - 1 : state.currentIndex,
+      });
+      return;
+    }
+
+    const nextIndex = Math.min(index, nextTracks.length - 1);
+    const shouldKeepPlaying = state.isPlaying;
+    releasePlayer();
+    set({ tracks: nextTracks, currentIndex: nextIndex });
+    await loadTrack(nextIndex, shouldKeepPlaying);
   },
 
   seekTo: async (timeMs: number) => {

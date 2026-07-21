@@ -7,11 +7,9 @@ import {
   FlatList,
   Image,
   ImageBackground,
-  KeyboardAvoidingView,
   LayoutChangeEvent,
   Modal,
   Pressable,
-  Platform,
   StyleSheet,
   Switch,
   Text,
@@ -54,6 +52,7 @@ import { getAllConversations } from '../src/db/operations';
 import { canDrawFloatingBall, openFloatingBallPermissionSettings } from '../src/services/floatingBall';
 import { refreshDesktopLyric } from '../src/services/desktopLyrics';
 import { copyFileFromUri } from '../src/utils/fileSystem';
+import { useKeyboardHeight } from '../src/hooks/useKeyboardHeight';
 import { buildStickerDefinitions, splitStickerContent, type StickerDefinition } from '../src/utils/stickers';
 
 const ORDER_SEQUENCE: PlayOrder[] = ['list', 'repeat-one', 'shuffle'];
@@ -113,6 +112,7 @@ async function pickImage(prefix: string, aspect?: [number, number], preserveOrig
 
 export default function MusicScreen() {
   const insets = useSafeAreaInsets();
+  const keyboardHeight = useKeyboardHeight();
   const router = useRouter();
   const { from } = useLocalSearchParams<{ from?: string }>();
   const spin = useRef(new Animated.Value(0)).current;
@@ -155,7 +155,7 @@ export default function MusicScreen() {
     togetherBackgroundOverlayEnabled, togetherBackgroundOverlayOpacity, togetherElapsedMs, togetherStartedAt,
     currentTimeMs, durationMs, currentLyricIndex, error,
     openPlayer, minimizePlayer, closePlayer, togglePlayPause, previous, next,
-    playTrackAt, seekTo, setOrder, setDesktopLyricsEnabled, setDesktopLyricBackgroundUri,
+    playTrackAt, removeTrackAt, seekTo, setOrder, setDesktopLyricsEnabled, setDesktopLyricBackgroundUri,
     setTogetherBackgroundUri, setTogetherUserAvatarUri, setTogetherAiAvatarUri, setTogetherRingUri,
     setTogetherRingEnabled, setTogetherRecordBorderEnabled, setTogetherBackgroundOverlayEnabled,
     setTogetherBackgroundOverlayOpacity,
@@ -277,9 +277,7 @@ export default function MusicScreen() {
 
   const source = togetherBackgroundUri ? { uri: togetherBackgroundUri } : undefined;
   const player = (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={0}
+    <View
       style={[
       styles.page,
       source && styles.pageWithBackground,
@@ -393,7 +391,7 @@ export default function MusicScreen() {
       <View style={styles.bottom}>
         <View style={styles.featureArea}>
           {chatVisible && (
-            <View style={styles.chatOverlay}>
+            <View style={[styles.chatOverlay, { bottom: 54 + keyboardHeight }]}>
               <View style={styles.chatRow}>
                 <TextInput
                   value={chatText}
@@ -495,13 +493,24 @@ export default function MusicScreen() {
                 <Pressable style={[styles.queueRow, index === currentIndex && styles.queueRowActive]} onPress={() => { setQueueVisible(false); playTrackAt(index).catch(() => undefined); }}>
                   <Text style={styles.queueIndex}>{index === currentIndex && isPlaying ? 'Ⅱ' : index + 1}</Text>
                   <View style={styles.queueText}><Text style={styles.queueTitle} numberOfLines={1}>{item.title}</Text><Text style={styles.queueArtist} numberOfLines={1}>{item.artist}</Text></View>
+                  <Pressable
+                    accessibilityLabel={`删除 ${item.title}`}
+                    hitSlop={8}
+                    style={styles.queueDelete}
+                    onPress={(event) => {
+                      event.stopPropagation();
+                      removeTrackAt(index).catch(() => undefined);
+                    }}
+                  >
+                    <X size={19} color="#999aa2" strokeWidth={1.8} />
+                  </Pressable>
                 </Pressable>
               )}
             />
           </View>
         </Pressable>
       </Modal>
-    </KeyboardAvoidingView>
+    </View>
   );
 
   return source ? <ImageBackground source={source} style={styles.background} resizeMode="cover">{player}</ImageBackground> : player;
@@ -670,6 +679,7 @@ const styles = StyleSheet.create({
   queueRowActive: { backgroundColor: 'rgba(255,255,255,.06)' },
   queueIndex: { width: 34, color: '#999aa2', textAlign: 'center' },
   queueText: { flex: 1, paddingLeft: 8 },
+  queueDelete: { width: 42, height: 42, alignItems: 'center', justifyContent: 'center' },
   queueTitle: { color: '#ededf0', fontSize: 14 },
   queueArtist: { color: '#8f8f97', fontSize: 12, marginTop: 4 },
 });
