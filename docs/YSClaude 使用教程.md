@@ -144,6 +144,8 @@ android\app\build\outputs\apk\release\app-release.apk
 
 ![2](2.png)
 
+**AI回复下的六个按键**：复制AI回复；收藏该条回复；播放语音TTS；给AI贴正面emoji；给AI贴负面emoji；重生成
+
 ## 可导入官克数据
 
 导入conversation.js

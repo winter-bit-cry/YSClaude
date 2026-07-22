@@ -121,7 +121,6 @@ async function initTables(database: SQLite.SQLiteDatabase) {
       summary TEXT NOT NULL DEFAULT '',
       original TEXT NOT NULL DEFAULT '',
       date TEXT NOT NULL DEFAULT '',
-      tags_json TEXT NOT NULL DEFAULT '[]',
       embedding_json TEXT,
       embedding_model TEXT,
       active INTEGER NOT NULL DEFAULT 1,
@@ -858,7 +857,6 @@ async function runMigrations(database: SQLite.SQLiteDatabase) {
         summary TEXT NOT NULL DEFAULT '',
         original TEXT NOT NULL DEFAULT '',
         date TEXT NOT NULL DEFAULT '',
-        tags_json TEXT NOT NULL DEFAULT '[]',
         embedding_json TEXT,
         embedding_model TEXT,
         active INTEGER NOT NULL DEFAULT 1,
@@ -881,6 +879,31 @@ async function runMigrations(database: SQLite.SQLiteDatabase) {
   `);
   if (version < 31) {
     await database.execAsync('PRAGMA user_version = 31;');
+  }
+  if (version < 32 && await hasColumn(database, 'memory_items', 'tags_json')) {
+    await database.execAsync(`
+      CREATE TABLE memory_items_next (
+        id TEXT PRIMARY KEY,
+        summary TEXT NOT NULL DEFAULT '',
+        original TEXT NOT NULL DEFAULT '',
+        date TEXT NOT NULL DEFAULT '',
+        embedding_json TEXT,
+        embedding_model TEXT,
+        active INTEGER NOT NULL DEFAULT 1,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+      INSERT INTO memory_items_next
+        (id, summary, original, date, embedding_json, embedding_model, active, created_at, updated_at)
+      SELECT id, summary, original, date, embedding_json, embedding_model, active, created_at, updated_at
+        FROM memory_items;
+      DROP TABLE memory_items;
+      ALTER TABLE memory_items_next RENAME TO memory_items;
+      CREATE INDEX idx_memory_items_active_date ON memory_items(active, date DESC);
+      PRAGMA user_version = 32;
+    `);
+  } else if (version < 32) {
+    await database.execAsync('PRAGMA user_version = 32;');
   }
 }
 

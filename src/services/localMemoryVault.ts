@@ -9,7 +9,6 @@ export interface LocalMemory {
   summary: string;
   original: string;
   date: string;
-  tags: string[];
   embedding?: number[];
   active: boolean;
 }
@@ -19,7 +18,6 @@ interface MemoryRow {
   summary: string;
   original: string;
   date: string;
-  tags_json: string;
   embedding_json: string | null;
   active: number;
 }
@@ -40,7 +38,6 @@ function mapRow(row: MemoryRow): LocalMemory {
     summary: row.summary,
     original: row.original,
     date: row.date,
-    tags: parseJsonArray<string>(row.tags_json),
     embedding: parseJsonArray<number>(row.embedding_json),
     active: row.active === 1,
   };
@@ -60,14 +57,12 @@ function textScore(query: string, memory: LocalMemory): number {
   if (!queryTerms.length) return 0;
   const summary = memory.summary.toLocaleLowerCase();
   const original = memory.original.toLocaleLowerCase();
-  const tags = memory.tags.join(' ').toLocaleLowerCase();
   let score = 0;
   for (const term of queryTerms) {
     if (summary.includes(term)) score += 3;
-    if (tags.includes(term)) score += 2;
     if (original.includes(term)) score += 1;
   }
-  return score / (queryTerms.length * 6);
+  return score / (queryTerms.length * 4);
 }
 
 function cosineSimilarity(a: number[], b: number[]): number {
@@ -131,7 +126,6 @@ export async function saveLocalMemory(input: {
   summary: string;
   original?: string;
   date?: string;
-  tags?: string[];
   embedding?: number[];
   embeddingModel?: string;
   active?: boolean;
@@ -141,18 +135,17 @@ export async function saveLocalMemory(input: {
   const now = Date.now();
   await database.runAsync(
     `INSERT INTO memory_items
-       (id, summary, original, date, tags_json, embedding_json, embedding_model, active, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       (id, summary, original, date, embedding_json, embedding_model, active, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(id) DO UPDATE SET
        summary = excluded.summary, original = excluded.original, date = excluded.date,
-       tags_json = excluded.tags_json, embedding_json = excluded.embedding_json,
+       embedding_json = excluded.embedding_json,
        embedding_model = excluded.embedding_model, active = excluded.active, updated_at = excluded.updated_at`,
     [
       id,
       input.summary.trim(),
       (input.original || input.summary).trim(),
       input.date || new Date().toISOString().slice(0, 10),
-      JSON.stringify(input.tags || []),
       input.embedding?.length ? JSON.stringify(input.embedding) : null,
       input.embeddingModel || null,
       input.active === false ? 0 : 1,
@@ -170,7 +163,7 @@ export async function searchLocalMemories(
 ): Promise<Array<LocalMemory & { score: number }>> {
   const database = await getDatabase();
   const rows = await database.getAllAsync<MemoryRow>(
-    'SELECT id, summary, original, date, tags_json, embedding_json, active FROM memory_items WHERE active = 1'
+    'SELECT id, summary, original, date, embedding_json, active FROM memory_items WHERE active = 1'
   );
   return rows
     .map(mapRow)
@@ -200,13 +193,13 @@ export async function keywordSearchLocalMemories(
 ): Promise<Array<LocalMemory & { score: number }>> {
   const database = await getDatabase();
   const rows = await database.getAllAsync<MemoryRow>(
-    'SELECT id, summary, original, date, tags_json, embedding_json, active FROM memory_items WHERE active = 1'
+    'SELECT id, summary, original, date, embedding_json, active FROM memory_items WHERE active = 1'
   );
   const needles = keywords.toLocaleLowerCase().split(/[\s,，]+/).filter(Boolean);
   return rows
     .map(mapRow)
     .filter((memory) => {
-      const haystack = `${memory.summary}\n${memory.original}\n${memory.tags.join(' ')}`.toLocaleLowerCase();
+      const haystack = `${memory.summary}\n${memory.original}`.toLocaleLowerCase();
       return needles.some((needle) => haystack.includes(needle));
     })
     .slice(0, Math.max(1, topK))
@@ -216,7 +209,7 @@ export async function keywordSearchLocalMemories(
 export async function listLocalMemories(): Promise<LocalMemory[]> {
   const database = await getDatabase();
   const rows = await database.getAllAsync<MemoryRow>(
-    `SELECT id, summary, original, date, tags_json, embedding_json, active
+    `SELECT id, summary, original, date, embedding_json, active
        FROM memory_items ORDER BY date DESC, updated_at DESC`
   );
   return rows.map(mapRow);
@@ -224,7 +217,7 @@ export async function listLocalMemories(): Promise<LocalMemory[]> {
 
 export async function updateLocalMemory(
   id: string,
-  updates: Partial<Pick<LocalMemory, 'summary' | 'original' | 'date' | 'tags' | 'active'>>,
+  updates: Partial<Pick<LocalMemory, 'summary' | 'original' | 'date' | 'active'>>,
   config?: MemoryVaultConfig
 ): Promise<void> {
   const current = (await listLocalMemories()).find((item) => item.id === id);
@@ -239,7 +232,6 @@ export async function updateLocalMemory(
     summary,
     original: updates.original ?? current.original,
     date: updates.date ?? current.date,
-    tags: updates.tags ?? current.tags,
     active: updates.active ?? current.active,
     embedding,
     embeddingModel: config?.embeddingModel,
@@ -273,15 +265,11 @@ export async function importMemoryVaultData(data: unknown): Promise<{
   let importedDiaries = 0;
   for (const memory of payload?.memories || []) {
     if (!memory?.summary) continue;
-    const rawTags = Array.isArray(memory.tags)
-      ? memory.tags
-      : String(memory.tags || '').split(',').filter(Boolean);
     await saveLocalMemory({
       id: memory.id,
       summary: memory.summary,
       original: memory.original,
       date: memory.date,
-      tags: rawTags,
       embedding: Array.isArray(memory.embedding) ? memory.embedding : undefined,
       active: memory.active !== false && memory.active !== 'false',
     });
@@ -321,7 +309,6 @@ export async function exportMemoryVaultData(): Promise<{
     summary: item.summary,
     original: item.original,
     date: item.date,
-    tags: item.tags.join(','),
     type: 'memory',
     active: item.active ? 'true' : 'false',
     embedding: item.embedding?.length ? item.embedding : null,
@@ -395,15 +382,11 @@ async function importMemoryVaultFileStreaming(file: File): Promise<{
     const item = JSON.parse(raw) as any;
     if (kind === 'memories') {
       if (!item?.summary) return;
-      const tags = Array.isArray(item.tags)
-        ? item.tags
-        : String(item.tags || '').split(',').filter(Boolean);
       await saveLocalMemory({
         id: item.id,
         summary: item.summary,
         original: item.original,
         date: item.date,
-        tags,
         embedding: Array.isArray(item.embedding) ? item.embedding : undefined,
         active: item.active !== false && item.active !== 'false',
       });
@@ -512,8 +495,14 @@ export async function exportAndShareMemoryVaultData(): Promise<string> {
 }
 
 const DIARY_SPLIT_PROMPT = `你是一个记忆整理助手。请把日记拆分成独立、有意义的长期记忆条目。
-每个条目包含 summary（简洁摘要）、original（对应原文）、date（YYYY-MM-DD）和 tags（标签数组）。
+每个条目包含 summary（简洁摘要）、original（对应原文）和 date（YYYY-MM-DD）。
 不要遗漏重要信息，合并相近内容，总数不超过 15 条。只返回 JSON 数组，不要返回解释或 Markdown。`;
+
+export interface LocalMemoryDraft {
+  summary: string;
+  original: string;
+  date: string;
+}
 
 function extractJsonArray(raw: string): unknown[] {
   let cleaned = raw.trim();
@@ -532,7 +521,7 @@ export async function splitDiaryToLocalMemories(
   date: string,
   content: string,
   config: MemoryVaultConfig
-): Promise<number> {
+): Promise<LocalMemoryDraft[]> {
   if (!config.splitApiKey.trim()) throw new Error('请先配置日记拆分 API Key');
   const baseUrl = cleanBaseUrl(config.splitBaseUrl);
   if (!baseUrl || !config.splitModel.trim()) throw new Error('日记拆分 API 配置不完整');
@@ -555,18 +544,31 @@ export async function splitDiaryToLocalMemories(
   const data = await response.json();
   const raw = data?.choices?.[0]?.message?.content;
   if (typeof raw !== 'string') throw new Error('日记拆分 API 返回内容为空');
-  const items = extractJsonArray(raw).slice(0, 15);
-  let saved = 0;
-  for (const value of items) {
+  return extractJsonArray(raw).slice(0, 15).flatMap((value) => {
     const item = value as Record<string, unknown>;
     const summary = String(item.summary || '').trim();
+    if (!summary) return [];
+    return [{
+      summary,
+      original: String(item.original || summary).trim(),
+      date: String(item.date || date).trim(),
+    }];
+  });
+}
+
+export async function saveLocalMemoryDrafts(
+  drafts: LocalMemoryDraft[],
+  config: MemoryVaultConfig
+): Promise<number> {
+  let saved = 0;
+  for (const draft of drafts) {
+    const summary = draft.summary.trim();
     if (!summary) continue;
     const embedding = await generateMemoryEmbedding(summary, config);
     await saveLocalMemory({
       summary,
-      original: String(item.original || summary),
-      date: String(item.date || date),
-      tags: Array.isArray(item.tags) ? item.tags.map(String) : [],
+      original: draft.original.trim() || summary,
+      date: draft.date.trim(),
       embedding,
       embeddingModel: config.embeddingModel,
     });

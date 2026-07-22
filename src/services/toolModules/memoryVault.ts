@@ -28,7 +28,7 @@ const definitions: ToolDefinition[] = [
     type: 'function',
     function: {
       name: 'keyword_search_memory_vault',
-      description: '按明确名称、标签或原文关键词搜索设备本地记忆。',
+      description: '按明确名称、摘要或原文关键词搜索设备本地记忆。',
       parameters: {
         type: 'object',
         properties: { keywords: { type: 'string', description: '空格分隔的关键词' } },
@@ -75,7 +75,6 @@ const definitions: ToolDefinition[] = [
           summary: { type: 'string', description: '简洁、可独立理解的记忆摘要' },
           original: { type: 'string', description: '产生这条记忆的原始信息' },
           date: { type: 'string', description: 'YYYY-MM-DD；省略时使用今天' },
-          tags: { type: 'array', items: { type: 'string' }, description: '标签列表' },
         },
         required: ['summary'],
       },
@@ -87,15 +86,13 @@ function formatMemories(items: Array<{
   date: string;
   original: string;
   summary: string;
-  tags: string[];
   score: number;
 }>): string {
   if (!items.length) return '未找到相关记忆。';
   return items
     .map((item) => {
-      const tags = item.tags.length ? ` #${item.tags.join(' #')}` : '';
       const content = item.original || item.summary;
-      return `【${item.date || '未知日期'}】(相关度 ${(item.score * 100).toFixed(0)}%)${tags}\n${content}`;
+      return `【${item.date || '未知日期'}】(相关度 ${(item.score * 100).toFixed(0)}%)\n${content}`;
     })
     .join('\n\n');
 }
@@ -168,7 +165,6 @@ export const memoryVaultTool: ToolModule = {
           summary,
           original: String(args.original || summary),
           date: args.date ? String(args.date) : undefined,
-          tags: Array.isArray(args.tags) ? args.tags.map(String) : [],
           embedding,
           embeddingModel: context.memoryVaultConfig.embeddingModel,
         });
@@ -184,6 +180,6 @@ export async function uploadDiary(
   date: string,
   content: string,
   config: MemoryVaultConfig
-): Promise<void> {
-  await splitDiaryToLocalMemories(date, content, config);
+): ReturnType<typeof splitDiaryToLocalMemories> {
+  return splitDiaryToLocalMemories(date, content, config);
 }

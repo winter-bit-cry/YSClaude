@@ -8,8 +8,10 @@ import {
   exportAndShareMemoryVaultData,
   listLocalMemories,
   LocalMemory,
+  LocalMemoryDraft,
   pickAndImportMemoryVaultData,
   saveLocalMemory,
+  saveLocalMemoryDrafts,
   splitDiaryToLocalMemories,
   updateLocalMemory,
 } from '../../services/localMemoryVault';
@@ -40,7 +42,8 @@ export function DiaryTab({ showToast, keyboardBottomInset }: SettingsTabProps) {
   const [memorySummary, setMemorySummary] = useState('');
   const [memoryOriginal, setMemoryOriginal] = useState('');
   const [memoryDate, setMemoryDate] = useState('');
-  const [memoryTags, setMemoryTags] = useState('');
+  const [splitDrafts, setSplitDrafts] = useState<LocalMemoryDraft[]>([]);
+  const [savingDrafts, setSavingDrafts] = useState(false);
   const [transferring, setTransferring] = useState(false);
   const [section, setSection] = useState<'config' | 'diaries' | 'memories'>('config');
   const [diarySearchDate, setDiarySearchDate] = useState('');
@@ -164,9 +167,9 @@ export function DiaryTab({ showToast, keyboardBottomInset }: SettingsTabProps) {
     setSplittingId(diary.id);
     try {
       const content = [diary.title, diary.content].filter(Boolean).join('\n');
-      const count = await splitDiaryToLocalMemories(diary.date, content, currentConfig());
-      setMemories(await listLocalMemories());
-      Alert.alert('拆分完成', `已写入 ${count} 条向量记忆。`);
+      const drafts = await splitDiaryToLocalMemories(diary.date, content, currentConfig());
+      if (!drafts.length) throw new Error('拆分结果中没有有效记忆');
+      setSplitDrafts(drafts);
     } catch (error: any) {
       Alert.alert('拆分失败', error.message || '请求失败');
     } finally {
@@ -179,7 +182,6 @@ export function DiaryTab({ showToast, keyboardBottomInset }: SettingsTabProps) {
     setMemorySummary(memory.summary);
     setMemoryOriginal(memory.original);
     setMemoryDate(memory.date);
-    setMemoryTags(memory.tags.join(', '));
   }
 
   function openCreateMemory() {
@@ -187,19 +189,16 @@ export function DiaryTab({ showToast, keyboardBottomInset }: SettingsTabProps) {
     setMemorySummary('');
     setMemoryOriginal('');
     setMemoryDate(new Date().toISOString().slice(0, 10));
-    setMemoryTags('');
   }
 
   async function saveMemoryEdit() {
     if ((!editingMemory && !creatingMemory) || !memorySummary.trim()) return;
     try {
-      const tags = memoryTags.split(/[,，\n]+/).map((item) => item.trim()).filter(Boolean);
       if (editingMemory) {
         await updateLocalMemory(editingMemory.id, {
           summary: memorySummary.trim(),
           original: memoryOriginal.trim(),
           date: memoryDate.trim(),
-          tags,
         }, currentConfig());
       } else {
         const { generateMemoryEmbedding } = await import('../../services/localMemoryVault');
@@ -208,7 +207,6 @@ export function DiaryTab({ showToast, keyboardBottomInset }: SettingsTabProps) {
           summary: memorySummary.trim(),
           original: memoryOriginal.trim() || memorySummary.trim(),
           date: memoryDate.trim(),
-          tags,
           embedding,
           embeddingModel,
         });
@@ -218,6 +216,34 @@ export function DiaryTab({ showToast, keyboardBottomInset }: SettingsTabProps) {
       setMemories(await listLocalMemories());
     } catch (error: any) {
       Alert.alert('保存失败', error.message || '请求失败');
+    }
+  }
+
+  function updateSplitDraft(index: number, updates: Partial<LocalMemoryDraft>) {
+    setSplitDrafts((items) => items.map((item, itemIndex) => itemIndex === index ? { ...item, ...updates } : item));
+  }
+
+  async function confirmSplitDrafts() {
+    const validDrafts = splitDrafts.filter((item) => item.summary.trim());
+    if (!validDrafts.length) {
+      Alert.alert('提示', '请至少保留一条有摘要的记忆。');
+      return;
+    }
+    const invalidDate = validDrafts.find((item) => !/^\d{4}-\d{2}-\d{2}$/.test(item.date.trim()) || !Number.isFinite(new Date(`${item.date.trim()}T12:00:00`).getTime()));
+    if (invalidDate) {
+      Alert.alert('提示', `“${invalidDate.summary}”的日期格式应为 YYYY-MM-DD。`);
+      return;
+    }
+    setSavingDrafts(true);
+    try {
+      const count = await saveLocalMemoryDrafts(validDrafts, currentConfig());
+      setSplitDrafts([]);
+      setMemories(await listLocalMemories());
+      Alert.alert('写入完成', `已写入 ${count} 条向量记忆。`);
+    } catch (error: any) {
+      Alert.alert('写入失败', error.message || '请求失败');
+    } finally {
+      setSavingDrafts(false);
     }
   }
 
@@ -307,7 +333,7 @@ export function DiaryTab({ showToast, keyboardBottomInset }: SettingsTabProps) {
       <View style={{ paddingHorizontal: 16, marginBottom: 8 }}>
         <TextInput style={styles.input} value={diarySearchDate} onChangeText={setDiarySearchDate} placeholder="按日期检索（YYYY-MM-DD）" placeholderTextColor={colors.textTertiary} autoCapitalize="none" />
       </View>
-      <SettingsGroup header={`日记（${diaries.length}）`} footer="点击编辑；右侧按钮调用拆分 API 并写入向量记忆。">
+      <SettingsGroup header={`日记（${diaries.length}）`} footer="点击编辑；拆分结果会先供你审阅、修改，确认后才写入向量记忆。">
         <ButtonRow label="＋ 新增日记" onPress={openCreateDiary} />
         {visibleDiaries.map((diary) => (
           <SettingsRow key={diary.id} label={diary.title || '无标题'} sublabel={`${diary.date} · ${diary.content.slice(0, 80)}\n${formatFullTime(diary.createdAt)}`} onPress={() => openEditDiary(diary)} onLongPress={() => Alert.alert('删除日记', '确定删除这篇日记吗？', [
@@ -327,7 +353,7 @@ export function DiaryTab({ showToast, keyboardBottomInset }: SettingsTabProps) {
       <SettingsGroup header={`记忆条目（${memories.length}）`} footer="点击编辑，点击状态切换启用/隐藏，长按删除。">
         <ButtonRow label="＋ 新增记忆条目" onPress={openCreateMemory} />
         {visibleMemories.map((memory) => (
-          <SettingsRow key={memory.id} label={memory.summary} sublabel={`${memory.date || '未知日期'}${memory.tags.length ? ` · ${memory.tags.join('、')}` : ''}`} onPress={() => openMemory(memory)} onLongPress={() => confirmDeleteMemory(memory)} right={<Pressable onPress={() => void toggleMemory(memory)}><Text style={{ color: memory.active ? colors.primary : colors.textTertiary }}>{memory.active ? '启用' : '隐藏'}</Text></Pressable>} />
+          <SettingsRow key={memory.id} label={memory.summary} sublabel={memory.date || '未知日期'} onPress={() => openMemory(memory)} onLongPress={() => confirmDeleteMemory(memory)} right={<Pressable onPress={() => void toggleMemory(memory)}><Text style={{ color: memory.active ? colors.primary : colors.textTertiary }}>{memory.active ? '启用' : '隐藏'}</Text></Pressable>} />
         ))}
         {!visibleMemories.length && <SettingsRow label="没有符合日期条件的向量记忆" disabled />}
         <Pagination page={memoryPage} pageCount={memoryPageCount} setPage={setMemoryPage} colors={colors} />
@@ -343,8 +369,35 @@ export function DiaryTab({ showToast, keyboardBottomInset }: SettingsTabProps) {
             <TextInput style={styles.input} value={memorySummary} onChangeText={setMemorySummary} placeholder="摘要" placeholderTextColor={colors.textTertiary} />
             <TextInput style={[styles.summaryContentInput, styles.diaryModalContentInput]} value={memoryOriginal} onChangeText={setMemoryOriginal} placeholder="原文" placeholderTextColor={colors.textTertiary} multiline />
             <TextInput style={styles.input} value={memoryDate} onChangeText={setMemoryDate} placeholder="YYYY-MM-DD" placeholderTextColor={colors.textTertiary} />
-            <TextInput style={styles.input} value={memoryTags} onChangeText={setMemoryTags} placeholder="标签，逗号分隔" placeholderTextColor={colors.textTertiary} />
             <View style={styles.modalButtons}><Pressable style={styles.modalCancel} onPress={() => { setEditingMemory(null); setCreatingMemory(false); }}><Text style={styles.modalCancelText}>取消</Text></Pressable><Pressable style={styles.modalConfirm} onPress={() => void saveMemoryEdit()}><Text style={styles.modalConfirmText}>保存</Text></Pressable></View>
+          </View>
+        </Pressable>
+      </Modal>
+
+      <Modal visible={splitDrafts.length > 0} transparent animationType="fade" onRequestClose={() => { if (!savingDrafts) setSplitDrafts([]); }}>
+        <Pressable style={styles.overlay} onPress={() => { if (!savingDrafts) setSplitDrafts([]); }}>
+          <View style={[styles.modal, { width: '92%', maxHeight: '85%' }]} onStartShouldSetResponder={() => true}>
+            <Text style={styles.modalTitle}>审阅拆分结果（{splitDrafts.length} 条）</Text>
+            <Text style={{ color: colors.textSecondary, marginBottom: 10 }}>可修改摘要、原文和日期，删除不需要的条目。确认后才会生成向量并写入记忆库。</Text>
+            <ScrollView keyboardShouldPersistTaps="handled">
+              {splitDrafts.map((draft, index) => (
+                <View key={index} style={{ borderTopWidth: index ? 1 : 0, borderColor: colors.border, paddingTop: index ? 12 : 0, marginBottom: 12 }}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Text style={{ color: colors.textSecondary }}>记忆 {index + 1}</Text>
+                    <Pressable disabled={savingDrafts} onPress={() => setSplitDrafts((items) => items.filter((_, itemIndex) => itemIndex !== index))}>
+                      <Text style={{ color: colors.danger || '#d9534f' }}>删除</Text>
+                    </Pressable>
+                  </View>
+                  <TextInput style={styles.input} value={draft.summary} onChangeText={(summary) => updateSplitDraft(index, { summary })} placeholder="摘要" placeholderTextColor={colors.textTertiary} />
+                  <TextInput style={[styles.summaryContentInput, { minHeight: 80 }]} value={draft.original} onChangeText={(original) => updateSplitDraft(index, { original })} placeholder="原文" placeholderTextColor={colors.textTertiary} multiline />
+                  <TextInput style={styles.input} value={draft.date} onChangeText={(date) => updateSplitDraft(index, { date })} placeholder="YYYY-MM-DD" placeholderTextColor={colors.textTertiary} autoCapitalize="none" />
+                </View>
+              ))}
+            </ScrollView>
+            <View style={styles.modalButtons}>
+              <Pressable style={styles.modalCancel} disabled={savingDrafts} onPress={() => setSplitDrafts([])}><Text style={styles.modalCancelText}>取消</Text></Pressable>
+              <Pressable style={styles.modalConfirm} disabled={savingDrafts} onPress={() => void confirmSplitDrafts()}>{savingDrafts ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.modalConfirmText}>确认写入</Text>}</Pressable>
+            </View>
           </View>
         </Pressable>
       </Modal>

@@ -35,6 +35,27 @@ function getLocalDateKey(date = new Date()): string {
   return `${year}-${month}-${day}`;
 }
 
+function mergeUniquePlaylists(
+  ...groups: NeteaseRecommendedPlaylist[][]
+): NeteaseRecommendedPlaylist[] {
+  const playlists = new Map<number, NeteaseRecommendedPlaylist>();
+  groups.flat().forEach((playlist) => playlists.set(playlist.id, playlist));
+  return [...playlists.values()];
+}
+
+function pickNextPersonalPlaylists(
+  candidates: NeteaseRecommendedPlaylist[],
+  previous: NeteaseRecommendedPlaylist[],
+  excludedIds: Set<number>,
+  limit = 12
+): NeteaseRecommendedPlaylist[] {
+  const available = candidates.filter((item) => !excludedIds.has(item.id));
+  const previousIds = new Set(previous.map((item) => item.id));
+  const unseen = available.filter((item) => !previousIds.has(item.id));
+  const repeated = available.filter((item) => previousIds.has(item.id));
+  return [...unseen, ...repeated].slice(0, limit);
+}
+
 export default function MusicHomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -66,19 +87,26 @@ export default function MusicHomeScreen() {
     setLoading(true);
     setError(null);
     try {
-      const [publicItems, rawPersonalItems, songs] = await Promise.all([
+      const [publicItems, personalSources, songs] = await Promise.all([
         getPublicRecommendedPlaylists(baseUrl, 12),
         cookie
-          ? (forceRefresh
-            ? getRefreshedRecommendedPlaylists(baseUrl, cookie, 12).then(async (items) => (
-              items.length ? items : getDailyRecommendedPlaylists(baseUrl, cookie)
-            ))
-            : getDailyRecommendedPlaylists(baseUrl, cookie))
-          : Promise.resolve([]),
+          ? Promise.all([
+            getDailyRecommendedPlaylists(baseUrl, cookie).catch(() => []),
+            getRefreshedRecommendedPlaylists(baseUrl, cookie, 60).catch(() => []),
+          ])
+          : Promise.resolve([[], []] as NeteaseRecommendedPlaylist[][]),
         cookie ? getDailyRecommendedSongs(baseUrl, cookie) : Promise.resolve([]),
       ]);
       const publicIds = new Set(publicItems.map((item) => item.id));
-      const personalItems = rawPersonalItems.filter((item) => !publicIds.has(item.id));
+      const previousPersonalItems = homeCache?.sourceKey === sourceKey
+        ? homeCache.personalPlaylists
+        : [];
+      const personalCandidates = mergeUniquePlaylists(...personalSources);
+      const personalItems = pickNextPersonalPlaylists(
+        personalCandidates,
+        previousPersonalItems,
+        publicIds
+      );
       setPublicPlaylists(publicItems);
       setPersonalPlaylists(personalItems);
       setRecommendedSongs(songs);
