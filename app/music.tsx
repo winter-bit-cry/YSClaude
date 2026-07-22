@@ -18,13 +18,16 @@ import {
   getDailyRecommendedPlaylists,
   getDailyRecommendedSongs,
   getPublicRecommendedPlaylists,
+  getRelatedRecommendedPlaylists,
   getRefreshedRecommendedPlaylists,
+  getSimilarRecommendedPlaylists,
   importNeteasePlaylist,
   searchNeteaseTracks,
   type NeteaseRecommendedPlaylist,
 } from '../src/services/neteaseMusic';
 import { type MusicTrack, useMusicStore } from '../src/stores/music';
 import { useNeteaseStore } from '../src/stores/netease';
+import { MusicModuleGesture } from '../src/components/MusicModuleGesture';
 
 const PAGE_BACKGROUND = '#f5f7fa';
 
@@ -101,11 +104,32 @@ export default function MusicHomeScreen() {
       const previousPersonalItems = homeCache?.sourceKey === sourceKey
         ? homeCache.personalPlaylists
         : [];
-      const personalCandidates = mergeUniquePlaylists(...personalSources);
+      const relatedSeedItems = mergeUniquePlaylists(
+        ...personalSources,
+        previousPersonalItems
+      );
+      const relatedPersonalItems = cookie
+        ? await getRelatedRecommendedPlaylists(
+          baseUrl,
+          relatedSeedItems.slice(0, 6).map((item) => item.id)
+        )
+        : [];
+      const recommendedSongIds = songs
+        .map((track) => Number(track.id.replace(/^netease-/, '')))
+        .filter((id) => Number.isFinite(id));
+      const similarPersonalItems = cookie
+        ? await getSimilarRecommendedPlaylists(baseUrl, recommendedSongIds)
+        : [];
+      const personalCandidates = mergeUniquePlaylists(
+        ...personalSources,
+        relatedPersonalItems,
+        similarPersonalItems
+      );
       const personalItems = pickNextPersonalPlaylists(
         personalCandidates,
         previousPersonalItems,
-        publicIds
+        publicIds,
+        8
       );
       setPublicPlaylists(publicItems);
       setPersonalPlaylists(personalItems);
@@ -175,6 +199,7 @@ export default function MusicHomeScreen() {
   const showSearch = searching || searchResults.length > 0 || !!query.trim();
 
   return (
+    <MusicModuleGesture onExit={closeMusic}>
     <View style={[styles.page, { paddingTop: insets.top + 8 }]}>
       <View style={styles.header}>
         <Pressable style={styles.headerButton} onPress={() => router.replace('/')}>
@@ -213,7 +238,7 @@ export default function MusicHomeScreen() {
         contentContainerStyle={[styles.content, { paddingBottom: Math.max(insets.bottom, 12) + 142 }]}
       >
         {!baseUrl.trim() ? (
-          <Pressable style={styles.setupCard} onPress={() => router.push('/music-playlists')}>
+          <Pressable style={styles.setupCard} onPress={() => router.replace('/music-playlists')}>
             <Text style={styles.setupTitle}>先连接网易云音乐</Text>
             <Text style={styles.setupText}>前往“我的”填写 API 地址，首页即可加载推荐内容。</Text>
           </Pressable>
@@ -234,7 +259,7 @@ export default function MusicHomeScreen() {
               {cookie ? (
                 <PlaylistRail items={personalPlaylists} busyId={openingPlaylistId} onPress={openPlaylist} />
               ) : (
-                <Pressable style={styles.loginCard} onPress={() => router.push('/music-playlists')}>
+                <Pressable style={styles.loginCard} onPress={() => router.replace('/music-playlists')}>
                   <View>
                     <Text style={styles.loginTitle}>登录网易云音乐</Text>
                     <Text style={styles.loginText}>同步歌单和专属每日推荐</Text>
@@ -278,13 +303,14 @@ export default function MusicHomeScreen() {
             <Home size={22} color="#121622" fill="#121622" />
             <Text style={[styles.navText, styles.navTextActive]}>首页</Text>
           </Pressable>
-          <Pressable style={styles.navItem} onPress={() => router.push('/music-playlists')}>
+          <Pressable style={styles.navItem} onPress={() => router.replace('/music-playlists')}>
             <Library size={22} color="#8b919c" />
             <Text style={styles.navText}>我的</Text>
           </Pressable>
         </View>
       </View>
     </View>
+    </MusicModuleGesture>
   );
 }
 

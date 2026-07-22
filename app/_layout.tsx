@@ -227,7 +227,7 @@ export default function RootLayout() {
         />
         <Stack.Screen
           name="music"
-          options={{ animation: 'slide_from_right', presentation: 'modal' }}
+          options={{ animation: 'none', presentation: 'modal', gestureEnabled: false }}
         />
         <Stack.Screen
           name="music-player"
@@ -235,7 +235,7 @@ export default function RootLayout() {
         />
         <Stack.Screen
           name="music-playlists"
-          options={{ animation: 'slide_from_right', presentation: 'modal' }}
+          options={{ animation: 'none', presentation: 'modal', gestureEnabled: false }}
         />
         <Stack.Screen
           name="voice-call"

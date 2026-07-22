@@ -34,6 +34,7 @@ import {
 import { fonts } from '../src/theme/fonts';
 import { type NeteasePlaylistSummary } from '../src/services/neteaseMusic';
 import { useMusicStore } from '../src/stores/music';
+import { MusicModuleGesture } from '../src/components/MusicModuleGesture';
 import { useNeteaseStore } from '../src/stores/netease';
 import { copyFileFromUri } from '../src/utils/fileSystem';
 
@@ -67,6 +68,10 @@ export default function MusicPlaylistsScreen() {
   const router = useRouter();
   const music = useMusicStore();
   const currentTrack = music.tracks[music.currentIndex];
+  const exitMusic = useCallback(() => {
+    music.closePlayer().catch(() => undefined);
+    router.replace('/');
+  }, [music, router]);
   const store = useNeteaseStore();
   const {
     _hydrated,
@@ -227,6 +232,7 @@ export default function MusicPlaylistsScreen() {
   );
 
   return (
+    <MusicModuleGesture onExit={exitMusic}>
     <View style={styles.page}>
       <FlatList
         data={playlists}
@@ -283,6 +289,7 @@ export default function MusicPlaylistsScreen() {
         </Pressable>
       </Modal>
     </View>
+    </MusicModuleGesture>
   );
 }
 

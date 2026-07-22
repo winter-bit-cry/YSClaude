@@ -253,6 +253,61 @@ export async function getRefreshedRecommendedPlaylists(
   return playlists.slice(0, limit);
 }
 
+export async function getRelatedRecommendedPlaylists(
+  baseUrl: string,
+  playlistIds: number[],
+  limitPerPlaylist = 5
+): Promise<NeteaseRecommendedPlaylist[]> {
+  const seedIds = [...new Set(playlistIds)].slice(0, 6);
+  if (!seedIds.length) return [];
+  const groups = await Promise.all(seedIds.map(async (id) => {
+    try {
+      const result = await fetchJson<{ playlists?: NeteaseRecommendedPlaylist[] }>(
+        baseUrl,
+        '/related/playlist',
+        { id }
+      );
+      return (result.playlists ?? []).slice(0, limitPerPlaylist).map((item) => ({
+        ...item,
+        coverImgUrl: item.coverImgUrl ?? item.picUrl,
+      }));
+    } catch {
+      return [];
+    }
+  }));
+  const related = new Map<number, NeteaseRecommendedPlaylist>();
+  groups.flat().forEach((item) => related.set(item.id, item));
+  seedIds.forEach((id) => related.delete(id));
+  return [...related.values()];
+}
+
+export async function getSimilarRecommendedPlaylists(
+  baseUrl: string,
+  songIds: number[],
+  limitPerSong = 5
+): Promise<NeteaseRecommendedPlaylist[]> {
+  const seedIds = [...new Set(songIds)].slice(0, 8);
+  if (!seedIds.length) return [];
+  const groups = await Promise.all(seedIds.map(async (id) => {
+    try {
+      const result = await fetchJson<{ playlists?: NeteaseRecommendedPlaylist[] }>(
+        baseUrl,
+        '/simi/playlist',
+        { id }
+      );
+      return (result.playlists ?? []).slice(0, limitPerSong).map((item) => ({
+        ...item,
+        coverImgUrl: item.coverImgUrl ?? item.picUrl,
+      }));
+    } catch {
+      return [];
+    }
+  }));
+  const similar = new Map<number, NeteaseRecommendedPlaylist>();
+  groups.flat().forEach((item) => similar.set(item.id, item));
+  return [...similar.values()];
+}
+
 function extractHomepagePlaylists(value: unknown): NeteaseRecommendedPlaylist[] {
   const found = new Map<number, NeteaseRecommendedPlaylist>();
   const visit = (candidate: unknown): void => {
