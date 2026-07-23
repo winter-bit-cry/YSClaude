@@ -1,5 +1,6 @@
 import { randomUUID } from 'expo-crypto';
 import {
+  getBotChannelMessages,
   getLatestBotChannelMessage,
   insertBotChannelMessage,
 } from '../db/operations';
@@ -147,6 +148,14 @@ async function storeQqEvent(event: any): Promise<void> {
   else if (type === 'GROUP_AT_MESSAGE_CREATE') route = { kind: 'group', targetId: data.group_openid };
   else if (type === 'DIRECT_MESSAGE_CREATE') route = { kind: 'dm', targetId: data.guild_id };
   else route = { kind: 'channel', targetId: data.channel_id };
+  if (!route.targetId) return;
+  const contactId = `${route.kind}:${route.targetId}`;
+  const contactName = String(route.kind === 'c2c'
+    ? data.author?.username || data.author?.nick || `QQ 联系人 ${route.targetId}`
+    : route.kind === 'group'
+      ? data.group_name || `QQ群 ${route.targetId}`
+      : data.channel_name || data.guild_name || `QQ 频道 ${route.targetId}`
+  ).trim();
   const inserted = await insertBotChannelMessage({
     id: `qq:${data.id || randomUUID()}`,
     platform: 'qq',
@@ -154,10 +163,10 @@ async function storeQqEvent(event: any): Promise<void> {
     content,
     senderId: data.author?.user_openid || data.author?.id,
     platformMessageId: data.id,
-    route: { ...route, replyMessageId: data.id },
+    route: { ...route, contactId, contactName: contactName || undefined, replyMessageId: data.id },
     createdAt: data.timestamp ? Date.parse(data.timestamp) : Date.now(),
   });
-  if (inserted) triggerBotInboundMessage('qq', content).catch(() => undefined);
+  if (inserted) triggerBotInboundMessage('qq', content, { contactId, contactName }).catch(() => undefined);
 }
 
 export interface WechatClawLoginResult {
@@ -212,10 +221,14 @@ export function logoutWechatClawBot(): void {
   });
 }
 
-export async function sendQqBotMessage(content: string, config: QQBotToolConfig): Promise<void> {
-  const latest = await getLatestBotChannelMessage('qq', 'incoming');
+export async function sendQqBotMessage(
+  content: string,
+  contactId: string,
+  config: QQBotToolConfig
+): Promise<void> {
+  const latest = (await getBotChannelMessages('qq', 1, contactId))[0];
   const route = latest?.route;
-  if (!route?.targetId) throw new Error('还没有可回复的 QQ 消息。请先让绑定账号给 QQ Bot 发一条消息。');
+  if (!route?.targetId) throw new Error(`找不到 QQ 联系人（群聊）${contactId}，请先查看消息列表。`);
   const token = await getQqAccessToken(config);
   const path = route.kind === 'c2c'
     ? `/v2/users/${encodeURIComponent(route.targetId)}/messages`

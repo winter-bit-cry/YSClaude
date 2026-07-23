@@ -6,5 +6,5 @@ export const WORKFLOW_TOOL_NAMES = [
   'ssh_connect', 'ssh_status', 'ssh_command', 'ssh_read_file', 'ssh_write_file', 'ssh_close', 'run_android_shell',
   'read_device_info', 'read_battery_status', 'read_app_usage_stats', 'open_usage_access_settings', 'read_notifications', 'open_notification_access_settings', 'read_clipboard', 'read_weather', 'calendar_list_events', 'calendar_create_event', 'calendar_update_event', 'calendar_delete_event', 'find_contacts', 'edit_contact', 'send_sms', 'dial_phone',
   'request_android_control_permission', 'open_android_input_method_settings', 'show_android_input_method_picker', 'switch_android_input_method_to_ysclaude', 'observe_android_screen', 'tap_android_screen', 'tap_android_relative', 'swipe_android_screen', 'click_android_node', 'scroll_android_node', 'set_android_text', 'set_focused_android_text', 'ime_commit_android_text', 'ime_android_action', 'ime_delete_android_text', 'android_global_action',
-  'start_ai_voice_call', 'hangup_ai_voice_call', 'qq_bot_read_messages', 'qq_bot_send_message', 'wechat_clawbot_read_messages', 'wechat_clawbot_send_message',
+  'start_ai_voice_call', 'hangup_ai_voice_call', 'qq_bot_list_messages', 'qq_bot_read_messages', 'qq_bot_send_message', 'wechat_clawbot_read_messages', 'wechat_clawbot_send_message',
 ] as const;

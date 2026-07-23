@@ -1912,7 +1912,7 @@ export function ToolConfigTab({ showToast, keyboardBottomInset }: SettingsTabPro
     { key: 'webSearch', name: '联网搜索', intro: '通过 Tavily 搜索互联网，补充实时信息。', enabled: wsEnabled, onValueChange: handleWebSearchEnabledChange, meta: '1 个工具' },
     { key: 'hotboard', name: '热榜查询', intro: '从已选择的平台列表中查询热门话题。', enabled: hbEnabled, onValueChange: handleHotboardEnabledChange, meta: hbPlatformTypes.length + ' 个平台' },
     { key: 'runCommand', name: '远程命令', intro: '通过 SSH 连接专用 AI 服务器执行 shell 命令。与「对话文件」同时开启时，自动激活对话文件与服务器互传工具。', enabled: rcEnabled, onValueChange: handleRunCommandEnabledChange, meta: '最多 ' + (rcMaxCalls || '20') + ' 次' },
-    { key: 'qqBotTools', name: 'QQ Bot 工具', intro: '本机连接 QQ 官方 Bot，AI 可读取本地历史并向绑定账号发消息。', enabled: localQqEnabled, onValueChange: handleLocalQqBotToolsEnabledChange, meta: '2 个工具' },
+    { key: 'qqBotTools', name: 'QQ Bot 工具', intro: '本机连接 QQ 官方 Bot，AI 可查看消息列表、读取本地历史并向指定联系人或群聊发消息。', enabled: localQqEnabled, onValueChange: handleLocalQqBotToolsEnabledChange, meta: '3 个工具' },
     { key: 'wechatClawBotTools', name: '微信 ClawBot 工具', intro: '本机连接微信 ClawBot，AI 可读取本地历史并向绑定账号发消息。', enabled: wechatClawEnabled, onValueChange: handleWechatClawBotToolsEnabledChange, meta: '2 个工具' },
     { key: 'webInteraction', name: '网页交互', intro: '允许 AI 打开、观察并操作应用内网页面板。', enabled: wiEnabled, onValueChange: handleWebInteractionEnabledChange, meta: '最多 ' + (wiMaxCalls || '8') + ' 次' },
     { key: 'conversationArtifact', name: '对话文件', intro: '允许 AI 读取、创建、修改、删除当前对话绑定的文本文件，并显式显示文件卡片。与「远程命令」同时开启时，自动激活对话文件与服务器互传工具。', enabled: conversationArtifactEnabled, onValueChange: handleConversationArtifactEnabledChange, meta: '7 个工具' },
@@ -2507,7 +2507,7 @@ export function ToolConfigTab({ showToast, keyboardBottomInset }: SettingsTabPro
         return (
           <>
             <Text style={styles.toolModalDescription}>YSClaude 直接连接 QQ 官方 Bot，不需要自建或云端后端。只能读取启用后由 YSClaude 收到和发出的消息。</Text>
-            <View style={styles.switchRow}><View style={styles.switchText}><Text style={styles.label}>启用 QQ Bot AI 工具</Text><Text style={styles.hint}>提供“读取最近消息”和“发送消息”两个工具。</Text></View><Switch value={localQqEnabled} onValueChange={handleLocalQqBotToolsEnabledChange} trackColor={{ false: colors.inputBorder, true: colors.primary }} /></View>
+            <View style={styles.switchRow}><View style={styles.switchText}><Text style={styles.label}>启用 QQ Bot AI 工具</Text><Text style={styles.hint}>提供“查看消息列表”“读取最近消息”和“向指定联系人发送消息”三个工具。</Text></View><Switch value={localQqEnabled} onValueChange={handleLocalQqBotToolsEnabledChange} trackColor={{ false: colors.inputBorder, true: colors.primary }} /></View>
             <View style={styles.field}><Text style={styles.label}>QQ Bot App ID</Text><TextInput style={styles.input} value={localQqAppId} onChangeText={setLocalQqAppId} autoCapitalize="none" placeholder="App ID" placeholderTextColor={colors.textTertiary} /></View>
             <View style={styles.field}><Text style={styles.label}>QQ Bot App Secret</Text><TextInput style={styles.input} value={localQqSecret} onChangeText={setLocalQqSecret} autoCapitalize="none" secureTextEntry placeholder="App Secret" placeholderTextColor={colors.textTertiary} /></View>
             <View style={styles.switchRow}><Text style={styles.label}>沙箱环境</Text><Switch value={localQqSandbox} onValueChange={setLocalQqSandbox} trackColor={{ false: colors.inputBorder, true: colors.primary }} /></View>

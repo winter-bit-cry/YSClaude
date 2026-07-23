@@ -3596,17 +3596,54 @@ export async function insertBotChannelMessage(message: BotChannelMessage): Promi
 
 export async function getBotChannelMessages(
   platform: 'qq' | 'wechat',
-  limit: number
+  limit: number,
+  contactId?: string
 ): Promise<BotChannelMessage[]> {
   const db = await getDatabase();
+  const rows = contactId
+    ? await db.getAllAsync<any>(
+      `SELECT * FROM bot_channel_messages
+        WHERE platform = ? AND json_extract(route_json, '$.contactId') = ?
+        ORDER BY created_at DESC
+        LIMIT ?`,
+      [platform, contactId, Math.max(1, limit)]
+    )
+    : await db.getAllAsync<any>(
+      `SELECT * FROM bot_channel_messages
+        WHERE platform = ?
+        ORDER BY created_at DESC
+        LIMIT ?`,
+      [platform, Math.max(1, limit)]
+    );
+  return rows.reverse().map((row) => ({
+    id: row.id,
+    platform: row.platform,
+    direction: row.direction,
+    content: row.content,
+    senderId: row.sender_id || undefined,
+    platformMessageId: row.platform_message_id || undefined,
+    route: row.route_json ? JSON.parse(row.route_json) : undefined,
+    createdAt: row.created_at,
+  }));
+}
+
+export async function getQqBotMessageList(limit: number): Promise<BotChannelMessage[]> {
+  const db = await getDatabase();
   const rows = await db.getAllAsync<any>(
-    `SELECT * FROM bot_channel_messages
-      WHERE platform = ?
+    `SELECT * FROM bot_channel_messages AS message
+      WHERE platform = 'qq'
+        AND json_extract(route_json, '$.contactId') IS NOT NULL
+        AND created_at = (
+          SELECT MAX(latest.created_at)
+          FROM bot_channel_messages AS latest
+          WHERE latest.platform = 'qq'
+            AND json_extract(latest.route_json, '$.contactId') = json_extract(message.route_json, '$.contactId')
+        )
       ORDER BY created_at DESC
       LIMIT ?`,
-    [platform, Math.max(1, limit)]
+    [Math.max(1, limit)]
   );
-  return rows.reverse().map((row) => ({
+  return rows.map((row) => ({
     id: row.id,
     platform: row.platform,
     direction: row.direction,
