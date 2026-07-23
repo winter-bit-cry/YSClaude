@@ -13,6 +13,7 @@ import { AppearanceTab } from '../src/screens/settings/AppearanceTab';
 import { ScenarioSettingsTab } from '../src/screens/settings/ScenarioSettingsTab';
 import { DiaryTab } from '../src/screens/settings/DiaryTab';
 import { ToolConfigTab } from '../src/screens/settings/ToolConfigTab';
+import { WorkflowTab } from '../src/screens/settings/WorkflowTab';
 import { TodayWidgetTab } from '../src/screens/settings/TodayWidgetTab';
 import { IOSToast } from '../src/components/IOSToast';
 
@@ -22,7 +23,7 @@ import { useKeyboardHeight } from '../src/hooks/useKeyboardHeight';
 let colors = settingsPageColors;
 const TABS = ['对话设置', '生图配置', '语音配置', '工具设置', '记忆管理', '来信', '悬浮球', '表情包', '欢迎页', '美化'] as const;
 
-const SETTINGS_TABS = [...TABS.slice(0, 7), '小组件', ...TABS.slice(7)] as const;
+const SETTINGS_TABS = [...TABS.slice(0, 4), '工作流', ...TABS.slice(4, 7), '小组件', ...TABS.slice(7)] as const;
 
 export default function SettingsScreen() {
   colors = useSettingsPageColors();
@@ -85,13 +86,14 @@ export default function SettingsScreen() {
       {activeTab === 1 && <ScenarioSettingsTab scenario="image" showToast={showToast} keyboardBottomInset={keyboardHeight} />}
       {activeTab === 2 && <TTSConfigTab showToast={showToast} keyboardBottomInset={keyboardHeight} />}
       {activeTab === 3 && <ToolConfigTab showToast={showToast} keyboardBottomInset={keyboardHeight} />}
-      {activeTab === 4 && <DiaryTab showToast={showToast} keyboardBottomInset={keyboardHeight} />}
-      {activeTab === 5 && <IncomingLetterTab showToast={showToast} keyboardBottomInset={keyboardHeight} />}
-      {activeTab === 6 && <FloatingBallTab showToast={showToast} keyboardBottomInset={keyboardHeight} />}
-      {activeTab === 7 && <TodayWidgetTab showToast={showToast} keyboardBottomInset={keyboardHeight} />}
-      {activeTab === 8 && <StickerTab showToast={showToast} keyboardBottomInset={keyboardHeight} />}
-      {activeTab === 9 && <WelcomePageTab showToast={showToast} keyboardBottomInset={keyboardHeight} />}
-      {activeTab === 10 && <AppearanceTab showToast={showToast} keyboardBottomInset={keyboardHeight} />}
+      {activeTab === 4 && <WorkflowTab showToast={showToast} keyboardBottomInset={keyboardHeight} />}
+      {activeTab === 5 && <DiaryTab showToast={showToast} keyboardBottomInset={keyboardHeight} />}
+      {activeTab === 6 && <IncomingLetterTab showToast={showToast} keyboardBottomInset={keyboardHeight} />}
+      {activeTab === 7 && <FloatingBallTab showToast={showToast} keyboardBottomInset={keyboardHeight} />}
+      {activeTab === 8 && <TodayWidgetTab showToast={showToast} keyboardBottomInset={keyboardHeight} />}
+      {activeTab === 9 && <StickerTab showToast={showToast} keyboardBottomInset={keyboardHeight} />}
+      {activeTab === 10 && <WelcomePageTab showToast={showToast} keyboardBottomInset={keyboardHeight} />}
+      {activeTab === 11 && <AppearanceTab showToast={showToast} keyboardBottomInset={keyboardHeight} />}
 
       <IOSToast message={toastMessage} bottom={keyboardHeight + 34} />
     </View>

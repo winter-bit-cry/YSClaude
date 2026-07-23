@@ -23,6 +23,14 @@ import {
   tapAccessibilityScreen,
   tapAccessibilityScreenRelative,
   updateCalendarEvent,
+  readNotifications,
+  openNotificationAccessSettings,
+  readClipboard,
+  editContact,
+  findContacts,
+  composeSms,
+  dialPhone,
+  readWeather,
 } from '../nativeTools';
 import { ToolDefinition, ToolModule } from './types';
 
@@ -34,6 +42,15 @@ const DEVICE_INFO_TOOL: ToolDefinition = {
     parameters: { type: 'object', properties: {}, required: [] },
   },
 };
+
+const NOTIFICATION_READ_TOOL: ToolDefinition = { type: 'function', function: { name: 'read_notifications', description: '读取 Android 当前通知，可读取全部通知或按应用名称/包名筛选。若未授权会返回授权提示。', parameters: { type: 'object', properties: { app: { type: 'string', description: '可选，应用名称或包名关键词' }, limit: { type: 'number', description: '最多返回数量，默认 50' } }, required: [] } } };
+const NOTIFICATION_SETTINGS_TOOL: ToolDefinition = { type: 'function', function: { name: 'open_notification_access_settings', description: '打开 Android 通知使用权设置页，供用户授权通知读取。', parameters: { type: 'object', properties: {}, required: [] } } };
+const CLIPBOARD_READ_TOOL: ToolDefinition = { type: 'function', function: { name: 'read_clipboard', description: '读取剪切板中最新的文本内容。', parameters: { type: 'object', properties: {}, required: [] } } };
+const CONTACT_EDIT_TOOL: ToolDefinition = { type: 'function', function: { name: 'edit_contact', description: '打开系统联系人编辑器并预填姓名、电话和邮箱，最终保存由用户确认。', parameters: { type: 'object', properties: { name: { type: 'string' }, phone: { type: 'string' }, email: { type: 'string' } }, required: [] } } };
+const CONTACT_FIND_TOOL: ToolDefinition = { type: 'function', function: { name: 'find_contacts', description: '按姓名查询 Android 通讯录，返回匹配联系人的姓名和电话号码。当用户只说了联系人姓名就要拨号或发短信时，先调用本工具获取手机号。', parameters: { type: 'object', properties: { name: { type: 'string', description: '联系人姓名，支持部分匹配' }, limit: { type: 'number', description: '最多返回数量，默认 10，最大 50' } }, required: ['name'] } } };
+const SMS_TOOL: ToolDefinition = { type: 'function', function: { name: 'send_sms', description: '打开系统短信编辑器，预填收件人手机号和短信正文，发送前由用户确认。phone 必须是号码；只有姓名时先调用 find_contacts。', parameters: { type: 'object', properties: { phone: { type: 'string' }, message: { type: 'string' } }, required: ['phone'] } } };
+const DIAL_TOOL: ToolDefinition = { type: 'function', function: { name: 'dial_phone', description: '打开系统拨号盘并填入电话号码，实际拨号由用户确认。phone 必须是号码；只有姓名时先调用 find_contacts。', parameters: { type: 'object', properties: { phone: { type: 'string' } }, required: ['phone'] } } };
+const WEATHER_TOOL: ToolDefinition = { type: 'function', function: { name: 'read_weather', description: '通过国内天气服务读取实时天气与未来 7 天预报。优先提供城市/区县名；也可提供经纬度，全部省略时使用设备当前位置。', parameters: { type: 'object', properties: { city: { type: 'string', description: '城市或区县名称，例如北京、浦东新区' }, latitude: { type: 'number' }, longitude: { type: 'number' } }, required: [] } } };
 
 const BATTERY_STATUS_TOOL: ToolDefinition = {
   type: 'function',
@@ -366,6 +383,14 @@ const CALENDAR_DELETE_EVENT_TOOL: ToolDefinition = {
 export const nativeDeviceTool: ToolModule = {
   id: 'native-device',
   labels: {
+    read_notifications: '读取通知',
+    open_notification_access_settings: '通知读取授权',
+    read_clipboard: '读取剪切板',
+    edit_contact: '编辑联系人',
+    find_contacts: '查看通讯录',
+    send_sms: '发短信',
+    dial_phone: '拨号',
+    read_weather: '天气',
     read_device_info: '读取设备信息',
     read_battery_status: '读取电池状态',
     read_app_usage_stats: '读取应用使用统计',
@@ -422,6 +447,10 @@ export const nativeDeviceTool: ToolModule = {
         CALENDAR_DELETE_EVENT_TOOL
       );
     }
+    if (config.nativeTools?.notificationReaderEnabled) tools.push(NOTIFICATION_READ_TOOL, NOTIFICATION_SETTINGS_TOOL);
+    if (config.nativeTools?.clipboardReaderEnabled) tools.push(CLIPBOARD_READ_TOOL);
+    if (config.nativeTools?.contactsCommunicationEnabled) tools.push(CONTACT_FIND_TOOL, CONTACT_EDIT_TOOL, SMS_TOOL, DIAL_TOOL);
+    if (config.nativeTools?.weatherEnabled) tools.push(WEATHER_TOOL);
     return tools;
   },
   execute: async (toolName, args) => {
@@ -474,6 +503,14 @@ export const nativeDeviceTool: ToolModule = {
         return await updateCalendarEvent(args);
       case 'calendar_delete_event':
         return await deleteCalendarEvent(args);
+      case 'read_notifications': return await readNotifications(args);
+      case 'open_notification_access_settings': return await openNotificationAccessSettings();
+      case 'read_clipboard': return await readClipboard(args);
+      case 'edit_contact': return await editContact(args);
+      case 'find_contacts': return await findContacts(args);
+      case 'send_sms': return await composeSms(args);
+      case 'dial_phone': return await dialPhone(args);
+      case 'read_weather': return await readWeather(args);
       default:
         return undefined;
     }

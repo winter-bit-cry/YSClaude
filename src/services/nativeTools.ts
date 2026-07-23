@@ -1,7 +1,8 @@
-import { NativeModules, Platform } from 'react-native';
+import { NativeModules, PermissionsAndroid, Platform } from 'react-native';
 import * as Battery from 'expo-battery';
 import * as Calendar from 'expo-calendar';
 import * as Device from 'expo-device';
+import * as Location from 'expo-location';
 import {
   buildAndroidAccessibilityElementSummary,
   buildAndroidAccessibilityScreenSummary,
@@ -83,6 +84,13 @@ const AndroidSystemTools = NativeModules.AndroidSystemTools as
   | {
       getAppUsageStats: (startTime: number, endTime: number, limit: number) => Promise<unknown>;
       openUsageAccessSettings: () => Promise<boolean>;
+      getNotifications: (appQuery: string | null, limit: number) => Promise<unknown>;
+      openNotificationAccessSettings: () => Promise<boolean>;
+      getClipboard: () => Promise<unknown>;
+      findContacts: (name: string, limit: number) => Promise<unknown>;
+      editContact: (name: string | null, phone: string | null, email: string | null) => Promise<boolean>;
+      composeSms: (phone: string, message: string | null) => Promise<boolean>;
+      dialPhone: (phone: string) => Promise<boolean>;
     }
   | undefined;
 
@@ -210,6 +218,75 @@ export async function openUsageAccessSettings(): Promise<string> {
   const module = ensureAndroidSystemTools();
   await module.openUsageAccessSettings();
   return toJson({ opened: true, target: 'usage_access_settings' });
+}
+
+export async function readNotifications(args: Record<string, any>): Promise<string> {
+  const module = ensureAndroidSystemTools();
+  const result = await module.getNotifications(args.app ? String(args.app) : null, asNumber(args.limit, 50));
+  return toJson(result);
+}
+
+export async function openNotificationAccessSettings(): Promise<string> {
+  await ensureAndroidSystemTools().openNotificationAccessSettings();
+  return toJson({ opened: true, target: 'notification_listener_settings' });
+}
+
+export async function readClipboard(_args: Record<string, any>): Promise<string> {
+  return toJson(await ensureAndroidSystemTools().getClipboard());
+}
+
+export async function editContact(args: Record<string, any>): Promise<string> {
+  await ensureAndroidSystemTools().editContact(args.name ? String(args.name) : null, args.phone ? String(args.phone) : null, args.email ? String(args.email) : null);
+  return toJson({ opened: true, action: 'contact_editor' });
+}
+
+export async function findContacts(args: Record<string, any>): Promise<string> {
+  const name = String(args.name || '').trim();
+  if (!name) throw new Error('请提供要查找的联系人姓名');
+  const granted = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.READ_CONTACTS)
+    || (await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.READ_CONTACTS)) === PermissionsAndroid.RESULTS.GRANTED;
+  if (!granted) throw new Error('未获得通讯录读取权限，请在系统设置中允许 YSClaude 读取联系人');
+  const limit = Math.max(1, Math.min(50, asNumber(args.limit, 10)));
+  return toJson(await ensureAndroidSystemTools().findContacts(name, limit));
+}
+
+export async function composeSms(args: Record<string, any>): Promise<string> {
+  const phone = String(args.phone || '').trim();
+  if (!phone) throw new Error('缺少手机号');
+  await ensureAndroidSystemTools().composeSms(phone, args.message ? String(args.message) : null);
+  return toJson({ opened: true, action: 'sms_composer', recipient: phone, requiresUserConfirmation: true });
+}
+
+export async function dialPhone(args: Record<string, any>): Promise<string> {
+  const phone = String(args.phone || '').trim();
+  if (!phone) throw new Error('缺少电话号码');
+  await ensureAndroidSystemTools().dialPhone(phone);
+  return toJson({ opened: true, action: 'dialer', phone, requiresUserConfirmation: true });
+}
+
+export async function readWeather(args: Record<string, any>): Promise<string> {
+  const requestedCity = String(args.city || '').trim();
+  let latitude = Number(args.latitude);
+  let longitude = Number(args.longitude);
+  let city = requestedCity;
+  if (!city && (!Number.isFinite(latitude) || !Number.isFinite(longitude))) {
+    const current = await Location.getForegroundPermissionsAsync();
+    const permission = current.granted ? current : await Location.requestForegroundPermissionsAsync();
+    if (!permission.granted) throw new Error('未获得定位权限，请提供 latitude 和 longitude 或在系统设置中允许定位');
+    const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+    latitude = position.coords.latitude;
+    longitude = position.coords.longitude;
+  }
+  if (!city) {
+    const places = await Location.reverseGeocodeAsync({ latitude, longitude });
+    const place = places[0];
+    city = String(place?.district || place?.city || place?.subregion || place?.region || '').trim();
+  }
+  if (!city) throw new Error('无法识别当前城市，请通过 city 参数提供城市或区县名称');
+  const url = `https://uapis.cn/api/v1/misc/weather?city=${encodeURIComponent(city)}&extended=true&forecast=true&lang=zh`;
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`天气服务请求失败 (${response.status})`);
+  return toJson({ provider: 'UAPI 国内天气', queryCity: city, ...(await response.json()) });
 }
 
 export async function openAccessibilitySettings(): Promise<string> {

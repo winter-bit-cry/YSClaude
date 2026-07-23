@@ -23,6 +23,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   FolderOpen,
+  Camera,
   Globe2,
   Image as ImageIcon,
   MapPin,
@@ -477,6 +478,17 @@ export function ChatInput({
     if (!result.canceled && result.assets[0]) {
       setPendingImage(result.assets[0].uri);
     }
+  };
+
+  const takePhoto = async () => {
+    setOptionsMenuVisible(false);
+    const permission = await ImagePicker.requestCameraPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert('需要相机权限', '请允许 YSClaude 使用相机后再拍照。');
+      return;
+    }
+    const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.8, allowsEditing: false });
+    if (!result.canceled && result.assets[0]) setPendingImage(result.assets[0].uri);
   };
 
   const pickImageReferences = async () => {
@@ -1105,6 +1117,7 @@ export function ChatInput({
     }] : []),
     { key: 'mcp', label: 'MCP 管理', Icon: Wrench, onPress: handleOpenMcpPanel },
     { key: 'image', label: '图片', Icon: ImageIcon, onPress: () => void pickImage() },
+    { key: 'camera', label: '拍照', Icon: Camera, onPress: () => void takePhoto() },
     { key: 'reference', label: '生图参考图', Icon: Sparkles, onPress: () => void pickImageReferences() },
     { key: 'file', label: '文件', Icon: Paperclip, onPress: () => void handleAttachFile() },
     {

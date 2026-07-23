@@ -35,6 +35,8 @@ import { startIncomingCallRingtone, stopIncomingCallRingtone } from '../src/serv
 import { applyGlobalFont } from '../src/theme/globalFont';
 import { startLocalBotChannels } from '../src/services/localBotChannels';
 import { syncBotForegroundService } from '../src/services/botForegroundService';
+import { useWorkflowStore } from '../src/stores/workflows';
+import { restoreWorkflowSchedule, syncWorkflowKeepAlive } from '../src/services/workflowScheduler';
 
 
 SplashScreen.preventAutoHideAsync();
@@ -54,6 +56,8 @@ export default function RootLayout() {
   const settingsHydrated = useSettingsStore((state) => state._hydrated);
   const qqBotToolsEnabled = useSettingsStore((state) => !!state.qqBotToolConfig?.enabled);
   const wechatClawBotToolsEnabled = useSettingsStore((state) => !!state.wechatClawBotToolConfig?.enabled);
+  const workflowsHydrated = useWorkflowStore((state) => state.hydrated);
+  const workflows = useWorkflowStore((state) => state.workflows);
   const globalFontUri = useSettingsStore((state) => state.appearanceConfig?.globalFontUri);
   const globalBoldFontUri = useSettingsStore((state) => state.appearanceConfig?.globalBoldFontUri);
   const [fontReady, setFontReady] = useState(false);
@@ -167,6 +171,19 @@ export default function RootLayout() {
     if (!settingsHydrated) return;
     return startLocalBotChannels();
   }, [settingsHydrated, qqBotToolsEnabled, wechatClawBotToolsEnabled]);
+
+  useEffect(() => {
+    if (!settingsHydrated || !workflowsHydrated) return;
+    const enabled = workflows.filter((workflow) => workflow.enabled);
+    syncWorkflowKeepAlive(enabled.length > 0).catch(() => undefined);
+    enabled.forEach((workflow) => {
+      restoreWorkflowSchedule(workflow).then((nextRunAt) => {
+        if (nextRunAt && nextRunAt !== workflow.nextRunAt) {
+          useWorkflowStore.getState().updateWorkflow(workflow.id, { nextRunAt });
+        }
+      }).catch(() => undefined);
+    });
+  }, [settingsHydrated, workflowsHydrated]);
 
   useEffect(() => {
     if (!settingsHydrated) return;

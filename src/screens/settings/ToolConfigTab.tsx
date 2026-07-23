@@ -87,7 +87,6 @@ export function ToolConfigTab({ showToast, keyboardBottomInset }: SettingsTabPro
     nativeToolConfig,
     locationShareConfig,
     mcpToolConfig,
-    toolSettingsUiConfig,
     setMemoryVaultConfig,
     setWebSearchConfig,
     setWebInteractionConfig,
@@ -103,7 +102,6 @@ export function ToolConfigTab({ showToast, keyboardBottomInset }: SettingsTabPro
     setNativeToolConfig,
     setLocationShareConfig,
     setMcpToolConfig,
-    setToolSettingsUiConfig,
   } = useSettingsStore();
   const activeApiConfig = apiConfigs[activeConfigIndex] || null;
   const [localQqEnabled, setLocalQqEnabled] = useState(!!qqBotToolConfig?.enabled);
@@ -394,9 +392,7 @@ export function ToolConfigTab({ showToast, keyboardBottomInset }: SettingsTabPro
   const [mcpServerAuth, setMcpServerAuth] = useState('');
   const [mcpSyncingServerId, setMcpSyncingServerId] = useState<string | null>(null);
   const [mcpResourceToolsEnabled, setMcpResourceToolsEnabled] = useState(!!mcpToolConfig?.resourceToolsEnabled);
-  const builtInToolsExpanded = toolSettingsUiConfig?.builtInToolsExpanded ?? true;
-  const customMcpExpanded = toolSettingsUiConfig?.customMcpExpanded ?? true;
-  const otherFeaturesExpanded = toolSettingsUiConfig?.otherFeaturesExpanded ?? true;
+  const [toolSettingsPage, setToolSettingsPage] = useState<'builtIn' | 'mcp' | 'features'>('builtIn');
   const [locationEnabled, setLocationEnabled] = useState(!!locationShareConfig?.enabled);
   const [locationTencentKey, setLocationTencentKey] = useState(locationShareConfig?.tencentKey || '');
   const [selectedBuiltInToolKey, setSelectedBuiltInToolKey] = useState<string | null>(null);
@@ -1926,9 +1922,28 @@ export function ToolConfigTab({ showToast, keyboardBottomInset }: SettingsTabPro
     { key: 'batteryStatus', name: '电池状态', intro: '读取电量、充电状态和省电模式。', enabled: batteryStatusEnabled, onValueChange: (value: boolean) => handleNativeToolEnabledChange('batteryStatusEnabled', value), meta: '设备原生' },
     { key: 'appUsageStats', name: '应用使用统计', intro: '在系统授权后读取 Android 应用使用时间统计。', enabled: appUsageStatsEnabled, onValueChange: (value: boolean) => handleNativeToolEnabledChange('appUsageStatsEnabled', value), meta: '设备原生' },
     { key: 'calendar', name: '系统日历', intro: '读取、创建、修改和删除系统日历日程。', enabled: calendarEnabled, onValueChange: (value: boolean) => handleNativeToolEnabledChange('calendarEnabled', value), meta: '设备原生' },
+    { key: 'notificationReader', name: '通知读取', intro: '读取全部当前通知，或根据应用名称和包名查找。首次使用需授予通知使用权。', enabled: !!nativeToolConfig.notificationReaderEnabled, onValueChange: (value: boolean) => setNativeToolConfig({ notificationReaderEnabled: value }), meta: '2 个工具' },
+    { key: 'clipboardReader', name: '剪切板读取', intro: '读取剪切板中最新的文本内容。', enabled: !!nativeToolConfig.clipboardReaderEnabled, onValueChange: (value: boolean) => setNativeToolConfig({ clipboardReaderEnabled: value }), meta: '1 个工具' },
+    { key: 'contactsCommunication', name: '联系人与通信', intro: '打开联系人编辑器、短信编辑器或拨号盘；保存、发送和拨号均由用户最终确认。', enabled: !!nativeToolConfig.contactsCommunicationEnabled, onValueChange: (value: boolean) => setNativeToolConfig({ contactsCommunicationEnabled: value }), meta: '3 个工具' },
+    { key: 'weather', name: '天气系统', intro: '根据城市、区县或设备当前位置，通过国内天气服务读取实时天气和未来 7 天预报。', enabled: !!nativeToolConfig.weatherEnabled, onValueChange: (value: boolean) => setNativeToolConfig({ weatherEnabled: value }), meta: 'UAPI 国内天气' },
     { key: 'aiVoiceCall', name: '主动通话', intro: '允许 AI 发起语音、视频或共享屏幕通话；接听后 AI 会先开口。', enabled: aiVoiceCallEnabled, onValueChange: (value: boolean) => handleNativeToolEnabledChange('aiVoiceCallEnabled', value), meta: '设备原生' },
     { key: 'aiVoiceCallHangup', name: '主动挂断', intro: '允许 AI 在通话过程中主动结束当前通话；未通话时不会提供这个工具。', enabled: aiVoiceCallHangupEnabled, onValueChange: (value: boolean) => handleNativeToolEnabledChange('aiVoiceCallHangupEnabled', value), meta: '通话中可用' },
   ];
+  const builtInToolGroups = [
+    { title: '对话与表达', keys: ['askUser', 'messageReaction', 'conversationWindow'] },
+    { title: '文件与内容', keys: ['conversationArtifact', 'htmlArtifact'] },
+    { title: '网络与网页', keys: ['webSearch', 'hotboard', 'webInteraction'] },
+    { title: '个人事务', keys: ['accounting', 'calendar', 'weather', 'contactsCommunication'] },
+    { title: '设备信息', keys: ['deviceInfo', 'batteryStatus', 'appUsageStats', 'notificationReader', 'clipboardReader'] },
+    { title: 'Bot 与软件联动', keys: ['qqBotTools', 'wechatClawBotTools'] },
+    { title: '通话控制', keys: ['aiVoiceCall', 'aiVoiceCallHangup'] },
+    { title: '命令与自动化', keys: ['shizukuShell', 'runCommand'] },
+  ].map((group) => ({
+    title: group.title,
+    tools: group.keys
+      .map((key) => builtInToolCards.find((tool) => tool.key === key))
+      .filter((tool): tool is (typeof builtInToolCards)[number] => !!tool),
+  }));
 
   const selectedOtherFeature = otherFeatureCards.find((tool) => tool.key === selectedBuiltInToolKey) || null;
   const selectedBuiltInTool = selectedOtherFeature
@@ -2174,6 +2189,10 @@ export function ToolConfigTab({ showToast, keyboardBottomInset }: SettingsTabPro
               setCalendarEnabled(false);
               setNativeToolConfig({ calendarEnabled: false });
               break;
+            case 'notificationReader': setNativeToolConfig({ notificationReaderEnabled: false }); break;
+            case 'clipboardReader': setNativeToolConfig({ clipboardReaderEnabled: false }); break;
+            case 'contactsCommunication': setNativeToolConfig({ contactsCommunicationEnabled: false }); break;
+            case 'weather': setNativeToolConfig({ weatherEnabled: false }); break;
             case 'aiVoiceCall':
               setAiVoiceCallEnabled(false);
               setNativeToolConfig({ aiVoiceCallEnabled: false });
@@ -2726,29 +2745,43 @@ export function ToolConfigTab({ showToast, keyboardBottomInset }: SettingsTabPro
 
   return (
     <>
+      <View style={[styles.segmentedRow, { marginHorizontal: 20, marginTop: 8, marginBottom: 0 }]}>
+        {([
+          ['builtIn', '内置工具'],
+          ['mcp', 'MCP 服务'],
+          ['features', '辅助功能'],
+        ] as const).map(([key, label]) => {
+          const selected = toolSettingsPage === key;
+          return (
+            <Pressable
+              key={key}
+              style={[styles.segmentedButton, selected && styles.segmentedButtonActive]}
+              onPress={() => setToolSettingsPage(key)}
+              accessibilityRole="tab"
+              accessibilityState={{ selected }}
+            >
+              <Text style={[styles.segmentedText, selected && styles.segmentedTextActive]}>{label}</Text>
+            </Pressable>
+          );
+        })}
+      </View>
       <ScrollView
         style={styles.content}
         contentContainerStyle={{ paddingBottom: keyboardBottomInset + 20 }}
         keyboardShouldPersistTaps="handled"
       >
-        <BuiltInToolsSection
-          styles={styles}
+        {toolSettingsPage === 'builtIn' && <BuiltInToolsSection
           colors={colors}
-          expanded={builtInToolsExpanded}
-          tools={builtInToolCards}
-          onToggleExpanded={() => setToolSettingsUiConfig({ builtInToolsExpanded: !builtInToolsExpanded })}
+          groups={builtInToolGroups}
           onSelectTool={setSelectedBuiltInToolKey}
-        />
-        <McpToolsSection
-          styles={styles}
+        />}
+        {toolSettingsPage === 'mcp' && <McpToolsSection
           colors={colors}
-          expanded={customMcpExpanded}
           mcpMaxCalls={mcpMaxCalls}
           mcpServerName={mcpServerName}
           mcpServerUrl={mcpServerUrl}
           mcpServerAuth={mcpServerAuth}
           mcpServers={mcpServers}
-          onToggleExpanded={() => setToolSettingsUiConfig({ customMcpExpanded: !customMcpExpanded })}
           onChangeMaxCalls={handleChangeMcpMaxCalls}
           onChangeServerName={setMcpServerName}
           onChangeServerUrl={setMcpServerUrl}
@@ -2758,15 +2791,12 @@ export function ToolConfigTab({ showToast, keyboardBottomInset }: SettingsTabPro
           onUpdateServer={handleUpdateMcpServer}
           getEnabledToolCount={getEnabledMcpToolCount}
           getEnabledResourceCount={getEnabledMcpResourceCount}
-        />
-        <OtherFeaturesSection
-          styles={styles}
+        />}
+        {toolSettingsPage === 'features' && <OtherFeaturesSection
           colors={colors}
-          expanded={otherFeaturesExpanded}
           tools={otherFeatureCards}
-          onToggleExpanded={() => setToolSettingsUiConfig({ otherFeaturesExpanded: !otherFeaturesExpanded })}
           onSelectTool={setSelectedBuiltInToolKey}
-        />
+        />}
       </ScrollView>
       <BuiltInToolModal
         styles={styles}

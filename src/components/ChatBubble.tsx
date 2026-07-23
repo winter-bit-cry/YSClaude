@@ -697,7 +697,11 @@ function endsWithStickerContent(content: string, stickers: StickerDefinition[]):
 }
 
 function isRemoteActivityMessage(message: Message): boolean {
-  return message.role === 'assistant' && message.id.startsWith('remote-activity-');
+  return message.role === 'assistant' && (
+    message.id.startsWith('remote-activity-') ||
+    message.content.trimStart().startsWith('[远程自主判断]') ||
+    message.content.trimStart().startsWith('[远程自主活动记录]')
+  );
 }
 
 function parseRemoteActivityContent(

@@ -715,6 +715,8 @@ interface ChatTriggerResponseOptions {
   skipStickerInstruction?: boolean;
   additionalRuntimeSections?: string[];
   ephemeralUserMessage?: string;
+  allowedToolNames?: string[];
+  suppressNotification?: boolean;
 }
 
 interface VoiceRecordingInput {
@@ -1711,7 +1713,7 @@ async function runToolLoop(
   // 每发生一次工具调用就回调一次，用于实时把记录推到 UI
   onToolInvocation?: (inv: ToolInvocation) => void,
   signal?: AbortSignal,
-  options?: { webCruiseEnabled?: boolean; sessionId?: string; conversationId?: string; messageId?: string }
+  options?: { webCruiseEnabled?: boolean; sessionId?: string; conversationId?: string; messageId?: string; allowedToolNames?: string[] }
 ): Promise<{ handled: boolean; totalTokens?: number }> {
   const settings = useSettingsStore.getState();
   const webCruiseEnabled = !!options?.webCruiseEnabled;
@@ -1738,7 +1740,7 @@ async function runToolLoop(
     voiceCallActive = false;
   }
 
-  const tools = getToolDefinitions({
+  let tools = getToolDefinitions({
     memoryVault: memoryEnabled,
     memoryVaultConfig: settings.memoryVaultConfig,
     webSearch: webEnabled,
@@ -1759,6 +1761,10 @@ async function runToolLoop(
     qqBotTools: !!settings.qqBotToolConfig?.enabled,
     wechatClawBotTools: !!settings.wechatClawBotToolConfig?.enabled,
   });
+  if (options?.allowedToolNames) {
+    const allowed = new Set(options.allowedToolNames);
+    tools = tools.filter((tool) => allowed.has(tool.function.name));
+  }
   if (tools.length === 0) {
     return { handled: false }; // 无工具 → 走原有流式路径
   }
@@ -2350,6 +2356,7 @@ async function streamAssistantResponse(
         sessionId,
         conversationId,
         messageId: assistantMessage.id,
+        allowedToolNames: options.allowedToolNames,
       }
     );
     const persistedAfterTools = await getMessagesByConversation(conversationId);
@@ -2455,7 +2462,7 @@ async function streamAssistantResponse(
     // fire-and-forget，任何失败都不能影响聊天流程。
     const msgs = get().messages;
     const lastMsg = msgs[msgs.length - 1];
-    if (lastMsg?.role === 'assistant' && typeof lastMsg.content === 'string' && lastMsg.content) {
+    if (!options.suppressNotification && lastMsg?.role === 'assistant' && typeof lastMsg.content === 'string' && lastMsg.content) {
       notifyReplyReady(lastMsg.content, { showFloatingBall: false }).catch(() => {});
     }
   }

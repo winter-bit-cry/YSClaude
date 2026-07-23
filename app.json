@@ -31,6 +31,9 @@
         "android.permission.READ_CALENDAR",
         "android.permission.READ_MEDIA_IMAGES",
         "android.permission.WRITE_CALENDAR",
+        "android.permission.READ_CONTACTS",
+        "android.permission.WRITE_CONTACTS",
+        "android.permission.CALL_PHONE",
         "android.permission.CAMERA"
       ],
       "package": "com.ysclaude.app"

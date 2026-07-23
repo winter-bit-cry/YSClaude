@@ -1,0 +1,10 @@
+export const WORKFLOW_TOOL_NAMES = [
+  'ask_user', 'react_to_latest_user_message', 'search_memory_vault', 'keyword_search_memory_vault', 'query_diary', 'add_diary', 'save_memory',
+  'accounting_read_today', 'accounting_add_record', 'accounting_delete_record', 'conversation_windows_list', 'conversation_window_floor_count', 'conversation_window_read_floors', 'conversation_window_search', 'conversation_windows_search_all', 'conversation_windows_search_multi', 'conversation_search_result_read',
+  'artifact_list', 'artifact_read', 'artifact_create', 'artifact_replace', 'artifact_patch_text', 'artifact_delete', 'artifact_show_card', 'artifact_upload_to_server', 'artifact_download_from_server',
+  'web_search', 'get_hotboard', 'webview_open', 'webview_eval_js', 'webview_screenshot', 'html_artifact_get_source', 'html_artifact_open', 'html_artifact_observe', 'html_artifact_click_element', 'html_artifact_click_selector', 'html_artifact_tap', 'html_artifact_wait', 'html_artifact_screenshot', 'html_artifact_replace_source', 'html_artifact_patch_element', 'html_artifact_save',
+  'ssh_connect', 'ssh_status', 'ssh_command', 'ssh_read_file', 'ssh_write_file', 'ssh_close', 'run_android_shell',
+  'read_device_info', 'read_battery_status', 'read_app_usage_stats', 'open_usage_access_settings', 'read_notifications', 'open_notification_access_settings', 'read_clipboard', 'read_weather', 'calendar_list_events', 'calendar_create_event', 'calendar_update_event', 'calendar_delete_event', 'find_contacts', 'edit_contact', 'send_sms', 'dial_phone',
+  'request_android_control_permission', 'open_android_input_method_settings', 'show_android_input_method_picker', 'switch_android_input_method_to_ysclaude', 'observe_android_screen', 'tap_android_screen', 'tap_android_relative', 'swipe_android_screen', 'click_android_node', 'scroll_android_node', 'set_android_text', 'set_focused_android_text', 'ime_commit_android_text', 'ime_android_action', 'ime_delete_android_text', 'android_global_action',
+  'start_ai_voice_call', 'hangup_ai_voice_call', 'qq_bot_read_messages', 'qq_bot_send_message', 'wechat_clawbot_read_messages', 'wechat_clawbot_send_message',
+] as const;

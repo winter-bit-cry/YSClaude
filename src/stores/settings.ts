@@ -305,6 +305,10 @@ export interface NativeToolConfig {
   batteryStatusEnabled: boolean;
   appUsageStatsEnabled: boolean;
   calendarEnabled: boolean;
+  notificationReaderEnabled: boolean;
+  clipboardReaderEnabled: boolean;
+  contactsCommunicationEnabled: boolean;
+  weatherEnabled: boolean;
   aiVoiceCallEnabled?: boolean;
   aiVoiceCallHangupEnabled?: boolean;
   accessibilityControlEnabled?: boolean;
@@ -1121,6 +1125,10 @@ export const useSettingsStore = create<SettingsState>()(
         batteryStatusEnabled: false,
         appUsageStatsEnabled: false,
         calendarEnabled: false,
+        notificationReaderEnabled: false,
+        clipboardReaderEnabled: false,
+        contactsCommunicationEnabled: false,
+        weatherEnabled: false,
         aiVoiceCallEnabled: false,
         aiVoiceCallHangupEnabled: false,
         accessibilityControlEnabled: false,
@@ -1771,6 +1779,10 @@ export const useSettingsStore = create<SettingsState>()(
             batteryStatusEnabled: state?.nativeToolConfig?.batteryStatusEnabled ?? false,
             appUsageStatsEnabled: state?.nativeToolConfig?.appUsageStatsEnabled ?? false,
             calendarEnabled: state?.nativeToolConfig?.calendarEnabled ?? false,
+            notificationReaderEnabled: state?.nativeToolConfig?.notificationReaderEnabled ?? false,
+            clipboardReaderEnabled: state?.nativeToolConfig?.clipboardReaderEnabled ?? false,
+            contactsCommunicationEnabled: state?.nativeToolConfig?.contactsCommunicationEnabled ?? false,
+            weatherEnabled: state?.nativeToolConfig?.weatherEnabled ?? false,
             aiVoiceCallEnabled: state?.nativeToolConfig?.aiVoiceCallEnabled ?? false,
             aiVoiceCallHangupEnabled: state?.nativeToolConfig?.aiVoiceCallHangupEnabled ?? false,
             accessibilityControlEnabled: state?.nativeToolConfig?.accessibilityControlEnabled ?? false,
