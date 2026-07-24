@@ -1469,7 +1469,7 @@ async function buildStablePromptMessages(
     console.warn('[Chat] 读取收藏日记失败:', err);
   }
 
-  if (!options.skipStickerInstruction) {
+  if (!options.skipStickerInstruction && (settings.stickerConfig?.aiStickersEnabled ?? true)) {
     const stickerInstruction = buildStickerSystemInstruction(settings.stickerConfig?.assistantStickers);
     if (stickerInstruction) {
       stableSystemSections.push(stickerInstruction);

@@ -520,6 +520,7 @@ export interface CustomSticker {
 
 export interface StickerConfig {
   initialized?: boolean;
+  aiStickersEnabled?: boolean;
   stickerSuggestionsEnabled?: boolean;
   userStickers: CustomSticker[];
   assistantStickers: CustomSticker[];
@@ -539,6 +540,7 @@ export interface AppearanceConfig extends AppearanceThemeSnapshot {
 function createDefaultStickerConfig(): StickerConfig {
   return {
     initialized: true,
+    aiStickersEnabled: true,
     stickerSuggestionsEnabled: true,
     userStickers: [],
     assistantStickers: [],
@@ -557,6 +559,7 @@ function normalizeStickerConfig(config?: StickerConfig): StickerConfig {
   if (!config?.initialized) {
     return {
       initialized: true,
+      aiStickersEnabled: config?.aiStickersEnabled ?? true,
       stickerSuggestionsEnabled: config?.stickerSuggestionsEnabled ?? true,
       userStickers: filterCustomStickers(config?.userStickers),
       assistantStickers: filterCustomStickers(config?.assistantStickers),
@@ -565,6 +568,7 @@ function normalizeStickerConfig(config?: StickerConfig): StickerConfig {
 
   return {
     initialized: true,
+    aiStickersEnabled: config.aiStickersEnabled ?? true,
     stickerSuggestionsEnabled: config.stickerSuggestionsEnabled ?? true,
     userStickers: filterCustomStickers(config.userStickers),
     assistantStickers: filterCustomStickers(config.assistantStickers),
@@ -972,6 +976,7 @@ interface SettingsState {
   updateIncomingLetterOccasion: (id: string, patch: Partial<IncomingLetterOccasion>) => void;
   removeIncomingLetterOccasion: (id: string) => void;
   setStickerSuggestionsEnabled: (enabled: boolean) => void;
+  setAiStickersEnabled: (enabled: boolean) => void;
   addSticker: (owner: StickerOwner, sticker: CustomSticker) => void;
   updateSticker: (owner: StickerOwner, id: string, patch: Partial<Pick<CustomSticker, 'name' | 'uri'>>) => void;
   removeSticker: (owner: StickerOwner, id: string) => void;
@@ -1477,6 +1482,16 @@ export const useSettingsStore = create<SettingsState>()(
             stickerConfig: {
               ...current,
               stickerSuggestionsEnabled: enabled,
+            },
+          };
+        }),
+      setAiStickersEnabled: (enabled) =>
+        set((state) => {
+          const current = normalizeStickerConfig(state.stickerConfig);
+          return {
+            stickerConfig: {
+              ...current,
+              aiStickersEnabled: enabled,
             },
           };
         }),

@@ -80,6 +80,7 @@ export function StickerTab({ showToast, keyboardBottomInset }: StickerTabProps) 
   const styles = useMemo(() => createSettingsStyles(colors), [colors]);
   const {
     stickerConfig,
+    setAiStickersEnabled,
     setStickerSuggestionsEnabled,
     addSticker,
     updateSticker,
@@ -92,6 +93,7 @@ export function StickerTab({ showToast, keyboardBottomInset }: StickerTabProps) 
   const [renamingSticker, setRenamingSticker] = useState<CustomSticker | null>(null);
   const userStickers = stickerConfig?.userStickers || [];
   const assistantStickers = stickerConfig?.assistantStickers || [];
+  const aiStickersEnabled = stickerConfig?.aiStickersEnabled ?? true;
   const stickerSuggestionsEnabled = stickerConfig?.stickerSuggestionsEnabled ?? true;
   const currentStickers = stickerOwner === 'user' ? userStickers : assistantStickers;
 
@@ -243,6 +245,15 @@ export function StickerTab({ showToast, keyboardBottomInset }: StickerTabProps) 
         header="表情包管理"
         footer="表情包全部由用户自定义添加；上传图片或批量导入链接后才会显示。"
       >
+        <SwitchRow
+          label="AI 使用表情包"
+          sublabel="关闭后不再向 AI 的 Prompt 注入表情包使用说明"
+          value={aiStickersEnabled}
+          onValueChange={(value) => {
+            setAiStickersEnabled(value);
+            showToast(value ? 'AI 使用表情包已开启' : 'AI 使用表情包已关闭');
+          }}
+        />
         <SwitchRow
           label="输入时推荐表情包"
           sublabel="在聊天输入框上方显示和文字匹配的「我的表情包」"
