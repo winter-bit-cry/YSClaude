@@ -218,6 +218,7 @@ export default function RootLayout() {
       <StatusBar style={statusBarStyle} />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="index" />
+        <Stack.Screen name="expo-sharing" options={{ animation: 'none' }} />
         <Stack.Screen
           name="history"
           options={{

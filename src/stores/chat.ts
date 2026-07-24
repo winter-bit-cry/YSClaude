@@ -62,8 +62,11 @@ import {
 } from '../services/messageReactions';
 import {
   formatArtifactToken,
+  createConversationArtifactFromSharedFile,
+  deleteConversationArtifactFile,
   listConversationArtifacts,
   pickConversationArtifactFile,
+  type SharedConversationArtifactFile,
 } from '../services/conversationArtifacts';
 import {
   createConversation,
@@ -103,7 +106,10 @@ const FLOATING_STREAM_SOFT_BOUNDARIES = '，,、';
 const FLOATING_STREAM_MIN_SOFT_SEGMENT_CHARS = 18;
 const FLOATING_STREAM_MAX_SEGMENT_CHARS = 72;
 const FLOATING_VISUAL_SEGMENT_INTERVAL_MS = 2000;
-const STREAM_UI_FLUSH_INTERVAL_MS = 48;
+// Markdown/MathJax rendering is substantially more expensive than plain text.
+// Batching stream tokens keeps typing, sending and scrolling responsive while
+// preserving a visually smooth stream (~10 UI updates per second).
+const STREAM_UI_FLUSH_INTERVAL_MS = 96;
 const MAX_IMAGE_GENERATION_REFERENCE_IMAGES = 16;
 const MAX_RUN_COMMAND_PROMPT_CHARS = 4000;
 
@@ -668,6 +674,7 @@ interface ChatState {
   addLocationMessage: (locationAttachment?: LocationAttachment) => Promise<Message | null>;
   addVoiceMessage: (recording: VoiceRecordingInput) => Promise<Message | null>;
   attachConversationFile: () => Promise<ConversationArtifact | null>;
+  addSharedFilesToLatestConversation: (files: SharedConversationArtifactFile[]) => Promise<string>;
   addSharedLinkToLatestConversation: (url: string) => Promise<string>;
   addDailyPaperToLatestConversation: (paper: DailyPaper) => Promise<string>;
   addSystemMessage: (content: string) => Promise<Message | null>;
@@ -2757,6 +2764,62 @@ export const useChatStore = create<ChatState>((set, get) => ({
     await insertMessage(conversationId, userMessage);
     await updateConversation(conversationId, { updatedAt: Date.now() });
     return artifact;
+  },
+
+  // Android 系统分享入口：把外部应用传来的文件写入最新创建的聊天 Artifacts。
+  addSharedFilesToLatestConversation: async (files) => {
+    if (files.length === 0) throw new Error('没有收到可上传的文件');
+
+    const now = Date.now();
+    const settings = useSettingsStore.getState();
+    const config = settings.apiConfigs[settings.activeConfigIndex];
+    const conversations = await getAllConversations();
+    let targetConversation = conversations[0] ?? null;
+
+    if (!targetConversation) {
+      targetConversation = {
+        id: randomUUID(),
+        title: files.length === 1 ? files[0].name : '分享的文件',
+        systemPrompt: settings.systemPrompt,
+        model: config?.model || '',
+        createdAt: now,
+        updatedAt: now,
+      };
+      await createConversation(targetConversation);
+    }
+
+    const artifacts: ConversationArtifact[] = [];
+    try {
+      for (const file of files) {
+        artifacts.push(await createConversationArtifactFromSharedFile(targetConversation.id, file));
+      }
+    } catch (error) {
+      await Promise.all(
+        artifacts.map((artifact) =>
+          deleteConversationArtifactFile(targetConversation.id, artifact.id).catch(() => undefined)
+        )
+      );
+      throw error;
+    }
+
+    const userMessage: Message = {
+      id: randomUUID(),
+      role: 'user',
+      content: artifacts.map((artifact) => `${formatArtifactToken(artifact.id)} ${artifact.name}`).join('\n'),
+      createdAt: Date.now(),
+    };
+    await insertMessage(targetConversation.id, userMessage);
+    await updateConversation(targetConversation.id, { updatedAt: userMessage.createdAt });
+
+    if (get().conversationId === targetConversation.id) {
+      set((state) => ({
+        messages: [...state.messages, userMessage],
+        error: null,
+        openToBottomRequestId: state.openToBottomRequestId + 1,
+      }));
+    }
+
+    return targetConversation.id;
   },
 
   // Android 系统分享入口：只把链接作为普通用户文本消息存入最新创建的聊天。

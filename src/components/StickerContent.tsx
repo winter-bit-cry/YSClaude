@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import type { ImageSourcePropType, StyleProp, TextStyle } from 'react-native';
 import Markdown from '@ronradtke/react-native-markdown-display';
@@ -478,7 +478,7 @@ function GeneratedPictureCard({
   );
 }
 
-export function StickerContent({
+export const StickerContent = React.memo(function StickerContent({
   content,
   variant,
   userTextStyle,
@@ -498,8 +498,15 @@ export function StickerContent({
     () => buildStickerDefinitions(isUser ? stickerConfig?.userStickers : stickerConfig?.assistantStickers),
     [isUser, stickerConfig?.assistantStickers, stickerConfig?.userStickers]
   );
-  const chunks = splitRichContent(content, stickers || fallbackStickers, generatedPics);
-  const containsMarkdown = chunks.some((chunk) => chunk.type === 'text' && hasMarkdownSyntax(chunk.text));
+  const resolvedStickers = stickers || fallbackStickers;
+  const chunks = useMemo(
+    () => splitRichContent(content, resolvedStickers, generatedPics),
+    [content, generatedPics, resolvedStickers]
+  );
+  const containsMarkdown = useMemo(
+    () => chunks.some((chunk) => chunk.type === 'text' && hasMarkdownSyntax(chunk.text)),
+    [chunks]
+  );
 
   return (
     <View style={[styles.container, isUser ? styles.userContainer : styles.assistantContainer, containsMarkdown && styles.markdownContainer]}>
@@ -565,7 +572,7 @@ export function StickerContent({
       })}
     </View>
   );
-}
+});
 
 const createStyles = (colors: ThemeColors) => StyleSheet.create({
   container: {

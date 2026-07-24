@@ -1,3 +1,4 @@
+import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { MarkdownIt } from '@ronradtke/react-native-markdown-display';
 import { MathJaxSvg } from 'react-native-mathjax-html-to-svg';
@@ -113,7 +114,7 @@ function latexPlugin(md: any) {
 
 export const latexMarkdownIt = MarkdownIt({ typographer: true }).use(latexPlugin);
 
-export function LatexMarkdownNode({
+export const LatexMarkdownNode = React.memo(function LatexMarkdownNode({
   content,
   color,
   fontSize,
@@ -132,7 +133,7 @@ export function LatexMarkdownNode({
       </MathJaxSvg>
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   inline: {

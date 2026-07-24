@@ -30,7 +30,7 @@ import {
 import { MarkdownCodeBlock } from './MarkdownCodeBlock';
 import { LatexMarkdownNode, latexMarkdownIt } from './LatexMarkdown';
 import { isMessageFavorite, setMessageFavorite } from '../db/operations';
-import { buildReactionMap } from '../services/messageReactions';
+import { buildReactionMap, type MessageReactionActor, type MessageReactionEvent } from '../services/messageReactions';
 import {
   DEFAULT_NEGATIVE_REACTION_EMOJIS,
   DEFAULT_POSITIVE_REACTION_EMOJIS,
@@ -85,8 +85,23 @@ function createMarkdownDividerStyle(textColor: string, compact = false) {
 function withoutFontWeight(style?: TextStyle): TextStyle | undefined {
   const flatStyle = StyleSheet.flatten(style);
   if (!flatStyle) return undefined;
-  const { fontFamily: _fontFamily, fontWeight: _fontWeight, ...rest } = flatStyle;
+  const { fontWeight: _fontWeight, ...rest } = flatStyle;
   return rest;
+}
+
+let cachedReactionMessages: Message[] | null = null;
+let cachedReactionMap = new Map<string, MessageReactionEvent>();
+
+function findMessageReactionEmoji(
+  messages: Message[],
+  targetMessageId: string,
+  reactor: MessageReactionActor
+): string {
+  if (cachedReactionMessages !== messages) {
+    cachedReactionMessages = messages;
+    cachedReactionMap = buildReactionMap(messages);
+  }
+  return cachedReactionMap.get(`${targetMessageId}:${reactor}`)?.emoji || '';
 }
 
 function buildVoiceEditText(content: string, voice?: VoiceAttachment): string {
@@ -419,7 +434,7 @@ function getThinkingPreview(thinking: string): string {
 
 function ThinkingBlock({ thinking }: { thinking: string }) {
   const [expanded, setExpanded] = useState(false);
-  const thinkingRules = createMarkdownRules();
+  const thinkingRules = useMemo(() => createMarkdownRules(), []);
   const preview = getThinkingPreview(thinking);
   return (
     <View style={styles.thinkingWrap}>
@@ -1031,7 +1046,6 @@ export const ChatBubble = React.memo(function ChatBubble({
   const addHiddenRange = useChatStore((state) => state.addHiddenRange);
   const restoreHiddenRange = useChatStore((state) => state.restoreHiddenRange);
   const setMessageHidden = useChatStore((state) => state.setMessageHidden);
-  const allMessages = useChatStore((state) => state.messages);
   const setMessageReaction = useChatStore((state) => state.setMessageReaction);
   const nativeToolConfig = useSettingsStore((state) => state.nativeToolConfig);
   const positiveReactions = normalizeReactionEmojiList(
@@ -1042,9 +1056,15 @@ export const ChatBubble = React.memo(function ChatBubble({
     nativeToolConfig?.negativeReactionEmojis,
     DEFAULT_NEGATIVE_REACTION_EMOJIS
   );
-  const reactionMap = useMemo(() => buildReactionMap(allMessages), [allMessages]);
-  const userReaction = reactionMap.get(`${message.id}:user`);
-  const assistantReaction = reactionMap.get(`${message.id}:assistant`);
+  // Subscribe only to this bubble's primitive reaction values. Subscribing to
+  // the whole messages array would rerender every historical Markdown/LaTeX
+  // bubble for every streamed token in the latest response.
+  const userReactionEmoji = useChatStore((state) =>
+    findMessageReactionEmoji(state.messages, message.id, 'user')
+  );
+  const assistantReactionEmoji = useChatStore((state) =>
+    findMessageReactionEmoji(state.messages, message.id, 'assistant')
+  );
   const regenerate = useChatStore((state) => state.regenerate);
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [editText, setEditText] = useState('');
@@ -1068,7 +1088,10 @@ export const ChatBubble = React.memo(function ChatBubble({
   const bubbleRef = useRef<View>(null);
   const voicePlayerRef = useRef<ReturnType<typeof createAudioPlayer> | null>(null);
   const voicePlayerSubscriptionRef = useRef<{ remove: () => void } | null>(null);
-  const markdownRules = createMarkdownRules({ messageId: message.id });
+  const markdownRules = useMemo(
+    () => createMarkdownRules({ messageId: message.id }),
+    [message.id]
+  );
   const handleBubbleTap = useCallback(() => {
     onBubblePress?.(message.id);
   }, [message.id, onBubblePress]);
@@ -1377,9 +1400,9 @@ export const ChatBubble = React.memo(function ChatBubble({
           cssStyle('.user-message', '.chat-user-message', '.chat-user-column'),
         ]}
       >
-          {assistantReaction && (
+          {assistantReactionEmoji && (
             <View pointerEvents="none" style={styles.userReactionBadge}>
-              <Text style={styles.reactionBadgeEmoji}>{assistantReaction.emoji}</Text>
+              <Text style={styles.reactionBadgeEmoji}>{assistantReactionEmoji}</Text>
             </View>
           )}
           {avatarHeader}
@@ -2134,11 +2157,11 @@ export const ChatBubble = React.memo(function ChatBubble({
                   }}
                   disabled={(i === 3 || i === 4) && !isLastAssistant}
                 >
-                  {userReaction && (
-                    (i === 3 && positiveReactions.includes(userReaction.emoji)) ||
-                    (i === 4 && negativeReactions.includes(userReaction.emoji))
+                  {userReactionEmoji && (
+                    (i === 3 && positiveReactions.includes(userReactionEmoji)) ||
+                    (i === 4 && negativeReactions.includes(userReactionEmoji))
                   ) ? (
-                    <Text style={styles.reactionActionEmoji}>{userReaction.emoji}</Text>
+                    <Text style={styles.reactionActionEmoji}>{userReactionEmoji}</Text>
                   ) : (
                     <Image
                       source={i === 2 && isTTSPlaying ? chatTTSPlayingIcon : icon}
@@ -3246,8 +3269,18 @@ function createMarkdownListStyles(
   textColor: string,
   fontSize: number,
   lineHeight: number,
-  compact = false
+  compact = false,
+  textStyle?: TextStyle
 ) {
+  const resolvedTextStyle = StyleSheet.flatten(textStyle) || {};
+  const resolvedFontSize = resolvedTextStyle.fontSize ?? fontSize;
+  const resolvedLineHeight = resolvedTextStyle.lineHeight ?? lineHeight;
+  const listTypography = {
+    ...resolvedTextStyle,
+    color: resolvedTextStyle.color ?? textColor,
+    fontSize: resolvedFontSize,
+    lineHeight: resolvedLineHeight,
+  };
   const verticalMargin = compact ? 1 : 3;
   const listContainerStyle = {
     width: '100%' as const,
@@ -3264,9 +3297,7 @@ function createMarkdownListStyles(
     minWidth: 0,
     flexShrink: 1,
     marginVertical: verticalMargin,
-    color: textColor,
-    fontSize,
-    lineHeight,
+    ...listTypography,
   };
   const bulletIconStyle = {
     width: 18,
@@ -3274,9 +3305,7 @@ function createMarkdownListStyles(
     flexShrink: 0,
     marginLeft: 0,
     marginRight: 6,
-    color: textColor,
-    fontSize,
-    lineHeight,
+    ...listTypography,
     textAlign: 'center' as const,
   };
   const orderedIconStyle = {
@@ -3284,9 +3313,7 @@ function createMarkdownListStyles(
     flexShrink: 0,
     marginLeft: 0,
     marginRight: 6,
-    color: textColor,
-    fontSize,
-    lineHeight,
+    ...listTypography,
     textAlign: 'right' as const,
   };
   const contentStyle = {
@@ -3319,6 +3346,9 @@ const createUserMarkdownStyles = (
   customTextStyle?: TextStyle
 ) => {
   const customTextStyleWithoutFontWeight = withoutFontWeight(customTextStyle);
+  const resolvedTextColor = typeof customTextStyleWithoutFontWeight?.color === 'string'
+    ? customTextStyleWithoutFontWeight.color
+    : textColor;
 
   return StyleSheet.create({
   body: {
@@ -3326,7 +3356,7 @@ const createUserMarkdownStyles = (
     maxWidth: '100%',
     minWidth: 0,
     fontSize,
-    color: textColor,
+    color: resolvedTextColor,
     lineHeight: Math.round(fontSize * 1.38),
     fontFamily: fonts.serif,
     fontWeight: 'normal',
@@ -3336,17 +3366,17 @@ const createUserMarkdownStyles = (
     marginTop: 0,
     marginBottom: 0,
   },
-  hr: createMarkdownDividerStyle(textColor, true),
+  hr: createMarkdownDividerStyle(resolvedTextColor, true),
   strong: {
     fontFamily: fonts.serifStrong,
     fontWeight: fontWeights.serifStrong,
-    color: textColor,
+    color: resolvedTextColor,
   },
   markdownStrongText: {
     fontStyle: 'normal',
   },
   em: {
-    color: textColor,
+    color: resolvedTextColor,
   },
   code_inline: {
     backgroundColor: withAlpha(textColor, 0.1),
@@ -3357,8 +3387,17 @@ const createUserMarkdownStyles = (
     fontSize: Math.max(12, fontSize - 1),
     fontFamily: fonts.mono,
   },
-  ...createMarkdownListStyles(textColor, fontSize, Math.round(fontSize * 1.38), true),
-  ...createMarkdownTableStyles(colors, textColor, {
+  ...createMarkdownListStyles(
+    resolvedTextColor,
+    fontSize,
+    Math.round(fontSize * 1.38),
+    true,
+    {
+      fontFamily: fonts.serif,
+      ...customTextStyleWithoutFontWeight,
+    }
+  ),
+  ...createMarkdownTableStyles(colors, resolvedTextColor, {
     cellMinWidth: 128,
     cellTextStyle: customTextStyleWithoutFontWeight,
     marginVertical: 8,
@@ -3379,6 +3418,9 @@ const createMarkdownStyles = (
   compactBubble = false
 ) => {
   const customTextStyleWithoutFontWeight = withoutFontWeight(customTextStyle);
+  const resolvedTextColor = typeof customTextStyleWithoutFontWeight?.color === 'string'
+    ? customTextStyleWithoutFontWeight.color
+    : textColor;
   const strokeStyle = strokeWidth > 0
     ? {
         textShadowColor: strokeColor,
@@ -3387,13 +3429,23 @@ const createMarkdownStyles = (
       }
     : {};
   const lineHeight = Math.round(fontSize * (compactBubble ? 1.38 : 1.5));
-  const listStyles = createMarkdownListStyles(textColor, fontSize, lineHeight, compactBubble);
+  const listStyles = createMarkdownListStyles(
+    resolvedTextColor,
+    fontSize,
+    lineHeight,
+    compactBubble,
+    {
+      fontFamily: fonts.serif,
+      ...strokeStyle,
+      ...customTextStyleWithoutFontWeight,
+    }
+  );
 
   return StyleSheet.create({
   body: {
     width: '100%',
     fontSize,
-    color: textColor,
+    color: resolvedTextColor,
     lineHeight,
     fontFamily: fonts.serif,
     fontWeight: 'normal',
@@ -3401,17 +3453,17 @@ const createMarkdownStyles = (
     ...customTextStyleWithoutFontWeight,
   },
   paragraph: compactBubble ? { marginTop: 0, marginBottom: 0 } : {},
-  hr: createMarkdownDividerStyle(textColor, compactBubble),
+  hr: createMarkdownDividerStyle(resolvedTextColor, compactBubble),
   code_inline: {
     backgroundColor: colors.surface, color: colors.primary,
     paddingHorizontal: 5, paddingVertical: 2, borderRadius: 4, fontSize: 14, fontFamily: fonts.mono,
   },
   fence: { backgroundColor: colors.codeBlock, borderRadius: 10, padding: 14, marginVertical: 10 },
   code_block: { color: colors.codeText, fontSize: 13, fontFamily: fonts.mono },
-  heading1: { fontSize: 22, fontFamily: fonts.serifBold, fontWeight: fontWeights.serifBold, marginVertical: 8, color: textColor, ...strokeStyle },
-  heading2: { fontSize: 18, fontFamily: fonts.serifBold, fontWeight: fontWeights.serifBold, marginVertical: 6, color: textColor, ...strokeStyle },
-  heading3: { fontSize: 16, fontFamily: fonts.serifBold, fontWeight: fontWeights.serifBold, marginVertical: 4, color: textColor, ...strokeStyle },
-  strong: { fontFamily: fonts.serifStrong, fontWeight: fontWeights.serifStrong, color: textColor, ...strokeStyle },
+  heading1: { fontSize: 22, fontFamily: fonts.serifBold, fontWeight: fontWeights.serifBold, marginVertical: 8, color: resolvedTextColor, ...strokeStyle },
+  heading2: { fontSize: 18, fontFamily: fonts.serifBold, fontWeight: fontWeights.serifBold, marginVertical: 6, color: resolvedTextColor, ...strokeStyle },
+  heading3: { fontSize: 16, fontFamily: fonts.serifBold, fontWeight: fontWeights.serifBold, marginVertical: 4, color: resolvedTextColor, ...strokeStyle },
+  strong: { fontFamily: fonts.serifStrong, fontWeight: fontWeights.serifStrong, color: resolvedTextColor, ...strokeStyle },
   markdownStrongText: { fontStyle: 'normal' },
   blockquote: {
     borderLeftWidth: 3, borderLeftColor: colors.primary, paddingLeft: 12, marginVertical: 8, opacity: 0.8,
@@ -3430,7 +3482,7 @@ const createMarkdownStyles = (
     ...strokeStyle,
   },
   link: { color: colors.primary },
-  ...createMarkdownTableStyles(colors, textColor, { cellTextStyle: strokeStyle }),
+  ...createMarkdownTableStyles(colors, resolvedTextColor, { cellTextStyle: strokeStyle }),
   });
 };
 

@@ -81,6 +81,39 @@ function isSupportedConversationArtifact(name: string, mimeType?: string): boole
   return mime.startsWith('text/') || mime.includes('json') || mime.includes('javascript') || mime.includes('typescript');
 }
 
+export interface SharedConversationArtifactFile {
+  uri: string;
+  name: string;
+  mimeType?: string;
+  size?: number | null;
+}
+
+export async function createConversationArtifactFromSharedFile(
+  conversationId: string,
+  sharedFile: SharedConversationArtifactFile
+): Promise<ConversationArtifact> {
+  if (!isSupportedConversationArtifact(sharedFile.name, sharedFile.mimeType)) {
+    throw new Error(`暂不支持把“${sharedFile.name}”作为 Artifact 上传；目前仅支持文本、Markdown、HTML、CSS、JS/TS、JSON 和 CSV 文件`);
+  }
+  if (typeof sharedFile.size === 'number' && sharedFile.size > MAX_TEXT_FILE_BYTES) {
+    throw new Error(`“${sharedFile.name}”超过 512KB，无法上传到 Artifacts`);
+  }
+
+  const file = new File(sharedFile.uri);
+  const content = await file.text();
+  if (byteSizeOf(content) > MAX_TEXT_FILE_BYTES) {
+    throw new Error(`“${sharedFile.name}”超过 512KB，无法上传到 Artifacts`);
+  }
+
+  return await createConversationArtifactFromContent({
+    conversationId,
+    name: sharedFile.name,
+    mimeType: sharedFile.mimeType,
+    content,
+    createdBy: 'user',
+  });
+}
+
 export function formatArtifactToken(artifactId: string): string {
   return `[File:${artifactId}]`;
 }

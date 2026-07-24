@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react';
-import { Platform } from 'react-native';
+import { Alert, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useIncomingShare } from 'expo-sharing';
 import type { ResolvedSharePayload, SharePayload } from 'expo-sharing';
@@ -39,6 +39,9 @@ export function IncomingShareHandler() {
   const addSharedLinkToLatestConversation = useChatStore(
     (state) => state.addSharedLinkToLatestConversation
   );
+  const addSharedFilesToLatestConversation = useChatStore(
+    (state) => state.addSharedFilesToLatestConversation
+  );
   const loadConversation = useChatStore((state) => state.loadConversation);
   const {
     sharedPayloads,
@@ -57,12 +60,24 @@ export function IncomingShareHandler() {
     if (!settingsHydrated || sharedPayloads.length === 0) return;
     if (handledSignatureRef.current === signature) return;
 
-    const url = extractSharedHttpUrl(sharedPayloads, resolvedSharedPayloads);
-    if (!url) {
-      if (!isResolving) {
-        handledSignatureRef.current = signature;
-        clearSharedPayloads();
-      }
+    if (isResolving) return;
+
+    const files = resolvedSharedPayloads
+      .filter((payload) => payload.contentUri && payload.contentType !== 'website' && payload.contentType !== 'text')
+      .map((payload, index) => ({
+        uri: payload.contentUri!,
+        name: payload.originalName || `shared-file-${index + 1}`,
+        mimeType: payload.contentMimeType || payload.mimeType,
+        size: payload.contentSize,
+      }));
+    const url = files.length === 0
+      ? extractSharedHttpUrl(sharedPayloads, resolvedSharedPayloads)
+      : null;
+
+    if (files.length === 0 && !url) {
+      handledSignatureRef.current = signature;
+      clearSharedPayloads();
+      router.replace('/');
       return;
     }
 
@@ -70,21 +85,26 @@ export function IncomingShareHandler() {
     let cancelled = false;
 
     (async () => {
-      const conversationId = await addSharedLinkToLatestConversation(url);
+      const conversationId = files.length > 0
+        ? await addSharedFilesToLatestConversation(files)
+        : await addSharedLinkToLatestConversation(url!);
       if (cancelled) return;
       await loadConversation(conversationId);
       if (cancelled) return;
       router.replace('/');
       clearSharedPayloads();
     })().catch((error) => {
-      console.warn('[share] failed to save incoming link', error);
+      console.warn('[share] failed to save incoming content', error);
+      Alert.alert('文件转发失败', error instanceof Error ? error.message : '无法读取分享的文件');
       clearSharedPayloads();
+      router.replace('/');
     });
 
     return () => {
       cancelled = true;
     };
   }, [
+    addSharedFilesToLatestConversation,
     addSharedLinkToLatestConversation,
     clearSharedPayloads,
     isResolving,

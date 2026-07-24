@@ -91,11 +91,13 @@
             "enabled": true,
             "singleShareMimeTypes": [
               "text/plain",
-              "text/*"
+              "text/*",
+              "*/*"
             ],
             "multipleShareMimeTypes": [
               "text/plain",
-              "text/*"
+              "text/*",
+              "*/*"
             ]
           }
         }
