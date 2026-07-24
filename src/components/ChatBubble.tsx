@@ -986,7 +986,7 @@ export const ChatBubble = React.memo(function ChatBubble({
   const messageAvatarsVisible = !!appearanceConfig?.messageAvatarsVisible;
   const messageAvatarLayout = appearanceConfig?.messageAvatarLayout === 'side' ? 'side' : 'header';
   const sideAvatarsVisible = messageAvatarsVisible && messageAvatarLayout === 'side';
-  const sideAvatarShown = sideAvatarsVisible && showSideAvatar && !(isUser && appearanceConfig?.hideUserSideAvatar);
+  const sideAvatarShown = showSideAvatar && !(isUser && appearanceConfig?.hideUserSideAvatar);
   const headerAvatarsVisible = messageAvatarsVisible && messageAvatarLayout === 'header';
   const messageMetaVisible = appearanceConfig?.messageMetaVisible ?? true;
   const messageAvatarRadius = numberOrDefault(appearanceConfig?.messageAvatarRadius, 18, 0, 20);
@@ -1170,7 +1170,7 @@ export const ChatBubble = React.memo(function ChatBubble({
       </View>
     )
   ) : null;
-  const sideAvatarNode = sideAvatarShown ? (
+  const renderSideAvatarSlot = (displayAvatar: boolean) => sideAvatarsVisible ? (
     <View
       style={[
         styles.messageSideAvatarSlot,
@@ -1181,9 +1181,10 @@ export const ChatBubble = React.memo(function ChatBubble({
         ),
       ]}
     >
-      {avatarNode}
+      {displayAvatar ? avatarNode : null}
     </View>
   ) : null;
+  const sideAvatarNode = renderSideAvatarSlot(sideAvatarShown);
   const avatarHeader = headerAvatarsVisible && showAvatarHeader ? (
     <View
       style={[
@@ -1201,7 +1202,7 @@ export const ChatBubble = React.memo(function ChatBubble({
       {isUser && avatarNode}
     </View>
   ) : null;
-  const messageAvailableWidth = SCREEN_WIDTH - 32 - (sideAvatarShown ? MESSAGE_AVATAR_SIZE + 8 : 0);
+  const messageAvailableWidth = SCREEN_WIDTH - 32 - (sideAvatarsVisible ? MESSAGE_AVATAR_SIZE + 8 : 0);
 
   if (message.role === 'system') {
     return (
@@ -1550,7 +1551,7 @@ export const ChatBubble = React.memo(function ChatBubble({
 
     return (
       <View style={[styles.userRow, cssStyle('.user-row', '.chat-user-row'), isHidden && styles.hiddenRow]}>
-        {sideAvatarShown ? (
+        {sideAvatarsVisible ? (
           <View
             style={[
               styles.userSideMessageRow,
@@ -1829,7 +1830,7 @@ export const ChatBubble = React.memo(function ChatBubble({
   ];
   const assistantContentStyle = [
     styles.assistantContent,
-    sideAvatarShown && styles.assistantSideContent,
+    sideAvatarsVisible && styles.assistantSideContent,
     withoutAppearanceGlassProps(customCssStyles.assistantBubble),
     cssStyle('.assistant-content', '.chat-assistant-content'),
   ];
@@ -1856,8 +1857,8 @@ export const ChatBubble = React.memo(function ChatBubble({
     ];
   }
 
-  function renderAssistantSideRow(key: string, node: React.ReactNode) {
-    if (!sideAvatarShown) return node;
+  function renderAssistantSideRow(key: string, node: React.ReactNode, displayAvatar = sideAvatarShown) {
+    if (!sideAvatarsVisible) return node;
     return (
       <View
         key={key}
@@ -1866,7 +1867,7 @@ export const ChatBubble = React.memo(function ChatBubble({
           cssStyle('.message-avatar-side-row', '.assistant-avatar-side-row'),
         ]}
       >
-        {sideAvatarNode}
+        {displayAvatar ? sideAvatarNode : renderSideAvatarSlot(false)}
         {node}
       </View>
     );
@@ -1905,7 +1906,11 @@ export const ChatBubble = React.memo(function ChatBubble({
         >
           {assistantBubbleFlowParts.length > 0 ? assistantBubbleFlowParts.map((part, partIndex) => {
             if (part.type === 'tool') {
-              return renderToolInvocation(part.invocation, part.invocationIndex);
+              return renderAssistantSideRow(
+                part.key,
+                renderToolInvocation(part.invocation, part.invocationIndex),
+                false
+              );
             }
 
             const pictureCount = countPicTokens(part.content);
@@ -1913,7 +1918,7 @@ export const ChatBubble = React.memo(function ChatBubble({
             const partShowsBubbleTail = showBubbleTail && partIndex === lastAssistantBubblePartIndex;
             const bubbleNode = (
               <Pressable
-                key={sideAvatarShown ? undefined : part.key}
+                key={sideAvatarsVisible ? undefined : part.key}
                 style={getAssistantBubbleStyle(part.content)}
                 onPress={handleBubbleTap}
                 onLongPress={handleAssistantBubbleLongPress}
@@ -1942,7 +1947,7 @@ export const ChatBubble = React.memo(function ChatBubble({
                 />
               </Pressable>
             );
-            return sideAvatarShown ? renderAssistantSideRow(part.key, bubbleNode) : bubbleNode;
+            return sideAvatarsVisible ? renderAssistantSideRow(part.key, bubbleNode) : bubbleNode;
           }) : (
             renderAssistantSideRow(
               'assistant-empty',
