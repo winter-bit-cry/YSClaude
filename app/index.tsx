@@ -7,6 +7,7 @@ import {
   Text,
   TextInput,
   Pressable,
+  Platform,
   StyleSheet,
   Image,
   ActivityIndicator,
@@ -16,6 +17,7 @@ import {
   type NativeSyntheticEvent,
   type LayoutChangeEvent,
   type ListRenderItem,
+  type ViewToken,
   type AppStateStatus,
   type ImageStyle,
   type ViewStyle,
@@ -432,6 +434,13 @@ export default function ChatScreen() {
   const [dateActionKey, setDateActionKey] = useState<string | null>(null);
   const [dismissedDividers, setDismissedDividers] = useState<Set<string>>(new Set());
   const [visibleFloorMessageId, setVisibleFloorMessageId] = useState<string | null>(null);
+  const [visibleBubbleIds, setVisibleBubbleIds] = useState<Set<string>>(() => new Set());
+  const handleViewableMessagesChanged = useRef(
+    ({ viewableItems }: { viewableItems: ViewToken<Message>[] }) => {
+      setVisibleBubbleIds(new Set(viewableItems.map(({ item }) => item.id)));
+    }
+  ).current;
+  const messageViewabilityConfig = useRef({ itemVisiblePercentThreshold: 1 }).current;
   const [inputBarHeight, setInputBarHeight] = useState(INPUT_BAR_FALLBACK_HEIGHT);
   const [enteringMessageIds, setEnteringMessageIds] = useState<Set<string>>(new Set());
   const [isInitialPositioning, setIsInitialPositioning] = useState(false);
@@ -503,7 +512,18 @@ export default function ChatScreen() {
   }
 
   function topBarButtonStyle(iconKey: TopBarIconKey) {
-    return cssStyle('.top-bar-button', `.top-bar-${iconKey}-button`);
+    return withoutAppearanceGlassProps(cssStyle('.top-bar-button', `.top-bar-${iconKey}-button`));
+  }
+
+  function renderTopBarButtonBlur(iconKey: TopBarIconKey) {
+    const style = cssStyle('.top-bar-button', `.top-bar-${iconKey}-button`);
+    return (
+      <AppearanceBlurView
+        config={getAppearanceGlassConfig(style)}
+        blurTarget={appearanceBlurTargetRef}
+        style={StyleSheet.absoluteFill}
+      />
+    );
   }
   const [flushingRemoteSnapshot, setFlushingRemoteSnapshot] = useState(false);
   const showRemoteInboxLoading = !!conversationId
@@ -1345,6 +1365,7 @@ export default function ChatScreen() {
           <ChatMessageEntrance animate={enteringMessageIds.has(item.id)}>
             <ChatBubble
               blurTarget={appearanceBlurTargetRef}
+              blurEnabled={visibleBubbleIds.has(item.id)}
               message={item}
               previousUserMessage={prev?.role === 'user' ? prev : null}
               isHidden={isHidden}
@@ -1368,7 +1389,7 @@ export default function ChatScreen() {
         </>
       );
     },
-    [appearanceConfig?.sideAvatarDisplayMode, dismissedDividers, enteringMessageIds, floorMap, handleBubblePress, handleToolDetailScrollActiveChange, hiddenFloorSet, hiddenMessageIdSet, latestAssistantMessageId, visibleMessages, visibleFloorMessageId]
+    [appearanceConfig?.sideAvatarDisplayMode, dismissedDividers, enteringMessageIds, floorMap, handleBubblePress, handleToolDetailScrollActiveChange, hiddenFloorSet, hiddenMessageIdSet, latestAssistantMessageId, visibleBubbleIds, visibleMessages, visibleFloorMessageId]
   );
 
   const renderOlderMessagesHeader = useCallback(() => {
@@ -1467,6 +1488,8 @@ export default function ChatScreen() {
       onLayout={handleListLayout}
       onContentSizeChange={handleContentSizeChange}
       onScroll={handleScroll}
+      onViewableItemsChanged={handleViewableMessagesChanged}
+      viewabilityConfig={messageViewabilityConfig}
       scrollEventThrottle={16}
       onEndReached={handleEndReached}
       onEndReachedThreshold={0.2}
@@ -1475,7 +1498,7 @@ export default function ChatScreen() {
       maxToRenderPerBatch={8}
       updateCellsBatchingPeriod={32}
       windowSize={9}
-      removeClippedSubviews={false}
+      removeClippedSubviews={Platform.OS === 'android'}
       maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
       onScrollToIndexFailed={({ index, averageItemLength }) => {
         if (!pendingScrollMessageIdRef.current) return;
@@ -1557,34 +1580,47 @@ export default function ChatScreen() {
         )}
         <View style={[styles.headerLeftGroup, topBarResponsiveMetrics.groupStyle, topBarLeftCssStyle]}>
           <Pressable style={[styles.headerButton, topBarResponsiveMetrics.buttonStyle, topBarButtonStyle('history')]} onPress={() => router.push('/history')}>
+            {renderTopBarButtonBlur('history')}
             {!topBarIconsHidden && !topBarIconHidden.history && renderTopBarIcon('history')}
           </Pressable>
           <Pressable style={[styles.headerButton, topBarResponsiveMetrics.buttonStyle, topBarButtonStyle('reading')]} onPress={() => router.push('/reading')}>
+            {renderTopBarButtonBlur('reading')}
             {!topBarIconsHidden && !topBarIconHidden.reading && renderTopBarIcon('reading')}
           </Pressable>
           <Pressable style={[styles.headerButton, topBarResponsiveMetrics.buttonStyle, topBarButtonStyle('web')]} onPress={showWebViewPanel}>
+            {renderTopBarButtonBlur('web')}
             {!topBarIconsHidden && !topBarIconHidden.web && renderTopBarIcon('web')}
           </Pressable>
           <Pressable style={[styles.headerButton, topBarResponsiveMetrics.buttonStyle, topBarButtonStyle('accounting')]} onPress={() => router.push('/accounting')}>
+            {renderTopBarButtonBlur('accounting')}
             {!topBarIconsHidden && !topBarIconHidden.accounting && renderTopBarIcon('accounting')}
           </Pressable>
         </View>
         <View style={[styles.headerRightGroup, topBarResponsiveMetrics.groupStyle, topBarRightCssStyle]}>
           <Pressable style={[styles.headerButton, topBarResponsiveMetrics.buttonStyle, topBarButtonStyle('focus')]} onPress={() => router.push('/focus')}>
+            {renderTopBarButtonBlur('focus')}
             {!topBarIconsHidden && !topBarIconHidden.focus && renderTopBarIcon('focus')}
           </Pressable>
           <Pressable style={[styles.headerButton, topBarResponsiveMetrics.buttonStyle, topBarButtonStyle('calendar')]} onPress={() => router.push('/calendar')}>
+            {renderTopBarButtonBlur('calendar')}
             {!topBarIconsHidden && !topBarIconHidden.calendar && renderTopBarIcon('calendar')}
           </Pressable>
           <Pressable style={[styles.headerButton, topBarResponsiveMetrics.buttonStyle, topBarButtonStyle('music')]} onPress={() => router.push('/music')}>
+            {renderTopBarButtonBlur('music')}
             {!topBarIconsHidden && !topBarIconHidden.music && renderTopBarIcon('music')}
           </Pressable>
           <Pressable style={[styles.headerButton, topBarResponsiveMetrics.buttonStyle, topBarButtonStyle('settings')]} onPress={() => router.push('/settings')}>
+            {renderTopBarButtonBlur('settings')}
             {!topBarIconsHidden && !topBarIconHidden.settings && renderTopBarIcon('settings')}
           </Pressable>
         </View>
         <View pointerEvents="box-none" style={[styles.headerCenterSlot, topBarCenterCssStyle]}>
-          <Pressable style={[styles.headerCenterButton, topBarCenterButtonCssStyle]} onPress={openClawdStatus}>
+          <Pressable style={[styles.headerCenterButton, withoutAppearanceGlassProps(topBarCenterButtonCssStyle)]} onPress={openClawdStatus}>
+            <AppearanceBlurView
+              config={getAppearanceGlassConfig(topBarCenterButtonCssStyle)}
+              blurTarget={appearanceBlurTargetRef}
+              style={StyleSheet.absoluteFill}
+            />
             {!topBarIconsHidden && !topBarIconHidden.clawd && (
               <Image
                 source={topBarIconUris.clawd ? { uri: topBarIconUris.clawd } : require('../assets/clawd.png')}
@@ -2036,6 +2072,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     borderRadius: 8,
+    overflow: 'hidden',
   },
   headerLeftGroup: {
     position: 'absolute',
@@ -2070,6 +2107,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     borderRadius: 8,
+    overflow: 'hidden',
   },
   topBarIconSlot: {
     justifyContent: 'center',

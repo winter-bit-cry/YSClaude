@@ -364,6 +364,14 @@ export function ChatInput({
     ...(cssStyle('.chat-input', '.input-container', '.input-bar') || {}),
   };
   const inputBarGlass = getAppearanceGlassConfig(inputBarCssStyle);
+  const inputButtonStyle = (selector: string) => withoutAppearanceGlassProps(cssStyle(selector));
+  const renderInputButtonBlur = (selector: string) => (
+    <AppearanceBlurView
+      config={getAppearanceGlassConfig(cssStyle(selector))}
+      blurTarget={blurTarget}
+      style={StyleSheet.absoluteFill}
+    />
+  );
   const inputPlaceholderTextColor = getAppearancePlaceholderTextColor(inputPlaceholderStyle, colors.conversationMuted);
   const current = apiConfigs[activeConfigIndex];
   const currentModel = current?.name || current?.model || '未配置';
@@ -1272,7 +1280,8 @@ export function ChatInput({
         )}
         {isCompactInput ? (
           <View style={[styles.compactRow, cssStyle('.input-compact-row')]}>
-            <Pressable style={[styles.optionsButton, { backgroundColor: inputControlBackgroundColor }, cssStyle('.options-button')]} onPress={handleOptionsButtonPress}>
+            <Pressable style={[styles.optionsButton, { backgroundColor: inputControlBackgroundColor }, inputButtonStyle('.options-button')]} onPress={handleOptionsButtonPress}>
+              {renderInputButtonBlur('.options-button')}
               <Image
                 source={inputIconUris.options ? { uri: inputIconUris.options } : require('../../assets/optionsbutton.png')}
                 style={[styles.optionsImage, usesFallbackInputIcon('options') && { tintColor: colors.inputControlIcon }]}
@@ -1332,13 +1341,14 @@ export function ChatInput({
             </Pressable>
             <View style={[styles.rightButtons, cssStyle('.input-actions')]}>
               <Pressable
-                style={[styles.stickerButton, { backgroundColor: inputControlBackgroundColor }, cssStyle('.sticker-button')]}
+                style={[styles.stickerButton, { backgroundColor: inputControlBackgroundColor }, inputButtonStyle('.sticker-button')]}
                 delayLongPress={320}
                 disabled={disabled || isStreaming}
                 onPress={handleStickerButtonPress}
                 onLongPress={() => void startVoiceRecording()}
                 onPressOut={() => void stopVoiceRecording()}
               >
+                {renderInputButtonBlur('.sticker-button')}
                 <Image
                   source={inputIconUris.sticker ? { uri: inputIconUris.sticker } : require('../../assets/sticker.png')}
                   style={[styles.stickerButtonImage, usesFallbackInputIcon('sticker') && { tintColor: colors.inputControlIcon }]}
@@ -1350,12 +1360,13 @@ export function ChatInput({
                   styles.sendButton,
                   responseButtonStateStyle,
                   styles.responseButtonAnimationAnchor,
-                  cssStyle('.send-button'),
+                  inputButtonStyle('.send-button'),
                   { transform: [{ scale: responseButtonScale }] },
                 ]}
                 onPressIn={() => void handleGetResponsePressIn()}
                 onPress={() => void handleGetResponsePress()}
               >
+                {renderInputButtonBlur('.send-button')}
                 {renderResponseIcon()}
               </AnimatedPressable>
             </View>
@@ -1397,7 +1408,8 @@ export function ChatInput({
               />
             </Pressable>
             <View style={[styles.toolbar, cssStyle('.input-toolbar')]}>
-          <Pressable style={[styles.optionsButton, { backgroundColor: inputControlBackgroundColor }, cssStyle('.options-button')]} onPress={handleOptionsButtonPress}>
+          <Pressable style={[styles.optionsButton, { backgroundColor: inputControlBackgroundColor }, inputButtonStyle('.options-button')]} onPress={handleOptionsButtonPress}>
+            {renderInputButtonBlur('.options-button')}
             <Image
               source={inputIconUris.options ? { uri: inputIconUris.options } : require('../../assets/optionsbutton.png')}
               style={[styles.optionsImage, usesFallbackInputIcon('options') && { tintColor: colors.inputControlIcon }]}
@@ -1405,19 +1417,21 @@ export function ChatInput({
             />
           </Pressable>
 
-          <Pressable style={[styles.modelPill, { backgroundColor: inputControlBackgroundColor }, cssStyle('.model-pill')]} onPress={onModelPress}>
+          <Pressable style={[styles.modelPill, { backgroundColor: inputControlBackgroundColor }, inputButtonStyle('.model-pill')]} onPress={onModelPress}>
+            {renderInputButtonBlur('.model-pill')}
             <Text style={styles.modelText} numberOfLines={1}>{currentModel}</Text>
           </Pressable>
 
           <View style={[styles.rightButtons, cssStyle('.input-actions')]}>
             <Pressable
-              style={[styles.stickerButton, { backgroundColor: inputControlBackgroundColor }, cssStyle('.sticker-button')]}
+              style={[styles.stickerButton, { backgroundColor: inputControlBackgroundColor }, inputButtonStyle('.sticker-button')]}
               delayLongPress={320}
               disabled={disabled || isStreaming}
               onPress={handleStickerButtonPress}
               onLongPress={() => void startVoiceRecording()}
               onPressOut={() => void stopVoiceRecording()}
             >
+              {renderInputButtonBlur('.sticker-button')}
               <Image
                 source={inputIconUris.sticker ? { uri: inputIconUris.sticker } : require('../../assets/sticker.png')}
                 style={[styles.stickerButtonImage, usesFallbackInputIcon('sticker') && { tintColor: colors.inputControlIcon }]}
@@ -1429,12 +1443,13 @@ export function ChatInput({
                 styles.sendButton,
                 responseButtonStateStyle,
                 styles.responseButtonAnimationAnchor,
-                cssStyle('.send-button'),
+                inputButtonStyle('.send-button'),
                 { transform: [{ scale: responseButtonScale }] },
               ]}
               onPressIn={() => void handleGetResponsePressIn()}
               onPress={() => void handleGetResponsePress()}
             >
+              {renderInputButtonBlur('.send-button')}
               {renderResponseIcon()}
             </AnimatedPressable>
           </View>
@@ -2153,6 +2168,7 @@ const createStyles = (
     backgroundColor: colors.inputControlBackground,
     justifyContent: 'center',
     alignItems: 'center',
+    overflow: 'hidden',
   },
   optionsImage: {
     width: 20,
@@ -2189,6 +2205,7 @@ const createStyles = (
     backgroundColor: colors.inputControlBackground,
     justifyContent: 'center',
     alignItems: 'center',
+    overflow: 'hidden',
   },
   stickerButtonImage: {
     width: 20,
@@ -2201,6 +2218,7 @@ const createStyles = (
     borderRadius: 16,
     justifyContent: 'center',
     alignItems: 'center',
+    overflow: 'hidden',
   },
   responseButtonAnimationAnchor: {
     transformOrigin: 'top center',

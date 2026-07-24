@@ -380,6 +380,7 @@ interface Props {
   showAvatarHeader?: boolean;
   showSideAvatar?: boolean;
   showBubbleTail?: boolean;
+  blurEnabled?: boolean;
   blurTarget?: React.RefObject<View | null>;
   onBubblePress?: (messageId: string) => void;
   onToolDetailScrollActiveChange?: (active: boolean) => void;
@@ -863,6 +864,7 @@ export const ChatBubble = React.memo(function ChatBubble({
   showAvatarHeader = true,
   showSideAvatar = true,
   showBubbleTail = true,
+  blurEnabled = true,
   blurTarget,
   onBubblePress,
   onToolDetailScrollActiveChange,
@@ -922,8 +924,14 @@ export const ChatBubble = React.memo(function ChatBubble({
     () => withoutAppearanceGlassProps(cssStyle('.assistant-bubble-tail-svg', '.chat-assistant-bubble-tail-svg')),
     [customCssStyles]
   );
-  const userBubbleGlass = useMemo(() => getAppearanceGlassConfig(userBubbleCssStyle), [userBubbleCssStyle]);
-  const assistantBubbleGlass = useMemo(() => getAppearanceGlassConfig(assistantBubbleCssStyle), [assistantBubbleCssStyle]);
+  const userBubbleGlass = useMemo(() => {
+    const config = getAppearanceGlassConfig(userBubbleCssStyle);
+    return blurEnabled ? config : { ...config, enabled: false };
+  }, [blurEnabled, userBubbleCssStyle]);
+  const assistantBubbleGlass = useMemo(() => {
+    const config = getAppearanceGlassConfig(assistantBubbleCssStyle);
+    return blurEnabled ? config : { ...config, enabled: false };
+  }, [assistantBubbleCssStyle, blurEnabled]);
   const userBubbleColor = appearanceConfig?.userBubbleColor || colors.userBubble;
   const userBubbleTransparent = !!appearanceConfig?.userBubbleTransparent;
   const userBubbleRadius = numberOrDefault(appearanceConfig?.userBubbleRadius, 20, 0, 36);
