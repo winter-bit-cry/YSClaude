@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import {
   Animated,
   View,
@@ -55,7 +55,7 @@ import { useSettingsStore, type ChatInputIconKey } from '../stores/settings';
 import { useChatStore } from '../stores/chat';
 import type { ConversationArtifact, ConversationArtifactVersion, LocationAttachment } from '../types';
 import { buildStickerDefinitions, normalizeStickerName, type StickerDefinition } from '../utils/stickers';
-import { getAppearanceCssStyle, getAppearancePlaceholderTextColor, parseAppearanceCss } from '../utils/appearanceCss';
+import { getAppearanceCssStyle, getAppearanceGlassConfig, getAppearancePlaceholderTextColor, parseAppearanceCss, withoutAppearanceGlassProps } from '../utils/appearanceCss';
 import {
   deleteConversationArtifactFile,
   listConversationArtifacts,
@@ -70,6 +70,7 @@ import {
 } from '../services/mcpHttpClient';
 import { copyFileFromUri } from '../utils/fileSystem';
 import { FloatingTerminal } from './FloatingTerminal';
+import { AppearanceBlurView } from './AppearanceBlurView';
 import {
   createCurrentLocationDraft,
   createLocationDraftFromSearchResult,
@@ -92,11 +93,25 @@ const CUSTOM_CSS_MAX_LENGTH = 12000;
 const RESPONSE_BUTTON_COLLAPSED_SCALE = 0.56;
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 const CUSTOM_CSS_PLACEHOLDER = `.user-bubble {
+  backdrop-filter: blur(18px);
+  blur-intensity: 72;
+  blur-reduction-factor: 2;
   background-color: rgba(255,255,255,0.72);
   border-radius: 22px;
 }
 
+.top-bar {
+  backdrop-filter: blur(20px);
+  blur-intensity: 76;
+  blur-reduction-factor: 2;
+  background-color: rgba(255,255,255,0.16);
+}
+
 .input-bar {
+  backdrop-filter: blur(20px);
+  blur-intensity: 76;
+  blur-reduction-factor: 2;
+  background-color: rgba(255,255,255,0.18);
   border-width: 0;
   border-color: transparent;
   border-radius: 25px;
@@ -250,6 +265,7 @@ interface Props {
   isStreaming?: boolean;
   onStop?: () => void;
   onModelPress?: () => void;
+  blurTarget?: RefObject<View | null>;
 }
 
 export function ChatInput({
@@ -266,6 +282,7 @@ export function ChatInput({
   isStreaming,
   onStop,
   onModelPress,
+  blurTarget,
 }: Props) {
   colors = useThemeColors();
   const windowDimensions = useWindowDimensions();
@@ -342,6 +359,11 @@ export function ChatInput({
   );
   const cssStyle = (...selectors: string[]) => getAppearanceCssStyle(customCssStyles, ...selectors);
   const inputPlaceholderStyle = cssStyle('.input-placeholder', '.chat-input-placeholder');
+  const inputBarCssStyle = {
+    ...(customCssStyles.inputBar || {}),
+    ...(cssStyle('.chat-input', '.input-container', '.input-bar') || {}),
+  };
+  const inputBarGlass = getAppearanceGlassConfig(inputBarCssStyle);
   const inputPlaceholderTextColor = getAppearancePlaceholderTextColor(inputPlaceholderStyle, colors.conversationMuted);
   const current = apiConfigs[activeConfigIndex];
   const currentModel = current?.name || current?.model || '未配置';
@@ -1198,10 +1220,14 @@ export function ChatInput({
           hasCustomInputBoxShadow && { shadowOpacity: 0, elevation: 0 },
           hasCustomInputSurface && styles.customContainer,
           isCompactInput && styles.compactContainer,
-          customCssStyles.inputBar,
-          cssStyle('.chat-input', '.input-container', '.input-bar'),
+          withoutAppearanceGlassProps(inputBarCssStyle),
         ]}
       >
+        <AppearanceBlurView
+          config={inputBarGlass}
+          blurTarget={blurTarget}
+          style={[StyleSheet.absoluteFill, { borderRadius: inputPanelRadius, overflow: 'hidden' }]}
+        />
         {inputBackgroundImageUri && (
           <Image source={{ uri: inputBackgroundImageUri }} style={StyleSheet.absoluteFill} resizeMode="cover" />
         )}

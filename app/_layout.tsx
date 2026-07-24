@@ -5,7 +5,6 @@ import { useEffect, useState } from 'react';
 import { Alert, AppState, Image, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Phone, PhoneOff } from 'lucide-react-native';
-import { useThemeColors } from '../src/theme/colors';
 
 import {
   initNotifications,
@@ -37,6 +36,7 @@ import { startLocalBotChannels } from '../src/services/localBotChannels';
 import { syncBotForegroundService } from '../src/services/botForegroundService';
 import { useWorkflowStore } from '../src/stores/workflows';
 import { restoreWorkflowSchedule, syncWorkflowKeepAlive } from '../src/services/workflowScheduler';
+import { ApiUsageIsland } from '../src/components/ApiUsageIsland';
 
 
 SplashScreen.preventAutoHideAsync();
@@ -50,9 +50,6 @@ function formatVoiceCallDuration(startedAt: number | null): string {
 }
 
 export default function RootLayout() {
-  const colors = useThemeColors();
-  const statusBarStyle = colors.background === '#20201e' ? 'light' : 'dark';
-
   const settingsHydrated = useSettingsStore((state) => state._hydrated);
   const qqBotToolsEnabled = useSettingsStore((state) => !!state.qqBotToolConfig?.enabled);
   const wechatClawBotToolsEnabled = useSettingsStore((state) => !!state.wechatClawBotToolConfig?.enabled);
@@ -215,7 +212,7 @@ export default function RootLayout() {
 
   return (
     <GestureHandlerRootView key={fontRenderKey} style={styles.gestureRoot}>
-      <StatusBar style={statusBarStyle} />
+      <StatusBar hidden />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="index" />
         <Stack.Screen name="expo-sharing" options={{ animation: 'none' }} />
@@ -288,6 +285,7 @@ export default function RootLayout() {
           options={{ animation: 'slide_from_right' }}
         />
       </Stack>
+      <ApiUsageIsland />
       <WebViewPanel />
       <IncomingShareHandler />
       <IncomingVoiceCallModal />

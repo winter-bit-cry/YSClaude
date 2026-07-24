@@ -140,6 +140,8 @@ export function AppearanceTab({ showToast, keyboardBottomInset }: AppearanceTabP
   const {
     appearanceConfig,
     setAppearanceConfig,
+    dynamicIslandConfig,
+    setDynamicIslandConfig,
     setTopBarIconUri,
     clearTopBarIconUri,
     resetTopBarIcons,
@@ -515,6 +517,61 @@ export function AppearanceTab({ showToast, keyboardBottomInset }: AppearanceTabP
       contentContainerStyle={{ paddingBottom: keyboardBottomInset + 20 }}
       keyboardShouldPersistTaps="handled"
     >
+      <Text style={styles.sectionTitle}>灵动岛</Text>
+      <Text style={styles.hint}>
+        此配置独立保存，不会随美化主题切换、覆盖或恢复。展开灵动岛时会刷新最近一次 API 调用和 CLIProxyAPI Claude 额度。
+      </Text>
+      <View style={styles.switchRow}>
+        <View style={styles.switchText}>
+          <Text style={styles.label}>显示灵动岛</Text>
+          <Text style={styles.hint}>关闭后顶部不再显示灵动岛</Text>
+        </View>
+        <Switch
+          value={dynamicIslandConfig.enabled}
+          onValueChange={(enabled) => setDynamicIslandConfig({ enabled })}
+          trackColor={{ false: colors.border, true: colors.primary }}
+        />
+      </View>
+      <View style={styles.field}>
+        <Text style={styles.label}>CLIProxyAPI 服务器地址</Text>
+        <TextInput
+          style={styles.input}
+          value={dynamicIslandConfig.cliProxyServerUrl}
+          onChangeText={(cliProxyServerUrl) => setDynamicIslandConfig({ cliProxyServerUrl })}
+          placeholder="例如 http://192.168.1.10:8317"
+          placeholderTextColor={colors.textTertiary}
+          autoCapitalize="none"
+          autoCorrect={false}
+          keyboardType="url"
+        />
+      </View>
+      <View style={styles.field}>
+        <Text style={styles.label}>Claude 登录账号</Text>
+        <TextInput
+          style={styles.input}
+          value={dynamicIslandConfig.cliProxyAccount}
+          onChangeText={(cliProxyAccount) => setDynamicIslandConfig({ cliProxyAccount })}
+          placeholder="可选，用于多账号时筛选 Claude 凭据"
+          placeholderTextColor={colors.textTertiary}
+          autoCapitalize="none"
+          autoCorrect={false}
+        />
+      </View>
+      <View style={styles.field}>
+        <Text style={styles.label}>控制面板登录密码</Text>
+        <TextInput
+          style={styles.input}
+          value={dynamicIslandConfig.cliProxyPassword}
+          onChangeText={(cliProxyPassword) => setDynamicIslandConfig({ cliProxyPassword })}
+          placeholder="management key / 控制面板密码"
+          placeholderTextColor={colors.textTertiary}
+          autoCapitalize="none"
+          autoCorrect={false}
+          secureTextEntry
+        />
+        <Text style={styles.hint}>服务器地址或密码未填写时，展开面板不会显示额度。</Text>
+      </View>
+
       <Text style={styles.sectionTitle}>全局字体</Text>
       <Text style={styles.hint}>
         可分别上传正文和粗体 TTF/OTF 文件。未上传粗体时，加粗文字使用正文字体且不叠加 700，避免回退为系统字体。输入框保持系统字体。

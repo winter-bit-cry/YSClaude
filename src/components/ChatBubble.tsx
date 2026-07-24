@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react'
 import { View, Text, StyleSheet, Pressable, Image, Alert, TextInput, Modal, Dimensions, ScrollView, ActivityIndicator, type ImageStyle, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
 import { NativeViewGestureHandler, ScrollView as GestureScrollView } from 'react-native-gesture-handler';
 import Markdown from '@ronradtke/react-native-markdown-display';
-import { BlurView } from 'expo-blur';
 import * as Clipboard from 'expo-clipboard';
 import { createAudioPlayer, type AudioStatus } from 'expo-audio';
 import Svg, { Path } from 'react-native-svg';
@@ -17,6 +16,7 @@ import { saveGeneratedImageToLibrary } from '../services/imageGeneration';
 import { openWebView } from '../services/webviewController';
 import { getToolLabel } from '../services/tools';
 import { StickerContent } from './StickerContent';
+import { AppearanceBlurView } from './AppearanceBlurView';
 import { buildStickerDefinitions, getStickerByName, hasStickerToken, isStickerOnlyContent, type StickerDefinition } from '../utils/stickers';
 import { formatSmartTime } from '../utils/time';
 import { getLinkCardInfo, getSingleHttpUrlMessage } from '../utils/sharedLinks';
@@ -380,6 +380,7 @@ interface Props {
   showAvatarHeader?: boolean;
   showSideAvatar?: boolean;
   showBubbleTail?: boolean;
+  blurTarget?: React.RefObject<View | null>;
   onBubblePress?: (messageId: string) => void;
   onToolDetailScrollActiveChange?: (active: boolean) => void;
 }
@@ -720,6 +721,21 @@ function isRemoteActivityMessage(message: Message): boolean {
   );
 }
 
+function getBubbleBlurStyle(style: StyleProp<ViewStyle>): StyleProp<ViewStyle> {
+  const flatStyle = StyleSheet.flatten(style);
+  return [
+    StyleSheet.absoluteFill,
+    styles.bubbleBlurLayer,
+    {
+      borderRadius: flatStyle?.borderRadius,
+      borderTopLeftRadius: flatStyle?.borderTopLeftRadius,
+      borderTopRightRadius: flatStyle?.borderTopRightRadius,
+      borderBottomRightRadius: flatStyle?.borderBottomRightRadius,
+      borderBottomLeftRadius: flatStyle?.borderBottomLeftRadius,
+    },
+  ];
+}
+
 function parseRemoteActivityContent(
   content: string,
   assistantName: string
@@ -847,6 +863,7 @@ export const ChatBubble = React.memo(function ChatBubble({
   showAvatarHeader = true,
   showSideAvatar = true,
   showBubbleTail = true,
+  blurTarget,
   onBubblePress,
   onToolDetailScrollActiveChange,
 }: Props) {
@@ -1455,11 +1472,10 @@ export const ChatBubble = React.memo(function ChatBubble({
                 style={[userBubbleBaseStyle, styles.voiceBubble]}
               >
                 {userBubbleGlass.enabled && (
-                  <BlurView
-                    pointerEvents="none"
-                    intensity={userBubbleGlass.intensity}
-                    tint={userBubbleGlass.tint}
-                    style={StyleSheet.absoluteFill}
+                  <AppearanceBlurView
+                    config={userBubbleGlass}
+                    blurTarget={blurTarget}
+                    style={getBubbleBlurStyle(userBubbleBaseStyle)}
                   />
                 )}
                 <View pointerEvents="none" style={userBubbleTailStyle} />
@@ -1500,11 +1516,10 @@ export const ChatBubble = React.memo(function ChatBubble({
               style={userContentPressableStyle}
             >
               {!userStickerOnlyMessage && userBubbleGlass.enabled && (
-                <BlurView
-                  pointerEvents="none"
-                  intensity={userBubbleGlass.intensity}
-                  tint={userBubbleGlass.tint}
-                  style={StyleSheet.absoluteFill}
+                <AppearanceBlurView
+                  config={userBubbleGlass}
+                  blurTarget={blurTarget}
+                  style={getBubbleBlurStyle(userBubbleBaseStyle)}
                 />
               )}
               {!userStickerOnlyMessage && <View pointerEvents="none" style={userBubbleTailStyle} />}
@@ -1535,11 +1550,10 @@ export const ChatBubble = React.memo(function ChatBubble({
               style={userBubbleBaseStyle}
             >
               {userBubbleGlass.enabled && (
-                <BlurView
-                  pointerEvents="none"
-                  intensity={userBubbleGlass.intensity}
-                  tint={userBubbleGlass.tint}
-                  style={StyleSheet.absoluteFill}
+                <AppearanceBlurView
+                  config={userBubbleGlass}
+                  blurTarget={blurTarget}
+                  style={getBubbleBlurStyle(userBubbleBaseStyle)}
                 />
               )}
               <View pointerEvents="none" style={userBubbleTailStyle} />
@@ -1602,10 +1616,18 @@ export const ChatBubble = React.memo(function ChatBubble({
   const assistantBubbleFlowParts = assistantBubbleStyle === 'bubble'
     ? buildAssistantBubbleFlowParts(assistantFlowParts, messageStickers)
     : assistantFlowParts;
+  const firstAssistantBubblePartIndex = assistantBubbleFlowParts.findIndex(
+    (part) => part.type === 'text'
+  );
   const lastAssistantBubblePartIndex = assistantBubbleFlowParts.reduce(
     (lastIndex, part, partIndex) => part.type === 'text' ? partIndex : lastIndex,
     -1
   );
+  const assistantAvatarPartIndex = appearanceConfig?.sideAvatarDisplayMode === 'last'
+    ? lastAssistantBubblePartIndex
+    : firstAssistantBubblePartIndex;
+  const showAvatarOnEveryAssistantBubble =
+    (appearanceConfig?.sideAvatarDisplayMode || 'every') === 'every';
   const remoteActivityCardVisible = isRemoteActivityMessage(message);
 
   async function handleAction(index: number) {
@@ -1886,7 +1908,11 @@ export const ChatBubble = React.memo(function ChatBubble({
       {floorLabel && <Text style={styles.floorLabelLeft}>{floorLabel}</Text>}
       {isHidden && <Text style={styles.hiddenLabelLeft}>已隐藏</Text>}
       {/* 思维链：<thinking> 包裹的内容拆出，正文只渲染剩余部分 */}
-      {thinking.length > 0 && <ThinkingBlock thinking={thinking} />}
+      {thinking.length > 0 && renderAssistantSideRow(
+        'assistant-thinking',
+        <ThinkingBlock thinking={thinking} />,
+        false
+      )}
       {remoteActivityCardVisible ? (
         renderAssistantSideRow(
           'remote-activity',
@@ -1924,11 +1950,10 @@ export const ChatBubble = React.memo(function ChatBubble({
                 onLongPress={handleAssistantBubbleLongPress}
               >
                 {assistantBubbleGlass.enabled && !stickerOnlyPart && (
-                  <BlurView
-                    pointerEvents="none"
-                    intensity={assistantBubbleGlass.intensity}
-                    tint={assistantBubbleGlass.tint}
-                    style={StyleSheet.absoluteFill}
+                  <AppearanceBlurView
+                    config={assistantBubbleGlass}
+                    blurTarget={blurTarget}
+                    style={getBubbleBlurStyle(getAssistantBubbleStyle(part.content))}
                   />
                 )}
                 {!stickerOnlyPart && <View pointerEvents="none" style={assistantBubbleTailStyle} />}
@@ -1947,7 +1972,15 @@ export const ChatBubble = React.memo(function ChatBubble({
                 />
               </Pressable>
             );
-            return sideAvatarsVisible ? renderAssistantSideRow(part.key, bubbleNode) : bubbleNode;
+            return sideAvatarsVisible
+              ? renderAssistantSideRow(
+                  part.key,
+                  bubbleNode,
+                  sideAvatarShown && (
+                    showAvatarOnEveryAssistantBubble || partIndex === assistantAvatarPartIndex
+                  )
+                )
+              : bubbleNode;
           }) : (
             renderAssistantSideRow(
               'assistant-empty',
@@ -1957,11 +1990,10 @@ export const ChatBubble = React.memo(function ChatBubble({
                 onLongPress={handleAssistantBubbleLongPress}
               >
                 {assistantBubbleGlass.enabled && (
-                  <BlurView
-                    pointerEvents="none"
-                    intensity={assistantBubbleGlass.intensity}
-                    tint={assistantBubbleGlass.tint}
-                    style={StyleSheet.absoluteFill}
+                  <AppearanceBlurView
+                    config={assistantBubbleGlass}
+                    blurTarget={blurTarget}
+                    style={getBubbleBlurStyle(getAssistantBubbleStyle(' '))}
                   />
                 )}
                 <View pointerEvents="none" style={assistantBubbleTailStyle} />
@@ -2314,6 +2346,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     fontFamily: fonts.mono,
   },
   messageSideAvatarSlot: {
+    width: MESSAGE_AVATAR_SIZE,
     flexShrink: 0,
     alignItems: 'center',
   },
@@ -2525,6 +2558,9 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   userBubbleWithSticker: {
     paddingVertical: 8,
     paddingHorizontal: 10,
+  },
+  bubbleBlurLayer: {
+    overflow: 'hidden',
   },
   bubbleTail: {
     display: 'none',

@@ -37,9 +37,11 @@ export type AppearanceBlurTint =
 export type AppearanceCssRuleStyle = ViewStyle & TextStyle & {
   backdropFilter?: string;
   blurIntensity?: number;
+  blurReductionFactor?: number;
   blurTint?: AppearanceBlurTint;
   svgPath?: string;
   svgViewBox?: string;
+  tintColor?: ColorValue;
 };
 export type AppearanceCssStyles = Partial<Record<AppearanceCssTarget, AppearanceCssRuleStyle>> & {
   selectors?: Record<string, AppearanceCssRuleStyle>;
@@ -82,7 +84,7 @@ export function getAppearanceCssStyle(
 
 export function withoutAppearanceGlassProps(style?: AppearanceCssRuleStyle): AppearanceCssRuleStyle | undefined {
   if (!style) return undefined;
-  const { backdropFilter, blurIntensity, blurTint, ...viewStyle } = style;
+  const { backdropFilter, blurIntensity, blurReductionFactor, blurTint, ...viewStyle } = style;
   return Object.keys(viewStyle).length > 0 ? viewStyle : undefined;
 }
 
@@ -141,6 +143,7 @@ export function getAppearancePlaceholderTextColor(
 export function getAppearanceGlassConfig(style?: AppearanceCssRuleStyle): {
   enabled: boolean;
   intensity: number;
+  reductionFactor: number;
   tint: AppearanceBlurTint;
 } {
   const backdropFilter = style?.backdropFilter || '';
@@ -154,6 +157,7 @@ export function getAppearanceGlassConfig(style?: AppearanceCssRuleStyle): {
   return {
     enabled: !!style?.blurIntensity || parsedBlur > 0,
     intensity,
+    reductionFactor: Math.min(10, Math.max(1, style?.blurReductionFactor || 4)),
     tint: style?.blurTint || 'light',
   };
 }
@@ -167,6 +171,7 @@ const COLOR_PROPS = new Set([
   'borderTopColor',
   'color',
   'textShadowColor',
+  'tintColor',
 ]);
 
 const NUMBER_PROPS = new Set([
@@ -254,6 +259,7 @@ const PROPERTY_ALIASES: Record<string, string> = {
   'backdrop-filter': 'backdropFilter',
   'box-shadow': 'boxShadow',
   'blur-intensity': 'blurIntensity',
+  'blur-reduction-factor': 'blurReductionFactor',
   'blur-tint': 'blurTint',
   'border-bottom-color': 'borderBottomColor',
   'border-bottom-left-radius': 'borderBottomLeftRadius',
@@ -301,6 +307,7 @@ const PROPERTY_ALIASES: Record<string, string> = {
   'text-decoration-line': 'textDecorationLine',
   'text-shadow-color': 'textShadowColor',
   'text-transform': 'textTransform',
+  'tint-color': 'tintColor',
 };
 
 function camelizeProperty(property: string): string {
@@ -415,6 +422,14 @@ function parseDeclaration(property: string, value: string): Record<string, unkno
   if (prop === 'blurTint') {
     if (/^[a-z][a-z0-9]*$/i.test(cleanValue)) {
       style.blurTint = cleanValue;
+    }
+    return style;
+  }
+
+  if (prop === 'blurReductionFactor') {
+    const next = parseNumericValue(cleanValue, false);
+    if (typeof next === 'number') {
+      style.blurReductionFactor = Math.min(10, Math.max(1, next));
     }
     return style;
   }

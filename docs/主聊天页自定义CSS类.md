@@ -44,6 +44,94 @@
 
 `.top-bar-background` 可以用 `opacity` 调整自定义背景图透明度；`.top-bar-fade` 的 `background-color` 会作为顶栏渐隐遮罩颜色，例如 `#ffffff` 会生成白色到透明的渐变遮罩。
 
+## 灵动岛
+
+| 类名 | 作用位置 |
+| --- | --- |
+| `.dynamic-island-overlay` | 灵动岛全屏定位层，可用 `top` 调整垂直位置 |
+| `.dynamic-island` | 药丸与展开面板的共同外层，可设置背景、边框和阴影 |
+| `.dynamic-island-collapsed-content` | 收起时 Logo 与 Token 的横向容器 |
+| `.dynamic-island-logo` | 收起与展开状态的 Claude Logo |
+| `.dynamic-island-panel-logo` | 仅展开面板的 Claude Logo |
+| `.dynamic-island-text` | 灵动岛内全部已挂载文字的通用样式 |
+| `.dynamic-island-token-group` | 右侧输入/输出 Token 组 |
+| `.dynamic-island-input-arrow` | 输入箭头 |
+| `.dynamic-island-output-arrow` | 输出箭头 |
+| `.dynamic-island-token-count` | 收起状态的 Token 数字 |
+| `.dynamic-island-music-content` | 音乐状态横向容器 |
+| `.dynamic-island-music-cover` | 歌曲封面外框 |
+| `.dynamic-island-music-cover-fallback` | 无歌曲封面时的音符文字 |
+| `.dynamic-island-music-effect` | 音柱效果外层 |
+| `.dynamic-island-music-bar` | 每根音乐音柱 |
+| `.dynamic-island-panel` | 展开详情内容区 |
+| `.dynamic-island-title` | 展开面板标题 |
+| `.dynamic-island-status` | 调用状态标签 |
+| `.dynamic-island-model` | 模型名称 |
+| `.dynamic-island-meta` | 功能、时间和耗时信息 |
+| `.dynamic-island-metric-card` | Token 指标卡片 |
+| `.dynamic-island-metric-label` | Token 指标标题 |
+| `.dynamic-island-metric-value` | Token 指标数字 |
+| `.dynamic-island-quota` | Claude 额度区域 |
+| `.dynamic-island-quota-title` | 额度标题 |
+| `.dynamic-island-quota-account` | 额度账号与同步状态 |
+| `.dynamic-island-quota-label` | 额度周期名称 |
+| `.dynamic-island-quota-percent` | 剩余额度百分比 |
+| `.dynamic-island-quota-reset` | 额度重置时间 |
+| `.dynamic-island-quota-track` | 额度进度条轨道 |
+| `.dynamic-island-quota-fill` | 额度进度条填充 |
+| `.dynamic-island-quota-error` | 额度同步错误文字 |
+| `.dynamic-island-empty-text` | 暂无 API 日志提示文字 |
+
+Logo 是单色 PNG，可使用 `tint-color` 修改颜色。灵动岛的宽、高和圆角由展开/收起弹簧动画控制，`.dynamic-island` 中的这些属性不会覆盖动画目标值；位置、背景、边框、阴影和透明度可以正常覆盖。
+
+```css
+.dynamic-island-overlay {
+  top: 8px;
+}
+
+.dynamic-island {
+  background-color: #080808;
+  border-width: 1px;
+  border-color: rgba(255,255,255,0.12);
+}
+
+.dynamic-island-logo {
+  width: 21px;
+  height: 21px;
+  tint-color: #d97757;
+}
+
+.dynamic-island-input-arrow {
+  color: #45c779;
+}
+
+.dynamic-island-output-arrow {
+  color: #ef6464;
+}
+
+.dynamic-island-token-count,
+.dynamic-island-metric-value {
+  color: #e5e5e5;
+}
+
+.dynamic-island-music-cover {
+  border-radius: 7px;
+}
+
+.dynamic-island-music-bar {
+  width: 3px;
+  background-color: #ffffff;
+}
+
+.dynamic-island-metric-card {
+  background-color: #181818;
+}
+
+.dynamic-island-quota-fill {
+  background-color: #45c779;
+}
+```
+
 ## 消息区域
 
 | 类名 | 作用位置 |
@@ -371,6 +459,7 @@ SVG 尾巴还支持自定义路径：`svg-view-box` 对应 SVG 的 `viewBox`，`
 .user-bubble {
   backdrop-filter: blur(18px);
   blur-intensity: 72;
+  blur-reduction-factor: 2;
   blur-tint: light;
   background-color: rgba(255,255,255,0.30);
   border-width: 1px;
@@ -381,10 +470,29 @@ SVG 尾巴还支持自定义路径：`svg-view-box` 对应 SVG 的 `viewBox`，`
 .assistant-bubble {
   backdrop-filter: blur(18px);
   blur-intensity: 68;
+  blur-reduction-factor: 2;
   blur-tint: light;
   background-color: rgba(255,255,255,0.24);
   border-width: 1px;
   border-color: rgba(255,255,255,0.36);
+}
+```
+
+Android 12 及以上会使用原生 `BlurView`。`blur-reduction-factor` 可在 `1` 到 `10` 之间调整，数值越小，Android 上的实际模糊越强。顶栏和输入框也可以分别启用：
+
+```css
+.top-bar {
+  backdrop-filter: blur(20px);
+  blur-intensity: 76;
+  blur-reduction-factor: 2;
+  background-color: rgba(255,255,255,0.16);
+}
+
+.input-bar {
+  backdrop-filter: blur(20px);
+  blur-intensity: 76;
+  blur-reduction-factor: 2;
+  background-color: rgba(255,255,255,0.18);
 }
 ```
 

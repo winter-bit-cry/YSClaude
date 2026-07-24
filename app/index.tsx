@@ -31,6 +31,7 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
+import { BlurTargetView } from 'expo-blur';
 import MaskedView from '@react-native-masked-view/masked-view';
 import { lightColors, useThemeColors, type ThemeColors } from '../src/theme/colors';
 import { fonts } from '../src/theme/fonts';
@@ -42,6 +43,7 @@ import { usePeriodStore } from '../src/stores/period';
 import { useSettingsStore } from '../src/stores/settings';
 import { ChatBubble } from '../src/components/ChatBubble';
 import { ChatInput } from '../src/components/ChatInput';
+import { AppearanceBlurView } from '../src/components/AppearanceBlurView';
 import { AskUserCard } from '../src/components/AskUserCard';
 import { ModelSelector } from '../src/components/ModelSelector';
 import { TimeDivider } from '../src/components/TimeDivider';
@@ -49,7 +51,7 @@ import { IOSToast } from '../src/components/IOSToast';
 import { IncomingLetter, Message } from '../src/types';
 import { formatFullTime, TIME_GAP_THRESHOLD_MS } from '../src/utils/time';
 import { pickGreeting } from '../src/utils/greetings';
-import { getAppearanceCssStyle, parseAppearanceCss } from '../src/utils/appearanceCss';
+import { getAppearanceCssStyle, getAppearanceGlassConfig, parseAppearanceCss, withoutAppearanceGlassProps } from '../src/utils/appearanceCss';
 import {
   buildPeriodDateSet,
   calculatePeriodPrediction,
@@ -362,6 +364,7 @@ export default function ChatScreen() {
   const chatBackgroundImageUri = appearanceConfig?.chatBackgroundImageUri;
   const chatBackgroundColor = appearanceConfig?.chatBackgroundColor || colors.background;
   const topBarCssStyle = cssStyle('.top-bar', '.chat-top-bar');
+  const topBarGlass = getAppearanceGlassConfig(topBarCssStyle);
   const topBarBackgroundCssStyle = imageCssStyle('.top-bar-background', '.chat-top-bar-background');
   const topBarFadeCssStyle = cssStyle('.top-bar-fade', '.chat-top-bar-fade');
   const topBarCssBottom = useMemo(
@@ -369,6 +372,7 @@ export default function ChatScreen() {
     [topBarCssStyle]
   );
   const [topBarMeasuredBottom, setTopBarMeasuredBottom] = useState(0);
+  const appearanceBlurTargetRef = useRef<View | null>(null);
   const messageTopInset = Math.max(topBarCssBottom, topBarMeasuredBottom);
   const messageTopFadeStyle = useMemo(
     () => ({ height: messageTopInset }),
@@ -1340,6 +1344,7 @@ export default function ChatScreen() {
           )}
           <ChatMessageEntrance animate={enteringMessageIds.has(item.id)}>
             <ChatBubble
+              blurTarget={appearanceBlurTargetRef}
               message={item}
               previousUserMessage={prev?.role === 'user' ? prev : null}
               isHidden={isHidden}
@@ -1519,13 +1524,18 @@ export default function ChatScreen() {
       style={styles.container}
       onTouchStart={handleScreenTouchStart}
     >
-      <View style={styles.backgroundLayer}>
+      <BlurTargetView ref={appearanceBlurTargetRef} style={styles.backgroundLayer}>
         <View style={[styles.backgroundBase, { backgroundColor: chatBackgroundColor }]} />
         {chatBackgroundImageUri && (
           <Image source={{ uri: chatBackgroundImageUri }} style={StyleSheet.absoluteFill} resizeMode="cover" />
         )}
-      </View>
-      <View style={[styles.header, topBarCssStyle]} onLayout={handleTopBarLayout}>
+      </BlurTargetView>
+      <View style={[styles.header, withoutAppearanceGlassProps(topBarCssStyle)]} onLayout={handleTopBarLayout}>
+        <AppearanceBlurView
+          config={topBarGlass}
+          blurTarget={appearanceBlurTargetRef}
+          style={StyleSheet.absoluteFill}
+        />
         {topBarBackgroundImageUri && (
           <Image
             source={{ uri: topBarBackgroundImageUri }}
@@ -1735,6 +1745,7 @@ export default function ChatScreen() {
           />
         )}
         <ChatInput
+          blurTarget={appearanceBlurTargetRef}
           onSend={async (text, imageUri, imageGenerationReferenceUris) => {
             await addUserMessage(text, imageUri, imageGenerationReferenceUris);
           }}

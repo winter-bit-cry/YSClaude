@@ -3396,6 +3396,14 @@ const API_USAGE_SUMMARY_SELECT = `
   COALESCE(SUM(duration_ms), 0) as total_duration_ms
 `;
 
+type ApiUsageEventListener = (event: ApiUsageEvent) => void;
+const apiUsageEventListeners = new Set<ApiUsageEventListener>();
+
+export function subscribeApiUsageEvents(listener: ApiUsageEventListener): () => void {
+  apiUsageEventListeners.add(listener);
+  return () => apiUsageEventListeners.delete(listener);
+}
+
 export async function insertApiUsageEvent(event: ApiUsageEvent): Promise<void> {
   const hasTokenUsage = [
     event.promptTokens,
@@ -3446,6 +3454,14 @@ export async function insertApiUsageEvent(event: ApiUsageEvent): Promise<void> {
       event.responseJson ?? null,
     ]
   );
+
+  apiUsageEventListeners.forEach((listener) => {
+    try {
+      listener(event);
+    } catch {
+      // A display listener must never make a successfully persisted usage event fail.
+    }
+  });
 }
 
 export async function getApiUsageEvents(limit = 100): Promise<ApiUsageEvent[]> {

@@ -78,6 +78,13 @@ export interface NamedAPIConfig extends APIConfig {
   name: string;
 }
 
+export interface DynamicIslandConfig {
+  enabled: boolean;
+  cliProxyServerUrl: string;
+  cliProxyAccount: string;
+  cliProxyPassword: string;
+}
+
 export type { PromptCacheCompatibility, PromptCacheTtl, ThinkingCompatibility, ThinkingEffort, StablePromptRole } from '../types';
 
 // HiddenRange 已迁移到 src/types，这里 re-export 保持旧的 import 路径兼容。
@@ -916,6 +923,7 @@ interface SettingsState {
   dailyPaperConfig: DailyPaperConfig;
   stickerConfig: StickerConfig;
   appearanceConfig: AppearanceConfig;
+  dynamicIslandConfig: DynamicIslandConfig;
 
   setActiveConfig: (index: number) => void;
   saveAPIConfig: (config: NamedAPIConfig) => void;
@@ -968,6 +976,7 @@ interface SettingsState {
   updateSticker: (owner: StickerOwner, id: string, patch: Partial<Pick<CustomSticker, 'name' | 'uri'>>) => void;
   removeSticker: (owner: StickerOwner, id: string) => void;
   setAppearanceConfig: (config: Partial<AppearanceConfig>) => void;
+  setDynamicIslandConfig: (config: Partial<DynamicIslandConfig>) => void;
   setTopBarIconUri: (key: TopBarIconKey, uri: string, variant?: 'light' | 'dark') => void;
   clearTopBarIconUri: (key: TopBarIconKey, variant?: 'light' | 'dark' | 'all') => void;
   resetTopBarIcons: () => void;
@@ -1002,6 +1011,12 @@ export const useSettingsStore = create<SettingsState>()(
       maxOutputTokens: null,
       tokenWarningThreshold: null,
       stripThinking: false,
+      dynamicIslandConfig: {
+        enabled: true,
+        cliProxyServerUrl: '',
+        cliProxyAccount: '',
+        cliProxyPassword: '',
+      },
       ttsConfig: normalizeTTSConfig(),
       sttConfig: normalizeSTTConfig(),
       voiceCallTTSProvider: 'minimax',
@@ -1537,6 +1552,13 @@ export const useSettingsStore = create<SettingsState>()(
             },
           },
         })),
+      setDynamicIslandConfig: (config) =>
+        set((state) => ({
+          dynamicIslandConfig: {
+            ...state.dynamicIslandConfig,
+            ...config,
+          },
+        })),
       clearTopBarIconUri: (key, variant = 'all') =>
         set((state) => {
           const nextUris = { ...(state.appearanceConfig?.topBarIconUris || {}) };
@@ -1768,6 +1790,7 @@ export const useSettingsStore = create<SettingsState>()(
         dailyPaperConfig: state.dailyPaperConfig,
         stickerConfig: state.stickerConfig,
         appearanceConfig: state.appearanceConfig,
+        dynamicIslandConfig: state.dynamicIslandConfig,
       }),
       onRehydrateStorage: () => (state) => {
         useSettingsStore.setState({
@@ -1796,6 +1819,12 @@ export const useSettingsStore = create<SettingsState>()(
           liveKitVoiceCallConfig: {
             brainUrl: state?.liveKitVoiceCallConfig?.brainUrl || '',
             accessToken: state?.liveKitVoiceCallConfig?.accessToken || '',
+          },
+          dynamicIslandConfig: {
+            enabled: state?.dynamicIslandConfig?.enabled ?? true,
+            cliProxyServerUrl: state?.dynamicIslandConfig?.cliProxyServerUrl || '',
+            cliProxyAccount: state?.dynamicIslandConfig?.cliProxyAccount || '',
+            cliProxyPassword: state?.dynamicIslandConfig?.cliProxyPassword || '',
           },
           nativeToolConfig: {
             messageReactionEnabled: state?.nativeToolConfig?.messageReactionEnabled ?? true,
