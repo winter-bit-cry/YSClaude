@@ -567,6 +567,8 @@ npx.cmd eas build --profile production --platform android
 
 ## License
 
+Copyright © 2026 虞声（YuSheng）
+
 AGPL-3.0 + 禁止商业化。
 
 本项目采用 AGPL-3.0，并附加禁止商业化使用限制。未经作者明确书面许可，不得将本项目或其衍生作品用于商业化产品、商业服务、付费分发或其它商业获利场景。
