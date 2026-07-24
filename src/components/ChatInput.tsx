@@ -402,6 +402,7 @@ export function ChatInput({
   const inputStyle = appearanceConfig?.inputStyle === 'compact' ? 'compact' : 'default';
   const inputBackgroundImageUri = appearanceConfig?.inputBackgroundImageUri;
   const inputBackgroundTransparent = !!appearanceConfig?.inputBackgroundTransparent;
+  const inputControlBackgroundColor = appearanceConfig?.inputControlBackgroundColor || colors.inputControlBackground;
   const inputBorderRadius = clampNumber(appearanceConfig?.inputBorderRadius, 25, 0, 36);
   const inputPanelRadius = typeof customCssStyles.inputBar?.borderRadius === 'number'
     ? customCssStyles.inputBar.borderRadius
@@ -1245,7 +1246,7 @@ export function ChatInput({
         )}
         {isCompactInput ? (
           <View style={[styles.compactRow, cssStyle('.input-compact-row')]}>
-            <Pressable style={[styles.optionsButton, cssStyle('.options-button')]} onPress={handleOptionsButtonPress}>
+            <Pressable style={[styles.optionsButton, { backgroundColor: inputControlBackgroundColor }, cssStyle('.options-button')]} onPress={handleOptionsButtonPress}>
               <Image
                 source={inputIconUris.options ? { uri: inputIconUris.options } : require('../../assets/optionsbutton.png')}
                 style={[styles.optionsImage, usesFallbackInputIcon('options') && { tintColor: colors.inputControlIcon }]}
@@ -1305,7 +1306,7 @@ export function ChatInput({
             </Pressable>
             <View style={[styles.rightButtons, cssStyle('.input-actions')]}>
               <Pressable
-                style={[styles.stickerButton, cssStyle('.sticker-button')]}
+                style={[styles.stickerButton, { backgroundColor: inputControlBackgroundColor }, cssStyle('.sticker-button')]}
                 delayLongPress={320}
                 disabled={disabled || isStreaming}
                 onPress={handleStickerButtonPress}
@@ -1370,7 +1371,7 @@ export function ChatInput({
               />
             </Pressable>
             <View style={[styles.toolbar, cssStyle('.input-toolbar')]}>
-          <Pressable style={[styles.optionsButton, cssStyle('.options-button')]} onPress={handleOptionsButtonPress}>
+          <Pressable style={[styles.optionsButton, { backgroundColor: inputControlBackgroundColor }, cssStyle('.options-button')]} onPress={handleOptionsButtonPress}>
             <Image
               source={inputIconUris.options ? { uri: inputIconUris.options } : require('../../assets/optionsbutton.png')}
               style={[styles.optionsImage, usesFallbackInputIcon('options') && { tintColor: colors.inputControlIcon }]}
@@ -1378,13 +1379,13 @@ export function ChatInput({
             />
           </Pressable>
 
-          <Pressable style={[styles.modelPill, cssStyle('.model-pill')]} onPress={onModelPress}>
+          <Pressable style={[styles.modelPill, { backgroundColor: inputControlBackgroundColor }, cssStyle('.model-pill')]} onPress={onModelPress}>
             <Text style={styles.modelText} numberOfLines={1}>{currentModel}</Text>
           </Pressable>
 
           <View style={[styles.rightButtons, cssStyle('.input-actions')]}>
             <Pressable
-              style={[styles.stickerButton, cssStyle('.sticker-button')]}
+              style={[styles.stickerButton, { backgroundColor: inputControlBackgroundColor }, cssStyle('.sticker-button')]}
               delayLongPress={320}
               disabled={disabled || isStreaming}
               onPress={handleStickerButtonPress}

@@ -12,6 +12,7 @@ import { voiceCallTool } from './toolModules/voiceCall';
 import { webSearchTool } from './toolModules/webSearch';
 import { webViewTool } from './toolModules/webView';
 import { botMessagingTool } from './toolModules/botMessaging';
+import { discordBotTool } from './toolModules/discordBot';
 import { messageReactionTool } from './toolModules/messageReaction';
 import { askUserTool } from './toolModules/askUser';
 import {
@@ -42,6 +43,7 @@ const TOOL_MODULES: ToolModule[] = [
   nativeDeviceTool,
   voiceCallTool,
   botMessagingTool,
+  discordBotTool,
 ];
 
 const TOOL_LABELS: Record<string, string> = TOOL_MODULES.reduce(

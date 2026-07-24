@@ -10,6 +10,7 @@ import {
   type ChatInputAppearanceStyle,
   type ChatInputIconKey,
   type MessageAvatarLayout,
+  type SideAvatarDisplayMode,
   useSettingsStore,
 } from '../../stores/settings';
 import { TopBarIcon, TOP_BAR_ICON_ITEMS } from '../../components/TopBarIcon';
@@ -39,6 +40,11 @@ const CHAT_INPUT_ICON_ITEMS: Array<{ key: ChatInputIconKey; label: string }> = [
 const MESSAGE_AVATAR_LAYOUT_OPTIONS: Array<{ key: MessageAvatarLayout; label: string }> = [
   { key: 'header', label: '上方信息' },
   { key: 'side', label: '侧边头像' },
+];
+const SIDE_AVATAR_DISPLAY_OPTIONS: Array<{ key: SideAvatarDisplayMode; label: string }> = [
+  { key: 'every', label: '每条消息' },
+  { key: 'first', label: '连续首条' },
+  { key: 'last', label: '连续末条' },
 ];
 const COLOR_SWATCHES = ['#f1eee7', '#FFFFFF', '#FDE68A', '#BFDBFE', '#FBCFE8', '#DCFCE7', '#2B241D', '#141413'];
 function appearanceImageExtension(asset: ImagePicker.ImagePickerAsset): string {
@@ -159,6 +165,9 @@ export function AppearanceTab({ showToast, keyboardBottomInset }: AppearanceTabP
   const [assistantTextColorInput, setAssistantTextColorInput] = useState(appearanceConfig?.assistantTextColor || colors.text);
   const [assistantTextStrokeColorInput, setAssistantTextStrokeColorInput] = useState(appearanceConfig?.assistantTextStrokeColor || colors.background);
   const [assistantFooterColorInput, setAssistantFooterColorInput] = useState(appearanceConfig?.assistantFooterColor || colors.conversationMuted);
+  const [chatBackgroundColorInput, setChatBackgroundColorInput] = useState(appearanceConfig?.chatBackgroundColor || colors.background);
+  const [topBarFadeColorInput, setTopBarFadeColorInput] = useState(appearanceConfig?.topBarFadeColor || colors.background);
+  const [inputControlBackgroundColorInput, setInputControlBackgroundColorInput] = useState(appearanceConfig?.inputControlBackgroundColor || colors.inputControlBackground);
   const appearanceThemes = appearanceConfig?.appearanceThemes || [];
   const activeAppearanceThemeId = appearanceConfig?.activeAppearanceThemeId;
   const topBarIconUris = appearanceConfig?.topBarIconUris || {};
@@ -179,6 +188,11 @@ export function AppearanceTab({ showToast, keyboardBottomInset }: AppearanceTabP
   const assistantBubbleWidthPercent = appearanceConfig?.assistantBubbleWidthPercent ?? 75;
   const messageAvatarsVisible = !!appearanceConfig?.messageAvatarsVisible;
   const messageAvatarLayout: MessageAvatarLayout = appearanceConfig?.messageAvatarLayout === 'side' ? 'side' : 'header';
+  const sideAvatarDisplayMode: SideAvatarDisplayMode =
+    appearanceConfig?.sideAvatarDisplayMode === 'first' || appearanceConfig?.sideAvatarDisplayMode === 'last'
+      ? appearanceConfig.sideAvatarDisplayMode
+      : 'every';
+  const hideUserSideAvatar = !!appearanceConfig?.hideUserSideAvatar;
   const messageMetaVisible = appearanceConfig?.messageMetaVisible ?? true;
   const userAvatarImageUri = appearanceConfig?.userAvatarImageUri;
   const assistantAvatarImageUri = appearanceConfig?.assistantAvatarImageUri;
@@ -247,6 +261,9 @@ export function AppearanceTab({ showToast, keyboardBottomInset }: AppearanceTabP
     setAssistantTextColorInput(appearanceConfig?.assistantTextColor || colors.text);
     setAssistantTextStrokeColorInput(appearanceConfig?.assistantTextStrokeColor || colors.background);
     setAssistantFooterColorInput(appearanceConfig?.assistantFooterColor || colors.conversationMuted);
+    setChatBackgroundColorInput(appearanceConfig?.chatBackgroundColor || colors.background);
+    setTopBarFadeColorInput(appearanceConfig?.topBarFadeColor || colors.background);
+    setInputControlBackgroundColorInput(appearanceConfig?.inputControlBackgroundColor || colors.inputControlBackground);
   }, [
     appearanceConfig?.assistantFooterColor,
     appearanceConfig?.assistantBubbleColor,
@@ -254,6 +271,9 @@ export function AppearanceTab({ showToast, keyboardBottomInset }: AppearanceTabP
     appearanceConfig?.assistantTextColor,
     appearanceConfig?.userBubbleColor,
     appearanceConfig?.userTextColor,
+    appearanceConfig?.chatBackgroundColor,
+    appearanceConfig?.topBarFadeColor,
+    appearanceConfig?.inputControlBackgroundColor,
   ]);
 
   async function handlePickIcon(key: TopBarIconKey, variant: 'light' | 'dark') {
@@ -408,6 +428,9 @@ export function AppearanceTab({ showToast, keyboardBottomInset }: AppearanceTabP
       | 'assistantTextColor'
       | 'assistantTextStrokeColor'
       | 'assistantFooterColor'
+      | 'chatBackgroundColor'
+      | 'topBarFadeColor'
+      | 'inputControlBackgroundColor'
   ) {
     const next = value.trim();
     if (!isHexColor(next)) {
@@ -726,6 +749,20 @@ export function AppearanceTab({ showToast, keyboardBottomInset }: AppearanceTabP
         />
       </View>
 
+      <View style={styles.field}>
+        <Text style={styles.label}>顶栏遮罩层颜色</Text>
+        <Text style={styles.hint}>调整顶栏由实到透明的渐隐颜色。</Text>
+        <TextInput
+          style={styles.input}
+          value={topBarFadeColorInput}
+          onChangeText={setTopBarFadeColorInput}
+          onBlur={() => commitColor('顶栏遮罩层颜色', topBarFadeColorInput, 'topBarFadeColor')}
+          autoCapitalize="characters"
+          placeholder="#FFFFFF"
+          placeholderTextColor={colors.textTertiary}
+        />
+      </View>
+
       {TOP_BAR_ICON_ITEMS.map((item) => {
         const customUri = topBarIconUris[item.key];
         const darkCustomUri = topBarIconDarkUris[item.key];
@@ -838,6 +875,20 @@ export function AppearanceTab({ showToast, keyboardBottomInset }: AppearanceTabP
         </View>
       </View>
 
+      <View style={styles.field}>
+        <Text style={styles.label}>聊天页背景颜色</Text>
+        <Text style={styles.hint}>未设置聊天页背景图时生效；设置背景图后完整显示图片。</Text>
+        <TextInput
+          style={styles.input}
+          value={chatBackgroundColorInput}
+          onChangeText={setChatBackgroundColorInput}
+          onBlur={() => commitColor('聊天页背景颜色', chatBackgroundColorInput, 'chatBackgroundColor')}
+          autoCapitalize="characters"
+          placeholder="#FFFFFF"
+          placeholderTextColor={colors.textTertiary}
+        />
+      </View>
+
       <Text style={styles.sectionTitle}>消息头像</Text>
       <View style={styles.switchRow}>
         <View style={styles.switchText}>
@@ -876,9 +927,48 @@ export function AppearanceTab({ showToast, keyboardBottomInset }: AppearanceTabP
             </View>
             <Text style={styles.hint}>
               {messageAvatarLayout === 'side'
-                ? 'AI 头像显示在左侧，用户头像显示在右侧，每个气泡都会显示头像。'
+                ? 'AI 头像显示在左侧，用户头像显示在右侧。'
                 : '头像、名字、楼层与时间显示在连续消息组的第一条上方。'}
             </Text>
+          </View>
+        </>
+      )}
+
+      {messageAvatarsVisible && messageAvatarLayout === 'side' && (
+        <>
+          <View style={styles.field}>
+            <Text style={styles.label}>侧边头像显示位置</Text>
+            <View style={styles.segmentedRow}>
+              {SIDE_AVATAR_DISPLAY_OPTIONS.map((item) => (
+                <Pressable
+                  key={item.key}
+                  style={[styles.segmentedButton, sideAvatarDisplayMode === item.key && styles.segmentedButtonActive]}
+                  onPress={() => {
+                    setAppearanceConfig({ sideAvatarDisplayMode: item.key });
+                    showToast(`侧边头像：${item.label}`);
+                  }}
+                >
+                  <Text style={[styles.segmentedText, sideAvatarDisplayMode === item.key && styles.segmentedTextActive]}>
+                    {item.label}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+            <Text style={styles.hint}>连续消息按相同角色且未跨越时间分隔线判断。</Text>
+          </View>
+          <View style={styles.switchRow}>
+            <View style={styles.switchText}>
+              <Text style={styles.label}>只显示 AI 头像</Text>
+              <Text style={styles.hint}>隐藏用户头像，可与上方任一显示位置叠加。</Text>
+            </View>
+            <Switch
+              value={hideUserSideAvatar}
+              onValueChange={(value) => {
+                setAppearanceConfig({ hideUserSideAvatar: value });
+                showToast(value ? '已隐藏用户侧边头像' : '已显示用户侧边头像');
+              }}
+              trackColor={{ false: colors.inputBorder, true: colors.primary }}
+            />
           </View>
         </>
       )}
@@ -1330,6 +1420,20 @@ export function AppearanceTab({ showToast, keyboardBottomInset }: AppearanceTabP
             <Text style={[styles.smallActionText, !appearanceConfig?.inputBackgroundImageUri && styles.smallActionTextDisabled]}>默认</Text>
           </Pressable>
         </View>
+      </View>
+
+      <View style={styles.field}>
+        <Text style={styles.label}>输入框按键底色</Text>
+        <Text style={styles.hint}>统一调整加号、模型选择和表情包按键的底色。</Text>
+        <TextInput
+          style={styles.input}
+          value={inputControlBackgroundColorInput}
+          onChangeText={setInputControlBackgroundColorInput}
+          onBlur={() => commitColor('输入框按键底色', inputControlBackgroundColorInput, 'inputControlBackgroundColor')}
+          autoCapitalize="characters"
+          placeholder="#F5F5F5"
+          placeholderTextColor={colors.textTertiary}
+        />
       </View>
 
       {CHAT_INPUT_ICON_ITEMS.map((item) => {

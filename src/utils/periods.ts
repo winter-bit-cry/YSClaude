@@ -115,7 +115,7 @@ function averageRounded(values: number[]): number {
 
 export function calculatePeriodPrediction(
   records: PeriodRecord[],
-  anchorDateKey = localDateKeyFromDate(new Date())
+  _anchorDateKey = localDateKeyFromDate(new Date())
 ): PeriodPrediction | null {
   const sorted = sortedValidRecords(records);
   if (sorted.length === 0) return null;
@@ -134,13 +134,11 @@ export function calculatePeriodPrediction(
   }
 
   const cycleDays = intervals.length > 0 ? averageRounded(intervals) : 28;
-  let startDate = addDaysToDateKey(last.startDate, cycleDays);
-  let endDate = addDaysToDateKey(startDate, durationDays - 1);
-
-  while (endDate < anchorDateKey) {
-    startDate = addDaysToDateKey(startDate, cycleDays);
-    endDate = addDaysToDateKey(startDate, durationDays - 1);
-  }
+  // A prediction must only advance from a real record. If the user does not
+  // record the predicted period, keep this prediction overdue instead of
+  // treating the prediction itself as the start of another cycle.
+  const startDate = addDaysToDateKey(last.startDate, cycleDays);
+  const endDate = addDaysToDateKey(startDate, durationDays - 1);
 
   return { startDate, endDate, durationDays, cycleDays };
 }

@@ -363,6 +363,7 @@ interface Props {
   floorNumber?: number;
   showFloorNumber?: boolean;
   showAvatarHeader?: boolean;
+  showSideAvatar?: boolean;
   showBubbleTail?: boolean;
   onBubblePress?: (messageId: string) => void;
   onToolDetailScrollActiveChange?: (active: boolean) => void;
@@ -829,6 +830,7 @@ export const ChatBubble = React.memo(function ChatBubble({
   floorNumber,
   showFloorNumber,
   showAvatarHeader = true,
+  showSideAvatar = true,
   showBubbleTail = true,
   onBubblePress,
   onToolDetailScrollActiveChange,
@@ -969,6 +971,7 @@ export const ChatBubble = React.memo(function ChatBubble({
   const messageAvatarsVisible = !!appearanceConfig?.messageAvatarsVisible;
   const messageAvatarLayout = appearanceConfig?.messageAvatarLayout === 'side' ? 'side' : 'header';
   const sideAvatarsVisible = messageAvatarsVisible && messageAvatarLayout === 'side';
+  const sideAvatarShown = sideAvatarsVisible && showSideAvatar && !(isUser && appearanceConfig?.hideUserSideAvatar);
   const headerAvatarsVisible = messageAvatarsVisible && messageAvatarLayout === 'header';
   const messageMetaVisible = appearanceConfig?.messageMetaVisible ?? true;
   const messageAvatarRadius = numberOrDefault(appearanceConfig?.messageAvatarRadius, 18, 0, 20);
@@ -1144,7 +1147,7 @@ export const ChatBubble = React.memo(function ChatBubble({
       </View>
     )
   ) : null;
-  const sideAvatarNode = sideAvatarsVisible ? (
+  const sideAvatarNode = sideAvatarShown ? (
     <View
       style={[
         styles.messageSideAvatarSlot,
@@ -1175,7 +1178,7 @@ export const ChatBubble = React.memo(function ChatBubble({
       {isUser && avatarNode}
     </View>
   ) : null;
-  const messageAvailableWidth = SCREEN_WIDTH - 32 - (sideAvatarsVisible ? MESSAGE_AVATAR_SIZE + 8 : 0);
+  const messageAvailableWidth = SCREEN_WIDTH - 32 - (sideAvatarShown ? MESSAGE_AVATAR_SIZE + 8 : 0);
 
   if (message.role === 'system') {
     return (
@@ -1524,7 +1527,7 @@ export const ChatBubble = React.memo(function ChatBubble({
 
     return (
       <View style={[styles.userRow, cssStyle('.user-row', '.chat-user-row'), isHidden && styles.hiddenRow]}>
-        {sideAvatarsVisible ? (
+        {sideAvatarShown ? (
           <View
             style={[
               styles.userSideMessageRow,
@@ -1803,7 +1806,7 @@ export const ChatBubble = React.memo(function ChatBubble({
   ];
   const assistantContentStyle = [
     styles.assistantContent,
-    sideAvatarsVisible && styles.assistantSideContent,
+    sideAvatarShown && styles.assistantSideContent,
     withoutAppearanceGlassProps(customCssStyles.assistantBubble),
     cssStyle('.assistant-content', '.chat-assistant-content'),
   ];
@@ -1831,7 +1834,7 @@ export const ChatBubble = React.memo(function ChatBubble({
   }
 
   function renderAssistantSideRow(key: string, node: React.ReactNode) {
-    if (!sideAvatarsVisible) return node;
+    if (!sideAvatarShown) return node;
     return (
       <View
         key={key}
@@ -1887,7 +1890,7 @@ export const ChatBubble = React.memo(function ChatBubble({
             const partShowsBubbleTail = showBubbleTail && partIndex === lastAssistantBubblePartIndex;
             const bubbleNode = (
               <Pressable
-                key={sideAvatarsVisible ? undefined : part.key}
+                key={sideAvatarShown ? undefined : part.key}
                 style={getAssistantBubbleStyle(part.content)}
                 onPress={handleBubbleTap}
                 onLongPress={handleAssistantBubbleLongPress}
@@ -1916,7 +1919,7 @@ export const ChatBubble = React.memo(function ChatBubble({
                 />
               </Pressable>
             );
-            return sideAvatarsVisible ? renderAssistantSideRow(part.key, bubbleNode) : bubbleNode;
+            return sideAvatarShown ? renderAssistantSideRow(part.key, bubbleNode) : bubbleNode;
           }) : (
             renderAssistantSideRow(
               'assistant-empty',
@@ -2841,7 +2844,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   },
   assistantBubbleStack: {
     alignItems: 'flex-start',
-    gap: 6,
+    gap: 16,
     maxWidth: '100%',
   },
   remoteActivityCard: {

@@ -15,6 +15,7 @@ export type ChatInputIconKey =
 export type ChatInputAppearanceStyle = 'default' | 'compact';
 export type AssistantBubbleAppearanceStyle = 'plain' | 'bubble';
 export type MessageAvatarLayout = 'header' | 'side';
+export type SideAvatarDisplayMode = 'every' | 'first' | 'last';
 
 export interface AppearanceThemeSnapshot {
   topBarIconUris: Partial<Record<TopBarIconKey, string>>;
@@ -22,10 +23,12 @@ export interface AppearanceThemeSnapshot {
   topBarIconHidden?: Partial<Record<TopBarIconKey, boolean>>;
   topBarIconsHidden?: boolean;
   topBarFadeHidden?: boolean;
+  topBarFadeColor?: string;
   topBarBackgroundImageUri?: string;
   customGreetings?: string;
   welcomeLogoImageUri?: string;
   chatBackgroundImageUri?: string;
+  chatBackgroundColor?: string;
   userBubbleColor?: string;
   userBubbleTransparent?: boolean;
   userBubbleRadius?: number;
@@ -37,6 +40,8 @@ export interface AppearanceThemeSnapshot {
   assistantBubbleWidthPercent?: number;
   messageAvatarsVisible?: boolean;
   messageAvatarLayout?: MessageAvatarLayout;
+  sideAvatarDisplayMode?: SideAvatarDisplayMode;
+  hideUserSideAvatar?: boolean;
   messageMetaVisible?: boolean;
   userAvatarImageUri?: string;
   assistantAvatarImageUri?: string;
@@ -55,6 +60,7 @@ export interface AppearanceThemeSnapshot {
   customCss?: string;
   inputBackgroundImageUri?: string;
   inputBackgroundTransparent?: boolean;
+  inputControlBackgroundColor?: string;
   inputStyle?: ChatInputAppearanceStyle;
   inputBorderRadius?: number;
   inputIconUris?: Partial<Record<ChatInputIconKey, string>>;
@@ -288,6 +294,11 @@ export interface WechatClawBotToolConfig extends LocalBotToolConfig {
   botToken: string;
   baseUrl: string;
   accountId: string;
+}
+
+export interface DiscordBotToolConfig extends LocalBotToolConfig {
+  applicationId: string;
+  botToken: string;
 }
 
 export interface NativeToolConfig {
@@ -762,6 +773,8 @@ const DEFAULT_APPEARANCE_CONFIG: AppearanceConfig = {
   defaultGreetingName: '',
   messageAvatarsVisible: false,
   messageAvatarLayout: 'header',
+  sideAvatarDisplayMode: 'every',
+  hideUserSideAvatar: false,
   messageMetaVisible: true,
   messageAvatarRadius: 18,
   userDisplayName: 'You',
@@ -803,8 +816,10 @@ function snapshotAppearanceConfig(config?: AppearanceConfig): AppearanceThemeSna
     topBarIconHidden: { ...(source.topBarIconHidden || {}) },
     topBarIconsHidden: source.topBarIconsHidden,
     topBarFadeHidden: source.topBarFadeHidden,
+    topBarFadeColor: source.topBarFadeColor,
     topBarBackgroundImageUri: source.topBarBackgroundImageUri,
     chatBackgroundImageUri: source.chatBackgroundImageUri,
+    chatBackgroundColor: source.chatBackgroundColor,
     userBubbleColor: source.userBubbleColor,
     userBubbleTransparent: source.userBubbleTransparent,
     userBubbleRadius: source.userBubbleRadius,
@@ -816,6 +831,11 @@ function snapshotAppearanceConfig(config?: AppearanceConfig): AppearanceThemeSna
     assistantBubbleWidthPercent: source.assistantBubbleWidthPercent,
     messageAvatarsVisible: source.messageAvatarsVisible,
     messageAvatarLayout: source.messageAvatarLayout === 'side' ? 'side' : 'header',
+    sideAvatarDisplayMode:
+      source.sideAvatarDisplayMode === 'first' || source.sideAvatarDisplayMode === 'last'
+        ? source.sideAvatarDisplayMode
+        : 'every',
+    hideUserSideAvatar: !!source.hideUserSideAvatar,
     messageMetaVisible: source.messageMetaVisible,
     userAvatarImageUri: source.userAvatarImageUri,
     assistantAvatarImageUri: source.assistantAvatarImageUri,
@@ -834,6 +854,7 @@ function snapshotAppearanceConfig(config?: AppearanceConfig): AppearanceThemeSna
     customCss: source.customCss,
     inputBackgroundImageUri: source.inputBackgroundImageUri,
     inputBackgroundTransparent: source.inputBackgroundTransparent,
+    inputControlBackgroundColor: source.inputControlBackgroundColor,
     inputStyle: source.inputStyle === 'compact' ? 'compact' : 'default',
     inputBorderRadius: source.inputBorderRadius,
     inputIconUris: { ...(source.inputIconUris || {}) },
@@ -878,6 +899,7 @@ interface SettingsState {
   qqBotConfig: QQBotConfig;
   qqBotToolConfig: QQBotToolConfig;
   wechatClawBotToolConfig: WechatClawBotToolConfig;
+  discordBotToolConfig: DiscordBotToolConfig;
   nativeToolConfig: NativeToolConfig;
   calendarAiSyncConfig: CalendarAiSyncConfig;
   todayWidgetConfig: TodayWidgetConfig;
@@ -923,6 +945,7 @@ interface SettingsState {
   setQqBotConfig: (config: Partial<QQBotConfig>) => void;
   setQqBotToolConfig: (config: Partial<QQBotToolConfig>) => void;
   setWechatClawBotToolConfig: (config: Partial<WechatClawBotToolConfig>) => void;
+  setDiscordBotToolConfig: (config: Partial<DiscordBotToolConfig>) => void;
   setNativeToolConfig: (config: Partial<NativeToolConfig>) => void;
   setCalendarAiSyncConfig: (config: Partial<CalendarAiSyncConfig>) => void;
   setTodayWidgetConfig: (config: Partial<TodayWidgetConfig>) => void;
@@ -1107,6 +1130,13 @@ export const useSettingsStore = create<SettingsState>()(
         botToken: '',
         baseUrl: 'https://ilinkai.weixin.qq.com',
         accountId: '',
+        defaultReadLimit: 20,
+        maxReadLimit: 100,
+      },
+      discordBotToolConfig: {
+        enabled: false,
+        applicationId: '',
+        botToken: '',
         defaultReadLimit: 20,
         maxReadLimit: 100,
       },
@@ -1316,6 +1346,8 @@ export const useSettingsStore = create<SettingsState>()(
         set((state) => ({ qqBotToolConfig: { ...state.qqBotToolConfig, ...config } })),
       setWechatClawBotToolConfig: (config) =>
         set((state) => ({ wechatClawBotToolConfig: { ...state.wechatClawBotToolConfig, ...config } })),
+      setDiscordBotToolConfig: (config) =>
+        set((state) => ({ discordBotToolConfig: { ...state.discordBotToolConfig, ...config } })),
       setNativeToolConfig: (config) =>
         set((state) => ({ nativeToolConfig: { ...state.nativeToolConfig, ...config } })),
       setCalendarAiSyncConfig: (config) =>
@@ -1719,6 +1751,7 @@ export const useSettingsStore = create<SettingsState>()(
         qqBotConfig: state.qqBotConfig,
         qqBotToolConfig: state.qqBotToolConfig,
         wechatClawBotToolConfig: state.wechatClawBotToolConfig,
+        discordBotToolConfig: state.discordBotToolConfig,
         nativeToolConfig: state.nativeToolConfig,
         calendarAiSyncConfig: state.calendarAiSyncConfig,
         todayWidgetConfig: state.todayWidgetConfig,

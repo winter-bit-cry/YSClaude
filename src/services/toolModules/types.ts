@@ -9,6 +9,7 @@ import {
   RunCommandConfig,
   QQBotToolConfig,
   WechatClawBotToolConfig,
+  DiscordBotToolConfig,
   WebInteractionConfig,
   WebSearchConfig,
 } from '../../stores/settings';
@@ -41,6 +42,7 @@ export interface ToolDefinitionConfig {
   voiceCallActive?: boolean;
   qqBotTools?: boolean;
   wechatClawBotTools?: boolean;
+  discordBotTools?: boolean;
 }
 
 export interface ToolExecutionContext {
@@ -58,6 +60,7 @@ export interface ToolExecutionContext {
   mcpToolConfig: McpToolConfig;
   qqBotToolConfig?: QQBotToolConfig;
   wechatClawBotToolConfig?: WechatClawBotToolConfig;
+  discordBotToolConfig?: DiscordBotToolConfig;
   webCruiseEnabled?: boolean;
 }
 

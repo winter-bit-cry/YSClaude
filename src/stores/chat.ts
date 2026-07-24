@@ -1760,6 +1760,7 @@ async function runToolLoop(
     voiceCallActive,
     qqBotTools: !!settings.qqBotToolConfig?.enabled,
     wechatClawBotTools: !!settings.wechatClawBotToolConfig?.enabled,
+    discordBotTools: !!settings.discordBotToolConfig?.enabled,
   });
   if (options?.allowedToolNames) {
     const allowed = new Set(options.allowedToolNames);
@@ -1896,6 +1897,7 @@ async function runToolLoop(
         mcpToolConfig: settings.mcpToolConfig,
         qqBotToolConfig: settings.qqBotToolConfig,
         wechatClawBotToolConfig: settings.wechatClawBotToolConfig,
+        discordBotToolConfig: settings.discordBotToolConfig,
         webCruiseEnabled,
       });
       const resultText = getToolResultText(result);

@@ -357,8 +357,10 @@ export default function ChatScreen() {
   const topBarIconHidden = appearanceConfig?.topBarIconHidden || {};
   const topBarIconsHidden = !!appearanceConfig?.topBarIconsHidden;
   const topBarFadeHidden = !!appearanceConfig?.topBarFadeHidden;
+  const topBarFadeColorSetting = appearanceConfig?.topBarFadeColor;
   const topBarBackgroundImageUri = appearanceConfig?.topBarBackgroundImageUri;
   const chatBackgroundImageUri = appearanceConfig?.chatBackgroundImageUri;
+  const chatBackgroundColor = appearanceConfig?.chatBackgroundColor || colors.background;
   const topBarCssStyle = cssStyle('.top-bar', '.chat-top-bar');
   const topBarBackgroundCssStyle = imageCssStyle('.top-bar-background', '.chat-top-bar-background');
   const topBarFadeCssStyle = cssStyle('.top-bar-fade', '.chat-top-bar-fade');
@@ -374,7 +376,7 @@ export default function ChatScreen() {
   );
   const topBarFadeColor = typeof topBarFadeCssStyle?.backgroundColor === 'string'
     ? topBarFadeCssStyle.backgroundColor
-    : colors.background;
+    : topBarFadeColorSetting || colors.background;
   const { backgroundColor: _topBarFadeBackgroundColor, ...topBarFadeViewCssStyle } = topBarFadeCssStyle || {};
   const topBarLeftCssStyle = cssStyle('.top-bar-left', '.top-bar-left-group');
   const topBarRightCssStyle = cssStyle('.top-bar-right', '.top-bar-right-group');
@@ -1310,6 +1312,17 @@ export default function ChatScreen() {
       const showAvatarHeader =
         (item.role === 'user' || item.role === 'assistant') &&
         (prev?.role !== item.role || isSeparatedByTime);
+      const isPrecededBySameRole =
+        (item.role === 'user' || item.role === 'assistant') &&
+        prev?.role === item.role &&
+        item.createdAt - prev.createdAt < TIME_GAP_THRESHOLD_MS;
+      const sideAvatarDisplayMode = appearanceConfig?.sideAvatarDisplayMode || 'every';
+      const showSideAvatar =
+        sideAvatarDisplayMode === 'first'
+          ? !isPrecededBySameRole
+          : sideAvatarDisplayMode === 'last'
+            ? !isFollowedBySameRole
+            : true;
       const floor = floorMap.get(item.id);
       const isHidden =
         hiddenMessageIdSet.has(item.id) ||
@@ -1333,6 +1346,7 @@ export default function ChatScreen() {
               floorNumber={floor}
               showFloorNumber={visibleFloorMessageId === item.id && floor !== undefined}
               showAvatarHeader={showAvatarHeader}
+              showSideAvatar={showSideAvatar}
               showBubbleTail={!isFollowedBySameRole}
               onBubblePress={floor !== undefined ? handleBubblePress : undefined}
               onToolDetailScrollActiveChange={handleToolDetailScrollActiveChange}
@@ -1349,7 +1363,7 @@ export default function ChatScreen() {
         </>
       );
     },
-    [dismissedDividers, enteringMessageIds, floorMap, handleBubblePress, handleToolDetailScrollActiveChange, hiddenFloorSet, hiddenMessageIdSet, latestAssistantMessageId, visibleMessages, visibleFloorMessageId]
+    [appearanceConfig?.sideAvatarDisplayMode, dismissedDividers, enteringMessageIds, floorMap, handleBubblePress, handleToolDetailScrollActiveChange, hiddenFloorSet, hiddenMessageIdSet, latestAssistantMessageId, visibleMessages, visibleFloorMessageId]
   );
 
   const renderOlderMessagesHeader = useCallback(() => {
@@ -1506,11 +1520,9 @@ export default function ChatScreen() {
       onTouchStart={handleScreenTouchStart}
     >
       <View style={styles.backgroundLayer}>
-        <View style={styles.backgroundBase} />
+        <View style={[styles.backgroundBase, { backgroundColor: chatBackgroundColor }]} />
         {chatBackgroundImageUri && (
-          <>
-            <Image source={{ uri: chatBackgroundImageUri }} style={StyleSheet.absoluteFill} resizeMode="cover" />
-          </>
+          <Image source={{ uri: chatBackgroundImageUri }} style={StyleSheet.absoluteFill} resizeMode="cover" />
         )}
       </View>
       <View style={[styles.header, topBarCssStyle]} onLayout={handleTopBarLayout}>

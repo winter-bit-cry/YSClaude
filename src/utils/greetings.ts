@@ -1,6 +1,9 @@
 const DEFAULT_GREETING = 'What shall we think through?';
 
 const DEFAULT_COMMON_GREETINGS = [
+  'What can we tackle together?',
+  "What's cooking,user?",
+  'What are we thinking about,user?',
   'Welcome,user',
   'Hey there,user',
   'user returns!',
@@ -13,6 +16,7 @@ const DEFAULT_COMMON_GREETINGS = [
 ];
 
 const DEFAULT_MORNING_GREETINGS = [
+  'Hey,early bird',
   'Morning,user',
   'Good morning,user',
 ];
@@ -23,6 +27,7 @@ const DEFAULT_AFTERNOON_GREETINGS = [
 ];
 
 const DEFAULT_EVENING_GREETINGS = [
+  'Clocking in for the evening shift.',
   'Good evening,user',
   'Up late,user?',
   'Hello,night owl',

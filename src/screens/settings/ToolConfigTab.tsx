@@ -1,5 +1,5 @@
 ﻿import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, NativeModules, Platform, Pressable, ScrollView, Switch, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Linking, NativeModules, Platform, Pressable, ScrollView, Switch, Text, TextInput, View } from 'react-native';
 import { randomUUID } from 'expo-crypto';
 import { File } from 'expo-file-system';
 import QRCode from 'react-native-qrcode-svg';
@@ -84,6 +84,7 @@ export function ToolConfigTab({ showToast, keyboardBottomInset }: SettingsTabPro
     qqBotConfig,
     qqBotToolConfig,
     wechatClawBotToolConfig,
+    discordBotToolConfig,
     nativeToolConfig,
     locationShareConfig,
     mcpToolConfig,
@@ -99,6 +100,7 @@ export function ToolConfigTab({ showToast, keyboardBottomInset }: SettingsTabPro
     setQqBotConfig,
     setQqBotToolConfig,
     setWechatClawBotToolConfig,
+    setDiscordBotToolConfig,
     setNativeToolConfig,
     setLocationShareConfig,
     setMcpToolConfig,
@@ -120,6 +122,10 @@ export function ToolConfigTab({ showToast, keyboardBottomInset }: SettingsTabPro
     wechatClawBotToolConfig?.botToken ? '已登录' : '未登录'
   );
   const [wechatLoginBusy, setWechatLoginBusy] = useState(false);
+  const [discordEnabled, setDiscordEnabled] = useState(!!discordBotToolConfig?.enabled);
+  const [discordApplicationId, setDiscordApplicationId] = useState(discordBotToolConfig?.applicationId || '');
+  const [discordBotToken, setDiscordBotToken] = useState(discordBotToolConfig?.botToken || '');
+  const [discordReadLimit, setDiscordReadLimit] = useState(String(discordBotToolConfig?.defaultReadLimit || 20));
 
   function handleLocalQqBotToolsEnabledChange(value: boolean) {
     setLocalQqEnabled(value);
@@ -161,6 +167,32 @@ export function ToolConfigTab({ showToast, keyboardBottomInset }: SettingsTabPro
       maxReadLimit: 100,
     });
     showToast(wechatClawEnabled ? '微信 ClawBot 工具已保存，重启应用后连接生效' : '微信 ClawBot 工具已关闭');
+  }
+
+  function handleDiscordBotToolsEnabledChange(value: boolean) {
+    setDiscordEnabled(value);
+    setDiscordBotToolConfig({ enabled: value });
+  }
+
+  function saveDiscordBotTools() {
+    setDiscordBotToolConfig({
+      enabled: discordEnabled,
+      applicationId: discordApplicationId.trim(),
+      botToken: discordBotToken.trim(),
+      defaultReadLimit: Math.max(1, Math.min(100, parseInt(discordReadLimit, 10) || 20)),
+      maxReadLimit: 100,
+    });
+    showToast(discordEnabled ? 'Discord Bot 工具已保存' : 'Discord Bot 工具已关闭');
+  }
+
+  async function handleInviteDiscordBot() {
+    const applicationId = discordApplicationId.trim();
+    if (!/^\d{16,22}$/.test(applicationId)) {
+      Alert.alert('Application ID 无效', '请先填写 Discord Developer Portal 中的 Application ID。');
+      return;
+    }
+    const url = `https://discord.com/oauth2/authorize?client_id=${applicationId}&scope=bot&permissions=68608`;
+    await Linking.openURL(url);
   }
 
   async function handleWechatClawLogin() {
@@ -1914,6 +1946,7 @@ export function ToolConfigTab({ showToast, keyboardBottomInset }: SettingsTabPro
     { key: 'runCommand', name: '远程命令', intro: '通过 SSH 连接专用 AI 服务器执行 shell 命令。与「对话文件」同时开启时，自动激活对话文件与服务器互传工具。', enabled: rcEnabled, onValueChange: handleRunCommandEnabledChange, meta: '最多 ' + (rcMaxCalls || '20') + ' 次' },
     { key: 'qqBotTools', name: 'QQ Bot 工具', intro: '本机连接 QQ 官方 Bot，AI 可查看消息列表、读取本地历史并向指定联系人或群聊发消息。', enabled: localQqEnabled, onValueChange: handleLocalQqBotToolsEnabledChange, meta: '3 个工具' },
     { key: 'wechatClawBotTools', name: '微信 ClawBot 工具', intro: '本机连接微信 ClawBot，AI 可读取本地历史并向绑定账号发消息。', enabled: wechatClawEnabled, onValueChange: handleWechatClawBotToolsEnabledChange, meta: '2 个工具' },
+    { key: 'discordBotTools', name: 'Discord Bot 工具', intro: '通过 Discord 官方 API 列出服务器和频道、读取频道消息并发送消息。', enabled: discordEnabled, onValueChange: handleDiscordBotToolsEnabledChange, meta: '4 个工具' },
     { key: 'webInteraction', name: '网页交互', intro: '允许 AI 打开、观察并操作应用内网页面板。', enabled: wiEnabled, onValueChange: handleWebInteractionEnabledChange, meta: '最多 ' + (wiMaxCalls || '8') + ' 次' },
     { key: 'conversationArtifact', name: '对话文件', intro: '允许 AI 读取、创建、修改、删除当前对话绑定的文本文件，并显式显示文件卡片。与「远程命令」同时开启时，自动激活对话文件与服务器互传工具。', enabled: conversationArtifactEnabled, onValueChange: handleConversationArtifactEnabledChange, meta: '7 个工具' },
     { key: 'conversationWindow', name: '对话窗口查看', intro: '允许 AI 分页查看对话窗口、读取指定楼层，并在单个或全部窗口内进行单关键词、多关键词分页搜索。读取不受隐藏楼层影响。', enabled: conversationWindowEnabled, onValueChange: handleConversationWindowEnabledChange, meta: '7 个工具' },
@@ -1935,7 +1968,7 @@ export function ToolConfigTab({ showToast, keyboardBottomInset }: SettingsTabPro
     { title: '网络与网页', keys: ['webSearch', 'hotboard', 'webInteraction'] },
     { title: '个人事务', keys: ['accounting', 'calendar', 'weather', 'contactsCommunication'] },
     { title: '设备信息', keys: ['deviceInfo', 'batteryStatus', 'appUsageStats', 'notificationReader', 'clipboardReader'] },
-    { title: 'Bot 与软件联动', keys: ['qqBotTools', 'wechatClawBotTools'] },
+    { title: 'Bot 与软件联动', keys: ['qqBotTools', 'wechatClawBotTools', 'discordBotTools'] },
     { title: '通话控制', keys: ['aiVoiceCall', 'aiVoiceCallHangup'] },
     { title: '命令与自动化', keys: ['shizukuShell', 'runCommand'] },
   ].map((group) => ({
@@ -2089,6 +2122,9 @@ export function ToolConfigTab({ showToast, keyboardBottomInset }: SettingsTabPro
       case 'wechatClawBotTools':
         saveWechatClawBotTools();
         break;
+      case 'discordBotTools':
+        saveDiscordBotTools();
+        break;
       default:
         handleSaveNativeTools();
         break;
@@ -2172,6 +2208,10 @@ export function ToolConfigTab({ showToast, keyboardBottomInset }: SettingsTabPro
             case 'wechatClawBotTools':
               setWechatClawEnabled(false);
               setWechatClawBotToolConfig({ enabled: false });
+              break;
+            case 'discordBotTools':
+              setDiscordEnabled(false);
+              setDiscordBotToolConfig({ enabled: false });
               break;
             case 'deviceInfo':
               setDeviceInfoEnabled(false);
@@ -2540,6 +2580,18 @@ export function ToolConfigTab({ showToast, keyboardBottomInset }: SettingsTabPro
             <View style={styles.field}><Text style={styles.label}>Bot Account ID（可选）</Text><TextInput style={styles.input} value={wechatClawAccountId} onChangeText={setWechatClawAccountId} autoCapitalize="none" placeholder="...@im.bot" placeholderTextColor={colors.textTertiary} /></View>
             <View style={styles.field}><Text style={styles.label}>默认读取消息数（1–100）</Text><TextInput style={styles.input} value={wechatClawReadLimit} onChangeText={setWechatClawReadLimit} keyboardType="number-pad" placeholder="20" placeholderTextColor={colors.textTertiary} /></View>
             <Text style={styles.hint}>启用后 Android 会显示“YSClaude Bot 正在运行”的常驻通知。微信发送依赖最近入站消息的 context_token，绑定账号至少先给 ClawBot 发过一条消息。</Text>
+          </>
+        );
+      case 'discordBotTools':
+        return (
+          <>
+            <Text style={styles.toolModalDescription}>YSClaude 直接调用 Discord 官方 API，不需要自建后端。Bot Token 仅保存在本机。</Text>
+            <View style={styles.switchRow}><View style={styles.switchText}><Text style={styles.label}>启用 Discord Bot AI 工具</Text><Text style={styles.hint}>提供列出服务器、列出频道、读取消息和发送消息四个工具。</Text></View><Switch value={discordEnabled} onValueChange={handleDiscordBotToolsEnabledChange} trackColor={{ false: colors.inputBorder, true: colors.primary }} /></View>
+            <View style={styles.field}><Text style={styles.label}>Application ID</Text><TextInput style={styles.input} value={discordApplicationId} onChangeText={setDiscordApplicationId} autoCapitalize="none" keyboardType="number-pad" placeholder="Discord Application ID" placeholderTextColor={colors.textTertiary} /></View>
+            <View style={styles.field}><Text style={styles.label}>Bot Token</Text><TextInput style={styles.input} value={discordBotToken} onChangeText={setDiscordBotToken} autoCapitalize="none" secureTextEntry placeholder="Discord Bot Token" placeholderTextColor={colors.textTertiary} /></View>
+            <View style={styles.field}><Text style={styles.label}>默认读取消息数（1–100）</Text><TextInput style={styles.input} value={discordReadLimit} onChangeText={setDiscordReadLimit} keyboardType="number-pad" placeholder="20" placeholderTextColor={colors.textTertiary} /></View>
+            <Pressable style={styles.testButton} onPress={handleInviteDiscordBot}><Text style={styles.testButtonText}>邀请 Bot 加入服务器</Text></Pressable>
+            <Text style={styles.hint}>邀请权限仅包含查看频道、读取历史和发送消息。完成 Discord 授权后，保存并启用工具即可使用。</Text>
           </>
         );
       case 'qqBot':
